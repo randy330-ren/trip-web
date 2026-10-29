@@ -376,12 +376,15 @@
         #mp-band { display: none; position: fixed; left: 0; right: 0; top: var(--stick-h, 0px); height: var(--mp-band, 0px); background: var(--cream); z-index: 29; box-shadow: 0 6px 10px -6px rgba(0,0,0,.15); }
         #mp-body.pinned #mp-band { display: block; }
         #mp-wrap.fs #mp-map { height: 100% !important; }
-        .mp-hbtn { position: absolute; right: 10px; bottom: 28px; z-index: 1000; width: 38px; height: 38px; border-radius: 10px; background: #fff; border: 1px solid #ddd; box-shadow: 0 1px 4px rgba(0,0,0,.2); color: var(--green); display: flex; align-items: center; justify-content: center; opacity: .5; touch-action: none; transition: opacity .2s; }
+        .mp-hbtn { position: absolute; right: 0; bottom: 0; z-index: 1000; width: 38px; height: 38px; border-radius: 10px 0 7px 0; background: #fff; border: 1px solid #ddd; box-shadow: 0 1px 4px rgba(0,0,0,.2); color: var(--green); display: flex; align-items: center; justify-content: center; opacity: .5; touch-action: none; transition: opacity .2s; }
         .mp-hbtn svg { width: 22px; height: 22px; }
         .mp-hbtn.armed { opacity: 1; background: var(--green); border-color: var(--green); color: #fff; }
         #mp-body.pinned #mp-list { padding-bottom: max(0px, calc(100vh - var(--stick-h, 0px) - var(--mp-band, 0px) - 10rem)); }
         .meal-chip { display: inline-block; max-width: 100%; margin: 2px 0; padding: 1px 7px; border-radius: 10px; line-height: 1.4; background: rgba(176,135,88,.1); border: 1px solid rgba(176,135,88,.22); }
-        .mp-pinbtn { position: absolute; left: 10px; bottom: 28px; z-index: 1000; width: 38px; height: 38px; border-radius: 10px; background: #fff; border: 1px solid #ddd; box-shadow: 0 1px 4px rgba(0,0,0,.2); color: var(--green); display: flex; align-items: center; justify-content: center; opacity: .25; transition: opacity .2s; }
+        .mp-pinbtn { position: absolute; left: 0; bottom: 0; z-index: 1000; width: 38px; height: 38px; border-radius: 0 10px 0 7px; background: #fff; border: 1px solid #ddd; box-shadow: 0 1px 4px rgba(0,0,0,.2); color: var(--green); display: flex; align-items: center; justify-content: center; opacity: .25; transition: opacity .2s; }
+        #mp-map .leaflet-bottom.leaflet-right .leaflet-control-attribution { margin-right: 40px; }
+        #mp-body.hlock #mp-map, #mp-body.hlock #mp-list { pointer-events: none; }
+        .mpl-swipe { margin-top: 10px; text-align: center; font-size: 11px; color: #a39a8e; pointer-events: none; user-select: none; }
         .mp-pinbtn svg { width: 20px; height: 20px; }
         .mp-pinbtn.on { background: var(--green); border-color: var(--green); color: #fff; }
         .mp-pinbtn:active { opacity: .8; }
@@ -1009,7 +1012,7 @@
 
 
     <!-- 編輯控制列（管理員登入後顯示） -->
-    <div id="identity-bar" class="fixed left-4 z-50 flex items-end gap-2" style="bottom:calc(4.5rem + max(.5rem, env(safe-area-inset-bottom)))">
+    <div id="identity-bar" class="fixed left-4 z-50 flex flex-col items-start gap-2" style="bottom:calc(4.5rem + max(.5rem, env(safe-area-inset-bottom)))">
     <button id="add-admin-btn" onclick="openPasswordModal()" class="hidden order-last bg-white border border-gray-200 shadow-md text-[#3b4d43] rounded-full px-3 py-1.5 text-[11px] font-bold">✏️ 管理員登入</button>
     <button id="add-member-btn" onclick="openMemberModal()" class="hidden order-last bg-white border border-gray-200 shadow-md text-[#3b4d43] rounded-full px-3 py-1.5 text-[11px] font-bold">👤 會員登入</button>
     <div id="edit-controls" class="hidden">
@@ -1018,7 +1021,7 @@
                 class="flex items-center gap-1.5 bg-white border border-gray-200 shadow-md rounded-full pl-1 pr-3 py-1">
                 <span
                     class="w-6 h-6 rounded-full bg-[#3b4d43] text-white flex items-center justify-center text-[11px]">✏️</span>
-                <span id="admin-badge" class="text-[11px] font-bold text-gray-700">管理員</span>
+                <span id="admin-badge" class="text-[11px] font-bold text-gray-700">管理</span>
             </button>
             <div id="edit-menu"
                 class="hidden id-menu absolute bottom-full left-0 mb-2 bg-white border border-gray-200 rounded-xl shadow-lg p-1.5">
@@ -1545,8 +1548,9 @@
             document.getElementById(id).classList.toggle('hidden');
         }
         window.toggleLoginMenu = () => toggleMenu('login-menu');
-        window.toggleEditMenu = () => toggleMenu('edit-menu');
-        window.toggleMemberMenu = () => toggleMenu('member-menu');
+        const idTap = (id) => { if (!fadeId.was) return; fadeId.was = false; toggleMenu(id); };
+        window.toggleEditMenu = () => idTap('edit-menu');
+        window.toggleMemberMenu = () => idTap('member-menu');
         document.addEventListener('click', (e) => {
             if (e.target.closest('[onclick*="toggleLoginMenu()"],[onclick*="toggleEditMenu()"],[onclick*="toggleMemberMenu()"]')) return;
             closeMenus();
@@ -1894,7 +1898,7 @@
             document.getElementById('login-menu').classList.add('hidden');
             document.getElementById('edit-menu').classList.add('hidden');
             document.getElementById('member-menu').classList.add('hidden'); document.getElementById('edit-controls').classList.toggle('hidden', !adminUser);
-            document.getElementById('admin-badge').textContent = readMode ? '管理員・閱讀中' : '管理員';
+            document.getElementById('admin-badge').textContent = readMode ? '管理・閱讀中' : '管理';
             document.getElementById('save-btn').classList.toggle('hidden', readMode);
             document.getElementById('settings-item').classList.toggle('hidden', readMode);
             document.getElementById('read-mode-btn').classList.toggle('hidden', readMode);
@@ -2292,7 +2296,7 @@
 
         // ---------- 氣泡淡化 ----------
         const FADE = [['identity-bar', 5000], ['fab-stack', 3000]].map(([id, ms]) => ({ el: document.getElementById(id), ms, t: null }));
-        const fadeFab = FADE[1];
+        const fadeId = FADE[0], fadeFab = FADE[1];
         let fabWasAwake = false;
         function fadeSet(g, on, ms) {
             clearTimeout(g.t);
@@ -2302,8 +2306,9 @@
         const fadeWakeAll = () => FADE.forEach(g => fadeSet(g, true, g.ms));
         document.addEventListener('pointerdown', (e) => FADE.forEach(g => {
             const hit = g.el.contains(e.target);
+            g.was = hit && g.el.classList.contains('awake');
             if (g === fadeFab) {
-                fabWasAwake = hit && g.el.classList.contains('awake');
+                fabWasAwake = g.was;
                 g.el.querySelectorAll('.fab').forEach(b => b.classList.toggle('pop', hit && b.contains(e.target)));
             }
             fadeSet(g, hit);
@@ -2812,7 +2817,7 @@
             open: true, style: (parseInt(lsGet('mpStyle', '0'), 10) || 0) % MP_STYLES.length, line: lsGet('mpLine', '1') !== '0',
             day: 'all', map: null, tile: null, layers: {}, markers: {}, alias: {}, lines: [], entries: [], fitted: false, loading: null,
             me: null, meCircle: null, watch: null, wantMe: false, meFirst: true, tmp: null, addDay: 1, drag: null, placing: null,
-            lpAt: 0, rt: null, popKey: null, redrawing: false, curStop: null, gcBusy: false, gcDone: 0, gcTotal: 0, pendOpen: false, skipOpen: false, focusKey: null, focusT: null, toastT: null, fsHome: null, dayInit: false, autoNavDone: false
+            lpAt: 0, rt: null, popKey: null, redrawing: false, curStop: null, gcBusy: false, gcDone: 0, gcTotal: 0, pendOpen: false, skipOpen: false, focusKey: null, focusT: null, toastT: null, fsHome: null, dayInit: false, autoNavDone: false, hlockT: null
         };
 
         const gkey = (name) => String(name || '').trim().slice(0, 100).replace(/[.$#\[\]\/%]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
@@ -2918,9 +2923,27 @@
                     if (e) rows.push(mpRow(e, n === e.span[0] ? e.key : `${e.key}@${n}`, n, '🏨', st));
                 });
                 return `<div ${all ? `id="map-day${n}" ` : ''}class="mpl-day"><p class="mpl-h"><i style="background:${MP_COLORS[n - 1]}"></i>D${n}・${d.month}/${d.day} ${d.week}</p>${rows.join('') || '<p class="mpl-s px-2 py-1">這天還沒有安排。</p>'}</div>`;
-            }).join('');
+            }).join('') + '<p class="mpl-swipe">‹ 左右滑切換不同天 ›</p>';
             mpHighlight();
         }
+        const MP_DAY_KEYS = () => ['all', ...dayMeta.map(d => d.n)];
+        (function bindMpListSwipe() {
+            const box = document.getElementById('mp-list');
+            if (!box) return;
+            let sx = 0, sy = 0, ok = false;
+            box.addEventListener('touchstart', (e) => {
+                ok = e.touches.length === 1 && !e.target.closest('a, button');
+                if (ok) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }
+            }, { passive: true });
+            box.addEventListener('touchend', (e) => {
+                if (!ok) return;
+                ok = false;
+                const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+                if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+                const keys = MP_DAY_KEYS(), i = keys.indexOf(MP.day) + (dx < 0 ? 1 : -1);
+                if (i >= 0 && i < keys.length) mpDay(keys[i]);
+            }, { passive: true });
+        })();
         function mpHighlight() {
             document.querySelectorAll('#mp-list .mpl-row').forEach(r => {
                 const k = r.dataset.k;
@@ -3100,11 +3123,16 @@
             const e = MP.entries.find(x => x.key === k.split('@')[0]);
             const md = e ? (k.includes('@') ? +k.split('@')[1] : e.day) : null;
             if (md && MP.day !== 'all' && MP.day !== md) mpShowDay(md, false);
-            MP.map.flyTo(m.getLatLng(), Math.max(MP.map.getZoom(), 15), { duration: .6 });
+            const to = m.getLatLng(), z = Math.max(MP.map.getZoom(), 15);
+            const px = z === MP.map.getZoom() ? MP.map.latLngToContainerPoint(to).distanceTo(MP.map.latLngToContainerPoint(MP.map.getCenter())) : Infinity;
+            const dur = px < 24 ? 0 : px < 160 ? .25 : .6;
+            if (!dur) MP.map.setView(to, z, { animate: false });
+            else if (px < 160) MP.map.panTo(to, { duration: dur, easeLinearity: .4 });
+            else MP.map.flyTo(to, z, { duration: dur });
             MP.flyKey = k;
             MP.hl = k;
             mpHighlight();
-            setTimeout(() => { if (MP.flyKey !== k) return; const mm = MP.markers[k]; if (mm && MP.map.hasLayer(mm)) mm.openPopup(); }, 650);
+            setTimeout(() => { if (MP.flyKey !== k) return; const mm = MP.markers[k]; if (mm && MP.map.hasLayer(mm)) mm.openPopup(); }, dur * 1000 + 60);
             return true;
         }
         function mpFocusAfter(key) {
@@ -3180,6 +3208,12 @@
             mpLayout();
             if (MP.map) MP.map.invalidateSize({ pan: false });
         }
+        function mpHLock() {
+            const b = document.getElementById('mp-body');
+            b.classList.add('hlock');
+            clearTimeout(MP.hlockT);
+            MP.hlockT = setTimeout(() => b.classList.remove('hlock'), 450);
+        }
         function mpApplyPin() {
             const b = document.getElementById('mp-pin-btn');
             b.classList.toggle('on', mpPinned);
@@ -3221,7 +3255,7 @@
                 if (e.pointerId !== pid) return;
                 pid = null;
                 h.classList.remove('armed');
-                if (!moved) { mpHR = mpHR > 0.75 ? 0.5 : 1; mpApplyH(); }
+                if (!moved) { mpHR = mpHR > 0.75 ? 0.5 : 1; mpApplyH(); mpHLock(); }
                 lsSet('mpH', mpHR.toFixed(3));
             };
             h.addEventListener('pointerup', end);
