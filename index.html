@@ -909,6 +909,14 @@
         <!-- 頁面 4：更多 (More) -->
         <div id="page-more" class="hidden space-y-4">
 
+            <!-- 新手教學（會員／管理員） -->
+            <div id="tour-card" class="hidden card p-5 border-t-4 border-[#b08758]">
+                <button type="button" onclick="tourOpen()" class="w-full flex justify-between items-center">
+                    <h2 class="text-lg font-bold">📖 新手教學</h2>
+                    <span class="drawer-hint">點擊開始 ▶</span>
+                </button>
+            </div>
+
             <!-- 清單（待辦／必買） -->
             <div class="card p-5 border-t-4 border-[#4b5563]">
                 <div class="flex justify-between items-center mb-3">
@@ -1671,6 +1679,7 @@
             bindRoster();
             if (window.LEDGER) LEDGER.onAuth();
             if (window.HL) HL.onAuth();
+            if (window.tourSync) tourSync();
         }
         auth.onAuthStateChanged((user) => {
             if (user && user.email === ADMIN_EMAIL) { auth.signOut(); return; }
@@ -3776,6 +3785,17 @@
             try { localStorage.setItem('hintsDone', JSON.stringify(hintsDone)); } catch (e) { }
             refreshHints();
         };
+        const TOUR_V = '1';
+        let tourAuto = false;
+        window.tourOpen = function () {
+            (window.TOUR ? Promise.resolve() : loadScript('tutorial.js?v=' + TOUR_V)).then(() => TOUR.start({ admin: isEditor })).catch(() => { });
+        };
+        window.tourSync = function () {
+            const ok = isMember || !!adminUser;
+            document.getElementById('tour-card').classList.toggle('hidden', !ok);
+            if (ok && !hintsDone.tour && !tourAuto) { tourAuto = true; setTimeout(tourOpen, 1500); }
+        };
+        tourSync();
         function updateFades() {
             [['date-strip-fade', 'date-strip']].forEach(([w, sc]) => {
                 const wr = document.getElementById(w), el = document.getElementById(sc);
