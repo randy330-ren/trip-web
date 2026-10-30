@@ -288,16 +288,18 @@
         .mp-bar button.ok { background: var(--green); color: #fff; }
         .mp-msg { display: none; position: absolute; inset: 0; z-index: 1002; align-items: center; justify-content: center; background: rgba(247,246,242,.94); border-radius: 12px; font-size: 13px; font-weight: 700; color: #6b7280; }
         .mp-msg.show { display: flex; }
-        .mp-toast { position: absolute; left: 50%; bottom: 66px; transform: translateX(-50%); z-index: 1003; max-width: 90%; background: rgba(31,41,55,.9); color: #fff; font-size: 12px; padding: 6px 12px; border-radius: 9999px; opacity: 0; pointer-events: none; transition: opacity .2s; }
+        .mp-toast { position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 1003; max-width: 90%; background: rgba(31,41,55,.9); color: #fff; font-size: 12px; padding: 6px 12px; border-radius: 9999px; opacity: 0; pointer-events: none; transition: opacity .2s; }
         .mp-toast.show { opacity: 1; }
         #mp-wrap.fs .mp-toast { bottom: calc(124px + env(safe-area-inset-bottom)); }
-        .mp-nav { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 1000; display: flex; align-items: center; gap: 4px; width: max-content; max-width: calc(100% - 20px); background: rgba(255,255,255,.95); border-radius: 9999px; padding: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+        .mp-nav { position: absolute; left: 44px; right: calc(var(--mp-attr-w, 130px) + 6px); bottom: 0; margin: 0 auto; z-index: 1000; display: flex; align-items: center; gap: 4px; width: max-content; background: rgba(255,255,255,.95); border-radius: 12px 12px 0 0; padding: 3px 4px; box-shadow: 0 -1px 6px rgba(0,0,0,.15); }
+        .mp-nav.tight { gap: 2px; padding: 3px; }
+        .mp-nav.tight button { padding: 4px 7px; font-size: 11px; }
         .mp-nav button { flex-shrink: 0; padding: 5px 10px; border-radius: 9999px; font-size: 12px; font-weight: 700; color: #fff; background: var(--green); }
         .mp-nav button:disabled { opacity: .3; }
-        #mp-wrap.fs .mp-nav { bottom: calc(76px + env(safe-area-inset-bottom)); }
-        .mp-hint-nav { position: absolute; left: calc(50% + 37px); bottom: 68px; transform: translateX(-50%); z-index: 1000; }
+        #mp-wrap.fs .mp-nav { left: 50%; right: auto; margin: 0; transform: translateX(-50%); max-width: calc(100% - 20px); border-radius: 9999px; padding: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.2); bottom: calc(76px + env(safe-area-inset-bottom)); }
+        .mp-hint-nav { position: absolute; left: calc(50% + 56px - var(--mp-attr-w, 130px) / 2); bottom: 38px; transform: translateX(-50%); z-index: 1000; }
         .mp-hint-nav::after { content: ''; position: absolute; left: 50%; bottom: -5px; margin-left: -5px; border: 5px solid transparent; border-bottom: 0; border-top-color: rgba(59,77,67,.88); }
-        #mp-wrap.fs .mp-hint-nav { bottom: calc(122px + env(safe-area-inset-bottom)); }
+        #mp-wrap.fs .mp-hint-nav { left: calc(50% + 37px); bottom: calc(122px + env(safe-area-inset-bottom)); }
         .mp-pop-t { font-weight: 700; color: #1f2937; font-size: 13px; }
         .mp-pop-s { font-size: 11px; color: #8f8576; margin-top: 2px; }
         .mp-pop-a { display: inline-block; margin-top: 8px; background: var(--green); color: #fff !important; padding: 4px 10px; border-radius: 8px; text-decoration: none; font-size: 12px; }
@@ -2841,7 +2843,7 @@
             open: true, style: (parseInt(lsGet('mpStyle', '0'), 10) || 0) % MP_STYLES.length, line: lsGet('mpLine', '1') !== '0',
             day: 'all', map: null, tile: null, layers: {}, markers: {}, alias: {}, lines: [], entries: [], fitted: false, loading: null,
             me: null, meCircle: null, watch: null, wantMe: false, meFirst: true, tmp: null, addDay: 1, drag: null, placing: null,
-            lpAt: 0, rt: null, popKey: null, redrawing: false, curStop: null, gcBusy: false, gcDone: 0, gcTotal: 0, pendOpen: false, skipOpen: false, focusKey: null, focusT: null, toastT: null, fsHome: null, dayInit: false, autoNavDone: false, hlockT: null
+            lpAt: 0, rt: null, popKey: null, redrawing: false, curStop: null, gcBusy: false, gcDone: 0, gcTotal: 0, pendOpen: false, skipOpen: false, focusKey: null, focusT: null, toastT: null, fsHome: null, dayInit: false, autoNavDone: false, hlockT: null, defPrefix: '', prefixOff: false
         };
 
         const gkey = (name) => String(name || '').trim().slice(0, 100).replace(/[.$#\[\]\/%]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
@@ -3194,7 +3196,9 @@
         function mpInit() {
             const el = document.getElementById('mp-map');
             MP.map = L.map(el, { zoomControl: false });
+            MP.defPrefix = MP.map.attributionControl.options.prefix;
             mpSetStyle(MP.style);
+            if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(mpFitNav)).observe(el);
             MP.map.setView([35.45, 133.4], 9);
             MP.map.on('contextmenu', (ev) => { if (mpLP()) mpLongMap(ev.latlng); });
             MP.map.on('click', (ev) => { if (MP.placing) mpPlace(ev.latlng); });
@@ -3350,8 +3354,28 @@
             if (MP.tile) MP.map.removeLayer(MP.tile);
             MP.tile = L.tileLayer(url, { maxZoom: 19, attribution: attr }).addTo(MP.map);
             document.getElementById('mp-style-tag').textContent = '🗂️ ' + name;
+            requestAnimationFrame(mpFitNav);
         }
         window.mpNextStyle = () => { if (MP.map) mpSetStyle(MP.style + 1); };
+        function mpFitNav() {
+            const nav = document.querySelector('.mp-nav'), wrap = document.getElementById('mp-wrap'), map = document.getElementById('mp-map');
+            const ac = MP.map && MP.map.attributionControl;
+            if (!nav || !ac) return;
+            nav.classList.remove('tight');
+            if (MP.prefixOff) { ac.setPrefix(MP.defPrefix); MP.prefixOff = false; }
+            if (wrap.classList.contains('fs')) return;
+            const at = map.querySelector('.leaflet-control-attribution');
+            const room = () => {
+                const w = at ? Math.ceil(at.getBoundingClientRect().width) : 130;
+                wrap.style.setProperty('--mp-attr-w', w + 'px');
+                return map.clientWidth - 44 - w - 6;
+            };
+            if (nav.scrollWidth <= room()) return;
+            nav.classList.add('tight');
+            if (nav.scrollWidth <= room()) return;
+            ac.setPrefix(false); MP.prefixOff = true;
+            room();
+        }
         function mpToolState() {
             document.getElementById('mp-b-line').classList.toggle('off', !MP.line);
             document.getElementById('mp-b-me').classList.toggle('act', MP.watch != null);
