@@ -3797,7 +3797,7 @@
             try { localStorage.setItem('hintsDone', JSON.stringify(hintsDone)); } catch (e) { }
             refreshHints();
         };
-        const TOUR_V = '3';
+        const TOUR_V = '4';
         window.tourOpen = function () {
             document.getElementById('tour-prompt').classList.add('hidden');
             (window.TOUR ? Promise.resolve() : loadScript('tutorial.js?v=' + TOUR_V)).then(() => TOUR.start({ admin: isEditor })).catch(() => { });
