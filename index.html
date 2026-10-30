@@ -378,6 +378,11 @@
         #ov-bar { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; padding: 8px 16px max(.75rem, env(safe-area-inset-bottom)); background: #f7f6f2; border-radius: 24px 24px 0 0; box-shadow: 0 -4px 16px rgba(0,0,0,.08); }
         #ov-bar button { display: block; width: 100%; max-width: 28rem; margin: 0 auto; padding: 11px; border-radius: 12px; background: var(--green); color: #fff; font-size: 14px; font-weight: 700; }
         body.ov #ov-bar { display: block; }
+        #upd-bar { display: none; position: fixed; left: 50%; transform: translateX(-50%); top: calc(8px + env(safe-area-inset-top)); z-index: 60; max-width: calc(100vw - 2rem); align-items: center; padding: 2px 4px 2px 12px; border-radius: 9999px; background: rgba(59,77,67,.95); color: #fff; font-size: 12px; font-weight: 700; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
+        #upd-bar.show { display: flex; }
+        #upd-bar button { color: inherit; font: inherit; white-space: nowrap; }
+        #upd-bar .upd-go { padding: 8px 4px; }
+        #upd-bar .upd-x { padding: 8px 10px; opacity: .7; }
         body.ov #main-nav { display: none; }
         #mp-body.pinned #mp-wrap { position: fixed; top: calc(var(--stick-h, 0px) + 5px); left: var(--mp-l, 0px); width: var(--mp-w, 100%); margin: 0; z-index: 30; }
         #mp-card { border-top-width: 0; padding-top: 0; }
@@ -1091,6 +1096,7 @@
         </button>
     </div>
     <div id="ov-bar"><button type="button" id="ov-close" onclick="closeOverlay()"></button></div>
+    <div id="upd-bar"><button type="button" class="upd-go" onclick="applyUpdate()">🔄 有新版本，點此更新</button><button type="button" class="upd-x" onclick="dismissUpdate()" aria-label="稍後再說">✕</button></div>
 
     <!-- 圖片燈箱 Modal -->
     <div id="lightbox-modal" class="hidden fixed inset-0 z-[70] flex items-center justify-center p-4"
@@ -4975,7 +4981,27 @@
             const cPhotos = cacheLoad('day_photos'); if (cPhotos) { lastDayPhotos = cPhotos; renderAllDayPhotos(cPhotos); }
         })();
         setTimeout(hideSplash, 3000);
-        if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => { }));
+        if ('serviceWorker' in navigator) {
+            const hadController = !!navigator.serviceWorker.controller;
+            const updBar = document.getElementById('upd-bar');
+            let swReg = null, updReady = false;
+            window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').then(r => { swReg = r; }).catch(() => { }));
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (!hadController) return;
+                updReady = true;
+                updBar.classList.add('show');
+            });
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) return;
+                if (updReady) updBar.classList.add('show');
+                else if (swReg) swReg.update().catch(() => { });
+            });
+            window.dismissUpdate = () => updBar.classList.remove('show');
+            window.applyUpdate = () => {
+                if (isEditor && !confirm('更新會重新載入頁面，尚未按「儲存」的文字會消失。\n\n確定要現在更新嗎？')) return;
+                location.reload();
+            };
+        }
     </script>
 </body>
 
