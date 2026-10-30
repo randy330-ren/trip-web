@@ -302,7 +302,7 @@
         if (document.getElementById('tr-css')) return;
         const s = document.createElement('style');
         s.id = 'tr-css';
-        s.textContent = '#tr-root{position:fixed;inset:0;z-index:9000}#tr-spot{position:fixed;border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,.62);outline:3px solid rgba(224,194,143,.95);transition:all .25s;pointer-events:none;animation:trPulse 1.2s infinite}@keyframes trPulse{0%,100%{outline-offset:0}50%{outline-offset:5px}}#tr-hand{position:fixed;display:none;font-size:30px;line-height:1;pointer-events:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.45));animation:trTap 1.1s infinite}@keyframes trTap{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-3px,-8px) scale(.88)}}#tr-card{position:fixed;left:50%;transform:translateX(-50%);width:calc(100% - 2rem);max-width:26rem;background:#fff;border-radius:18px;box-shadow:0 8px 28px rgba(0,0,0,.3);color:#333;font-size:13px;line-height:1.6;display:flex;flex-direction:column;overflow:hidden}#tr-card button{font-family:inherit}.tr-strip{display:flex;background:#3b4d43;flex:none}.tr-strip button{background:transparent;border:0;flex:1;padding:10px 0;font-size:13px;font-weight:700;color:rgba(255,255,255,.65)}.tr-strip button.on{color:#fff;box-shadow:inset 0 -3px 0 #e0c28f}.tr-cats{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;flex:none;border-bottom:1px solid #eee}.tr-cats button{flex:none;padding:5px 12px;border-radius:9999px;background:#f0eee8;color:#3b4d43;font-size:12px;font-weight:700}.tr-cats button.on{background:#3b4d43;color:#fff}.tr-cats button.ad{background:#f6ecde;color:#8a6234}.tr-cats button.ad.on{background:#8a6234;color:#fff}#tr-card .bd{padding:10px 14px;overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch}#tr-card .q{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;padding:9px 12px;margin-top:6px;border-radius:10px;background:#f0eee8;color:#3b4d43;font-weight:700;font-size:13px}#tr-card .q.ad{background:#f6ecde;color:#8a6234}#tr-card .q i{font-style:normal;opacity:.6;transition:transform .2s}#tr-card .q.on i{transform:rotate(90deg)}#tr-card .a{display:none;padding:8px 12px 4px;color:#555}#tr-card .a.on{display:block}#tr-card .tag{font-size:10px;font-weight:700;color:#8a6234;margin-left:6px}#tr-card .ft{padding:10px 14px 14px;border-top:1px solid #eee;flex:none}#tr-card .dots{text-align:center;font-size:11px;color:#a39a8e;margin-bottom:8px}#tr-card .row{display:flex;gap:8px}#tr-card .row button{padding:13px 0;border-radius:14px;font-size:15px;font-weight:700}#tr-card .pri{flex:1.3;background:#3b4d43;color:#fff}#tr-card .sec{flex:1;background:#e7e4db;color:#3b4d43}#tr-card .skip{flex:1;background:#fff;color:#777;border:1.5px solid #cfcac0}#tr-card .row button:disabled{opacity:.35}.demo{margin-top:8px;padding:10px;border:1.5px dashed #cfcac0;border-radius:12px;background:#faf9f5}.demo .dl{font-size:11px;font-weight:700;color:#8a6234;margin-bottom:4px}.demo .dl2{font-size:11px;color:#888;margin:6px 0 3px}.demo .dl3{font-size:12px;color:#777;margin-top:4px}.demo .in{width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:10px;font-size:14px;background:#fff}.demo .chips{display:flex;gap:6px;flex-wrap:wrap}.demo .chip{padding:6px 12px;border-radius:9999px;background:#fff;border:1.5px solid #ddd;font-size:12px;font-weight:700;color:#777}.demo .chip.on{background:#3b4d43;border-color:#3b4d43;color:#fff}.demo .dr{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;font-size:13px}.demo .dr.b{border-top:1px solid #e8e4da}.demo .dbtn{padding:9px 14px;border-radius:10px;background:#3b4d43;color:#fff;font-size:13px;font-weight:700;margin-top:6px}.demo .dbtn.ghost{background:#e7e4db;color:#3b4d43}.demo .mm{position:relative;height:110px;border-radius:10px;background:linear-gradient(135deg,#dfe8dc,#cfdccb);margin-bottom:6px}.demo .pin{position:absolute;transform:translate(-50%,-50%);font-size:20px;opacity:.55}.demo .pin.on{opacity:1;font-size:26px}.demo .rc{position:relative;padding:10px 40px 10px 12px;margin-top:6px;border-radius:10px;background:#fff;border:1.5px solid #ddd}.demo .rc.meal{background:#fdf3e3}.demo .rc small{display:block;color:#999;font-size:11px}.demo .tm{position:absolute;right:6px;top:6px;width:30px;height:30px;border-radius:8px;background:#f0eee8;font-size:14px}';
+        s.textContent = '#tr-root{position:fixed;inset:0;z-index:9000}#tr-spot{position:fixed;border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,.62);outline:3px solid rgba(224,194,143,.95);transition:all .25s;pointer-events:none;animation:trPulse 1.2s infinite}#tr-spot.fl{animation:trFlash .5s 3,trPulse 1.2s 1.5s infinite}@keyframes trFlash{0%,100%{background:rgba(255,255,255,0)}50%{background:rgba(255,255,255,.4)}}@keyframes trPulse{0%,100%{outline-offset:0}50%{outline-offset:5px}}#tr-hand{position:fixed;display:none;font-size:30px;line-height:1;pointer-events:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.45));animation:trTap 1.1s infinite}#tr-hand.dn{animation-name:trTapD}@keyframes trTapD{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(3px,8px) scale(.88)}}@keyframes trTap{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-3px,-8px) scale(.88)}}#tr-card{position:fixed;left:50%;transform:translateX(-50%);width:calc(100% - 2rem);max-width:26rem;background:#fff;border-radius:18px;box-shadow:0 8px 28px rgba(0,0,0,.3);color:#333;font-size:13px;line-height:1.6;display:flex;flex-direction:column;overflow:hidden}#tr-card button{font-family:inherit}.tr-strip{display:flex;background:#3b4d43;flex:none}.tr-strip button{background:transparent;border:0;flex:1;padding:10px 0;font-size:13px;font-weight:700;color:rgba(255,255,255,.65)}.tr-strip button.on{color:#fff;box-shadow:inset 0 -3px 0 #e0c28f}.tr-cats{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;flex:none;border-bottom:1px solid #eee}.tr-cats button{flex:none;padding:5px 12px;border-radius:9999px;background:#f0eee8;color:#3b4d43;font-size:12px;font-weight:700}.tr-cats button.on{background:#3b4d43;color:#fff}.tr-cats button.ad{background:#f6ecde;color:#8a6234}.tr-cats button.ad.on{background:#8a6234;color:#fff}#tr-card .q.on{animation:trQ .5s 3}@keyframes trQ{0%,100%{background:#f0eee8}50%{background:#ffe6a8}}#tr-card .bd{padding:10px 14px;overflow-y:auto;overscroll-behavior:contain;flex:1;-webkit-overflow-scrolling:touch}#tr-card .q{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;padding:9px 12px;margin-top:6px;border-radius:10px;background:#f0eee8;color:#3b4d43;font-weight:700;font-size:13px}#tr-card .q.ad{background:#f6ecde;color:#8a6234}#tr-card .q i{font-style:normal;opacity:.6;transition:transform .2s}#tr-card .q.on i{transform:rotate(90deg)}#tr-card .a{display:none;padding:8px 12px 4px;color:#555}#tr-card .a.on{display:block}#tr-card .tag{font-size:10px;font-weight:700;color:#8a6234;margin-left:6px}#tr-card .ft{padding:10px 14px 14px;border-top:1px solid #eee;flex:none}#tr-card .dots{text-align:center;font-size:11px;color:#a39a8e;margin-bottom:8px}#tr-card .row{display:flex;gap:8px}#tr-card .row button{padding:13px 0;border-radius:14px;font-size:15px;font-weight:700}#tr-card .pri{flex:1.3;background:#3b4d43;color:#fff}#tr-card .sec{flex:1;background:#e7e4db;color:#3b4d43}#tr-card .skip{flex:1;background:#fff;color:#777;border:1.5px solid #cfcac0}#tr-card .row button:disabled{opacity:.35}.demo{margin-top:8px;padding:10px;border:1.5px dashed #cfcac0;border-radius:12px;background:#faf9f5}.demo .dl{font-size:11px;font-weight:700;color:#8a6234;margin-bottom:4px}.demo .dl2{font-size:11px;color:#888;margin:6px 0 3px}.demo .dl3{font-size:12px;color:#777;margin-top:4px}.demo .in{width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:10px;font-size:14px;background:#fff}.demo .chips{display:flex;gap:6px;flex-wrap:wrap}.demo .chip{padding:6px 12px;border-radius:9999px;background:#fff;border:1.5px solid #ddd;font-size:12px;font-weight:700;color:#777}.demo .chip.on{background:#3b4d43;border-color:#3b4d43;color:#fff}.demo .dr{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;font-size:13px}.demo .dr.b{border-top:1px solid #e8e4da}.demo .dbtn{padding:9px 14px;border-radius:10px;background:#3b4d43;color:#fff;font-size:13px;font-weight:700;margin-top:6px}.demo .dbtn.ghost{background:#e7e4db;color:#3b4d43}.demo .mm{position:relative;height:110px;border-radius:10px;background:linear-gradient(135deg,#dfe8dc,#cfdccb);margin-bottom:6px}.demo .pin{position:absolute;transform:translate(-50%,-50%);font-size:20px;opacity:.55}.demo .pin.on{opacity:1;font-size:26px}.demo .rc{position:relative;padding:10px 40px 10px 12px;margin-top:6px;border-radius:10px;background:#fff;border:1.5px solid #ddd}.demo .rc.meal{background:#fdf3e3}.demo .rc small{display:block;color:#999;font-size:11px}.demo .tm{position:absolute;right:6px;top:6px;width:30px;height:30px;border-radius:8px;background:#f0eee8;font-size:14px}';
         document.head.appendChild(s);
     }
 
@@ -319,31 +319,65 @@
         return false;
     }
 
-    // 遮罩與手指：t 為要框的元素；compact 為小項聚焦（卡片縮成約 45% 高並移到另一側）
-    function place(t, compact) {
-        if (!el) return;
+    // 遮罩、手指與卡片位置：目標貼在標題列下方，卡片撐滿其餘空間
+    const GAP = 34, SIDE = 12;
+    let cur = null, tick = 0, trackId = 0;
+    const headerBottom = () => { const h = document.getElementById('sticky-wrapper'); return h ? h.getBoundingClientRect().bottom : 0; };
+
+    function anchor(t) {
+        if (isPinned(t)) return;
+        const d = t.getBoundingClientRect().top - (headerBottom() + 14);
+        if (Math.abs(d) > 6) window.scrollBy({ top: d, left: 0, behavior: 'instant' });
+    }
+
+    function layout(t) {
         const spot = el.querySelector('#tr-spot'), hand = el.querySelector('#tr-hand'), card = el.querySelector('#tr-card'), H = innerHeight;
+        const r = t.getBoundingClientRect(), low = r.top + r.height / 2 > H / 2, min = Math.min(300, H * 0.42), cap = H * 0.8;
+        const ch = Math.max(min, Math.min(cap, low ? r.top - GAP - SIDE : H - r.bottom - GAP - SIDE));
+        const ct = low ? Math.max(SIDE, r.top - GAP - ch) : Math.min(H - SIDE - ch, r.bottom + GAP);
+        Object.assign(card.style, { height: ch + 'px', top: ct + 'px', bottom: 'auto' });
+        const top = Math.max(r.top, 4), bot = Math.min(r.bottom, H - 4), left = Math.max(r.left, 4), right = Math.min(r.right, innerWidth - 4);
+        spot.style.cssText = `left:${left - 6}px;top:${top - 6}px;width:${right - left + 12}px;height:${bot - top + 12}px`;
+        hand.textContent = low ? '👇' : '👆';
+        hand.className = low ? 'dn' : '';
+        hand.style.display = 'block';
+        hand.style.left = Math.max(4, Math.min((left + right) / 2, innerWidth - 20) - 14) + 'px';
+        hand.style.top = (low ? top - 32 : bot + 2) + 'px';
+    }
+
+    // 放好後持續校正：前 1.2 秒每格重量，之後每 0.5 秒一次（天氣、記帳等內容載入會讓版面位移）
+    function track(id, n) {
+        clearTimeout(tick);
+        tick = setTimeout(() => {
+            if (!el || id !== trackId || !cur) return;
+            if (!cur.isConnected) return focus();
+            anchor(cur);
+            layout(cur);
+            track(id, n + 1);
+        }, n < 75 ? 16 : 500);
+    }
+
+    function place(t) {
+        if (!el) return;
+        cur = t;
+        trackId++;
+        const spot = el.querySelector('#tr-spot'), hand = el.querySelector('#tr-hand'), card = el.querySelector('#tr-card');
         if (!t) {
             spot.style.cssText = 'left:50%;top:50%;width:0;height:0';
             hand.style.display = 'none';
-            Object.assign(card.style, { height: Math.min(H * 0.82, H - 32) + 'px', top: '1rem', bottom: 'auto' });
+            Object.assign(card.style, { height: Math.min(innerHeight * 0.82, innerHeight - 32) + 'px', top: '1rem', bottom: 'auto' });
             return;
         }
-        let r = t.getBoundingClientRect();
-        if (compact && !isPinned(t)) {
-            window.scrollBy({ top: r.top + r.height / 2 - H * 0.27, left: 0, behavior: 'instant' });
-            r = t.getBoundingClientRect();
-        }
-        const low = r.top + r.height / 2 > H / 2;
-        const h = compact ? Math.max(300, H * 0.45) : Math.max(320, Math.min(low ? r.top - 30 : H - r.bottom - 30, H * 0.82));
-        Object.assign(card.style, { height: h + 'px', top: low ? '1rem' : 'auto', bottom: low ? 'auto' : '1rem' });
-        const top = Math.max(r.top, 4), bot = Math.min(r.bottom, H - 4), left = Math.max(r.left, 4), right = Math.min(r.right, innerWidth - 4);
-        spot.style.cssText = `left:${left - 6}px;top:${top - 6}px;width:${right - left + 12}px;height:${bot - top + 12}px`;
-        if (compact) {
-            hand.style.display = 'block';
-            hand.style.left = Math.min((left + right) / 2, innerWidth - 40) - 14 + 'px';
-            hand.style.top = Math.min(top + (bot - top) * 0.6, H - 40) + 'px';
-        } else hand.style.display = 'none';
+        anchor(t);
+        layout(t);
+        spot.classList.remove('fl'); void spot.offsetWidth; spot.classList.add('fl');
+        track(trackId, 0);
+    }
+
+    // 教學中鎖住主畫面，避免手指或滾輪帶動背景捲動
+    function lock(on) {
+        document.documentElement.style.overflow = on ? 'hidden' : '';
+        document.documentElement.style.overscrollBehavior = on ? 'none' : '';
     }
 
     // 依目前展開的小項聚焦：先框頁面預設按鈕，找得到小項的按鈕就改框它（動態內容會輪詢等待）
@@ -354,14 +388,14 @@
         const want = (it && it.tab) || sec.tab || 'itinerary';
         if (currentTab !== want) switchTab(want);
         const dflt = () => find(cat.sel || sec.sel);
-        if (!it || !it.sel) return void place(dflt(), false);
+        if (!it || !it.sel) return void place(dflt());
         let preDone = !it.pre;
         const attempt = (n) => {
             if (tk !== token || !el) return;
             if (!preDone) preDone = it.pre.every(s => { const b = document.querySelector(s); if (b) b.click(); return !!b; });
             const t = preDone && find(it.sel);
-            if (t) return place(t, true);
-            if (n === 0) place(dflt(), false);
+            if (t) return place(t);
+            if (n === 0) place(dflt());
             if (n < 16) poll = setTimeout(() => attempt(n + 1), 250);
         };
         poll = setTimeout(() => attempt(0), 120);
@@ -390,7 +424,7 @@
     function onResize() { clearTimeout(rt); rt = setTimeout(focus, 200); }
 
     function end() {
-        clearTimeout(poll); clearTimeout(rt);
+        clearTimeout(poll); clearTimeout(rt); clearTimeout(tick); trackId++; cur = null; lock(false);
         window.removeEventListener('resize', onResize);
         if (el) { el.remove(); el = null; }
         if (window.hintDone) hintDone('tour');
@@ -425,7 +459,17 @@
                 const demo = e.target.closest('[data-demo]');
                 if (demo && DEMOS[demo.dataset.demo].inp) DEMOS[demo.dataset.demo].inp(demo, e.target);
             });
+            let ty = 0;
+            el.addEventListener('touchstart', (e) => { ty = e.touches[0].clientY; }, { passive: true });
+            el.addEventListener('touchmove', (e) => {
+                const bd = e.target.closest('.bd');
+                if (!bd) { if (!e.target.closest('.tr-cats')) e.preventDefault(); return; }
+                const dy = e.touches[0].clientY - ty;
+                if (bd.scrollHeight <= bd.clientHeight || (dy > 0 && bd.scrollTop <= 0) || (dy < 0 && bd.scrollTop + bd.clientHeight >= bd.scrollHeight - 1)) e.preventDefault();
+            }, { passive: false });
+            el.addEventListener('wheel', (e) => { if (!e.target.closest('.bd')) e.preventDefault(); }, { passive: false });
             document.body.appendChild(el);
+            lock(true);
             window.addEventListener('resize', onResize);
             render();
         }
