@@ -290,12 +290,13 @@
         ])
     };
 
-    let pages = [], secs = [], pi = 0, opts = {}, from = 'itinerary', el = null, open = 0, token = 0, poll = 0, rt = 0;
+    let pages = [], steps = [], secs = [], pi = 0, opts = {}, from = 'itinerary', el = null, open = 0, token = 0, poll = 0, rt = 0;
 
     function build() {
         secs = SEC.map(s => ({ ...s, cats: s.cats.map(c => ({ ...c, it: c.it.filter(i => !i.ad || opts.admin) })).filter(c => c.it.length) }));
         pages = [];
         secs.forEach((s, si) => s.cats.forEach((_, ci) => pages.push({ s: si, c: ci })));
+        steps = pages.flatMap((p, k) => secs[p.s].cats[p.c].it.map((_, i) => ({ pi: k, i })));
     }
 
     function css() {
@@ -321,7 +322,7 @@
 
     // 遮罩、手指與卡片位置：目標貼在標題列下方，卡片撐滿其餘空間
     const GAP = 34, SIDE = 12;
-    let cur = null, tick = 0, trackId = 0;
+    let cur = null, curReal = false, tick = 0, trackId = 0;
     const headerBottom = () => { const h = document.getElementById('sticky-wrapper'); return h ? h.getBoundingClientRect().bottom : 0; };
 
     // 標題列底部；記帳頁的分頁列也是 sticky，目標要再往下避開它
@@ -336,7 +337,7 @@
         if (Math.abs(d) > 6) window.scrollBy({ top: d, left: 0, behavior: 'instant' });
     }
 
-    function layout(t) {
+    function layout(t, real) {
         const spot = el.querySelector('#tr-spot'), hand = el.querySelector('#tr-hand'), card = el.querySelector('#tr-card'), H = innerHeight;
         const r = t.getBoundingClientRect(), tall = r.height > H * 0.5, low = !tall && r.top + r.height / 2 > H / 2, min = Math.min(300, H * 0.42), cap = H * 0.8;
         const ch = tall ? Math.max(min, H * 0.42) : Math.max(min, Math.min(cap, low ? r.top - GAP - SIDE : H - r.bottom - GAP - SIDE));
@@ -346,7 +347,7 @@
         spot.style.cssText = `left:${left - 6}px;top:${top - 6}px;width:${right - left + 12}px;height:${bot - top + 12}px`;
         hand.textContent = low ? '👇' : '👆';
         hand.className = low ? 'dn' : '';
-        hand.style.display = 'block';
+        hand.style.display = real ? 'block' : 'none';
         hand.style.left = Math.max(4, Math.min((left + right) / 2, innerWidth - 20) - 14) + 'px';
         hand.style.top = (tall ? top + 24 : low ? top - 32 : bot + 2) + 'px';
     }
@@ -358,14 +359,16 @@
             if (!el || id !== trackId || !cur) return;
             if (!cur.isConnected) return focus();
             anchor(cur);
-            layout(cur);
+            layout(cur, curReal);
             track(id, n + 1);
         }, n < 75 ? 16 : 500);
     }
 
-    function place(t) {
+    // real 為 true 表示框的是小項對應的真實按鈕：才出現手指與閃爍；否則只框大項，不指著它
+    function place(t, real) {
         if (!el) return;
         cur = t;
+        curReal = !!real;
         trackId++;
         const spot = el.querySelector('#tr-spot'), hand = el.querySelector('#tr-hand'), card = el.querySelector('#tr-card');
         if (!t) {
@@ -375,8 +378,9 @@
             return;
         }
         anchor(t);
-        layout(t);
-        spot.classList.remove('fl'); void spot.offsetWidth; spot.classList.add('fl');
+        layout(t, real);
+        spot.classList.remove('fl');
+        if (real) { void spot.offsetWidth; spot.classList.add('fl'); }
         track(trackId, 0);
     }
 
@@ -394,35 +398,56 @@
         const want = (it && it.tab) || sec.tab || 'itinerary';
         if (currentTab !== want) switchTab(want);
         const dflt = () => find(cat.sel || sec.sel);
-        if (!it || !it.sel) return void place(dflt());
+        if (!it || !it.sel) return void place(dflt(), false);
         let preDone = !it.pre;
         const attempt = (n) => {
             if (tk !== token || !el) return;
             if (!preDone) preDone = it.pre.every(s => { const b = document.querySelector(s); if (b) b.click(); return !!b; });
             const t = preDone && find(it.sel);
-            if (t) return place(t);
-            if (n === 0) place(dflt());
+            if (t) return place(t, true);
+            if (n === 0) place(dflt(), false);
             if (n < 60) poll = setTimeout(() => attempt(n + 1), 250);
         };
         poll = setTimeout(() => attempt(0), 120);
     }
 
-    function render() {
-        const p = pages[pi], sec = secs[p.s], cat = sec.cats[p.c], last = pi === pages.length - 1;
-        open = 0;
-        el.querySelector('#tr-card').innerHTML = `<div class="tr-strip">${secs.map((s, i) => s.nav ? `<button data-s="${i}" class="${i === p.s ? 'on' : ''}">${s.nav}</button>` : '').join('')}</div><div class="tr-cats">${sec.cats.map((c, i) => `<button data-c="${i}" class="${c.n === '管理員' ? 'ad ' : ''}${i === p.c ? 'on' : ''}">${c.n}</button>`).join('')}</div><div class="bd">${itemsHtml(cat)}</div><div class="ft"><div class="dots">${pi + 1} / ${pages.length}・點項目展開說明</div><div class="row">${last ? '' : '<button class="skip" data-nav="end">略過</button>'}<button class="sec" data-nav="prev"${pi ? '' : ' disabled'}>上一步</button><button class="pri" data-nav="next">${last ? '完成' : '下一步'}</button></div></div>`;
+    const stepNo = () => steps.findIndex(x => x.pi === pi && x.i === Math.max(open, 0));
+
+    function ftHtml() {
+        const n = stepNo(), last = n === steps.length - 1;
+        return `<div class="dots">第 ${n + 1} / ${steps.length} 項・點項目可展開或收合</div><div class="row">${last ? '' : '<button class="skip" data-nav="end">略過</button>'}<button class="sec" data-nav="prev"${n ? '' : ' disabled'}>上一步</button><button class="pri" data-nav="next">${last ? '完成' : '下一步'}</button></div>`;
+    }
+
+    function render(i) {
+        const p = pages[pi], sec = secs[p.s], cat = sec.cats[p.c];
+        open = i || 0;
+        el.querySelector('#tr-card').innerHTML = `<div class="tr-strip">${secs.map((s, k) => s.nav ? `<button data-s="${k}" class="${k === p.s ? 'on' : ''}">${s.nav}</button>` : '').join('')}</div><div class="tr-cats">${sec.cats.map((c, k) => `<button data-c="${k}" class="${c.n === '管理員' ? 'ad ' : ''}${k === p.c ? 'on' : ''}">${c.n}</button>`).join('')}</div><div class="bd">${itemsHtml(cat)}</div><div class="ft">${ftHtml()}</div>`;
         drawDemos();
+        if (open > 0) { const bd = el.querySelector('.bd'), q = el.querySelectorAll('.q')[open]; bd.scrollTop = q.offsetTop - bd.offsetTop - 6; }
         focus();
     }
 
-    function toggle(i) {
+    // 展開第 i 項（-1 為全部收合），並更新遮罩與底部進度
+    function setOpen(i) {
         const qs = el.querySelectorAll('.q'), as = el.querySelectorAll('.a');
-        const was = open === i;
         qs.forEach(b => b.classList.remove('on'));
         as.forEach(a => a.classList.remove('on'));
-        open = was ? -1 : i;
-        if (!was) { qs[i].classList.add('on'); as[i].classList.add('on'); const bd = el.querySelector('.bd'); bd.scrollTo({ top: qs[i].offsetTop - bd.offsetTop - 6, behavior: 'smooth' }); }
+        open = i;
+        if (i >= 0) { qs[i].classList.add('on'); as[i].classList.add('on'); const bd = el.querySelector('.bd'); bd.scrollTo({ top: qs[i].offsetTop - bd.offsetTop - 6, behavior: 'smooth' }); }
+        el.querySelector('.ft').innerHTML = ftHtml();
         focus();
+    }
+
+    const toggle = (i) => setOpen(open === i ? -1 : i);
+
+    // 下一步／上一步：逐個小項前進，跨分類、跨大項
+    function step(d) {
+        const n = open < 0 ? steps.findIndex(x => x.pi === pi && x.i === 0) + (d < 0 ? -1 : 0) : stepNo() + d;
+        if (n >= steps.length) return end();
+        const t = steps[n];
+        if (!t) return;
+        if (t.pi === pi) setOpen(t.i);
+        else { pi = t.pi; render(t.i); }
     }
 
     function go(n) { pi = n; render(); }
@@ -457,9 +482,7 @@
                 if (q) return toggle(+q.dataset.q);
                 if (!n) return;
                 if (n.dataset.nav === 'end') return end();
-                if (n.dataset.nav === 'prev') return go(pi - 1);
-                if (pi === pages.length - 1) return end();
-                go(pi + 1);
+                step(n.dataset.nav === 'prev' ? -1 : 1);
             });
             el.addEventListener('input', (e) => {
                 const demo = e.target.closest('[data-demo]');
