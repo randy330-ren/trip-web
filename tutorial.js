@@ -11,8 +11,8 @@
             cats: [{
                 n: '歡迎', it: [
                     { q: '🧭 五大功能', a: '下方導覽列有行程、地圖、記帳、更多、花絮。點視窗最上方的分頁列，可直接跳到該功能的說明。餐食與住宿總覽收在「行程」裡。', sel: '#main-nav' },
-                    { q: '👤 登入與權限', a: '會員可使用記帳、花絮、清單與留言。登入入口在「更多」頁左下角的「登入」按鈕。', tab: 'more', sel: '#login-entry-btn' },
-                    { q: '✏️ 管理員編輯模式', ad: 1, a: '在「更多」頁左下角登入 → 編輯模式，輸入密碼後，行程、地圖、餐食、住宿、提醒都能新增與修改。', tab: 'more', sel: '#login-entry-btn' },
+                    { q: '👤 登入與權限', a: '會員可使用記帳、花絮、清單與留言。登入後左下角會顯示你的身分標籤（會員是 👤 加名字，管理員是 ✏️），點開可以修改名稱、修改密碼或登出。', sel: '#id-tab' },
+                    { q: '✏️ 管理員編輯模式', ad: 1, a: '管理員登入後，左下角 ✏️ 選單有「儲存」「管理設定」「閱讀模式／編輯模式」與「登出」。編輯模式下，行程、地圖、餐食、住宿、提醒都能新增與修改；切到閱讀模式可避免誤改。', sel: '#id-tab' },
                     { q: '🧪 試試看', a: '標示「🧪 試試看」的區塊是範例操作，用的是範例資料，不會儲存，也不會改到任何真實資料。畫面上有框起來的按鈕與手指，代表真實畫面的位置，教學中不會真的按下去。' },
                     { q: '📖 重看教學', a: '隨時到「更多」頁最下方，點「📖 新手教學」即可重看。', tab: 'more', sel: '#tour-card' }
                 ]
@@ -119,7 +119,7 @@
                     n: '其他', it: [
                         { q: '🧳 出發前的小提醒', a: '整理行前注意事項，出發前可以再看一次。', sel: parentOf('notes-list-container') },
                         { q: '👤 成員名單', a: '「成員」卡片點一下展開，可看目前有哪些人加入。', sel: '#roster-card' },
-                        { q: '☁️ 登入與同步狀態', a: '畫面下方左側是登入按鈕，右側顯示雲端同步狀態。離線時會顯示最後同步的資料。', sel: '#more-footer-bar > div' }
+                        { q: '☁️ 離線與同步', a: '資料會即時與雲端同步。網路中斷時，畫面最上方會出現橘色「離線中・顯示最後同步資料」提示列，此時看到的是最後一次同步的內容。' }
                     ]
                 }
             ]
@@ -324,17 +324,23 @@
     let cur = null, tick = 0, trackId = 0;
     const headerBottom = () => { const h = document.getElementById('sticky-wrapper'); return h ? h.getBoundingClientRect().bottom : 0; };
 
+    // 標題列底部；記帳頁的分頁列也是 sticky，目標要再往下避開它
+    function topInset(t) {
+        const lt = document.getElementById('lg-tabs');
+        return headerBottom() + (lt && lt.getClientRects().length && !lt.contains(t) ? lt.offsetHeight + 14 : 0);
+    }
+
     function anchor(t) {
         if (isPinned(t)) return;
-        const d = t.getBoundingClientRect().top - (headerBottom() + 14);
+        const d = t.getBoundingClientRect().top - (topInset(t) + 14);
         if (Math.abs(d) > 6) window.scrollBy({ top: d, left: 0, behavior: 'instant' });
     }
 
     function layout(t) {
         const spot = el.querySelector('#tr-spot'), hand = el.querySelector('#tr-hand'), card = el.querySelector('#tr-card'), H = innerHeight;
-        const r = t.getBoundingClientRect(), low = r.top + r.height / 2 > H / 2, min = Math.min(300, H * 0.42), cap = H * 0.8;
-        const ch = Math.max(min, Math.min(cap, low ? r.top - GAP - SIDE : H - r.bottom - GAP - SIDE));
-        const ct = low ? Math.max(SIDE, r.top - GAP - ch) : Math.min(H - SIDE - ch, r.bottom + GAP);
+        const r = t.getBoundingClientRect(), tall = r.height > H * 0.5, low = !tall && r.top + r.height / 2 > H / 2, min = Math.min(300, H * 0.42), cap = H * 0.8;
+        const ch = tall ? Math.max(min, H * 0.42) : Math.max(min, Math.min(cap, low ? r.top - GAP - SIDE : H - r.bottom - GAP - SIDE));
+        const ct = tall ? H - SIDE - ch : low ? Math.max(SIDE, r.top - GAP - ch) : Math.min(H - SIDE - ch, r.bottom + GAP);
         Object.assign(card.style, { height: ch + 'px', top: ct + 'px', bottom: 'auto' });
         const top = Math.max(r.top, 4), bot = Math.min(r.bottom, H - 4), left = Math.max(r.left, 4), right = Math.min(r.right, innerWidth - 4);
         spot.style.cssText = `left:${left - 6}px;top:${top - 6}px;width:${right - left + 12}px;height:${bot - top + 12}px`;
@@ -342,7 +348,7 @@
         hand.className = low ? 'dn' : '';
         hand.style.display = 'block';
         hand.style.left = Math.max(4, Math.min((left + right) / 2, innerWidth - 20) - 14) + 'px';
-        hand.style.top = (low ? top - 32 : bot + 2) + 'px';
+        hand.style.top = (tall ? top + 24 : low ? top - 32 : bot + 2) + 'px';
     }
 
     // 放好後持續校正：前 1.2 秒每格重量，之後每 0.5 秒一次（天氣、記帳等內容載入會讓版面位移）
@@ -396,7 +402,7 @@
             const t = preDone && find(it.sel);
             if (t) return place(t);
             if (n === 0) place(dflt());
-            if (n < 16) poll = setTimeout(() => attempt(n + 1), 250);
+            if (n < 60) poll = setTimeout(() => attempt(n + 1), 250);
         };
         poll = setTimeout(() => attempt(0), 120);
     }
