@@ -1,128 +1,294 @@
 (function () {
-    const STEPS = [
+    const NAMES = ['小明', '小華', '小美'];
+    const SEC = [
         {
-            tab: 'itinerary', title: '👋 歡迎使用山陰・秋日紀行',
-            sum: ['下方導覽列有 5 大項：行程、地圖、記帳、更多、花絮', '另有「餐食」「住宿」總覽，從行程頁右側的浮動按鈕進入', '每一步下方的項目可以點開看詳細說明'],
-            det: [
-                { q: '👤 登入與權限', a: '會員可使用記帳、花絮、清單與留言。登入入口在「更多」頁左下角的「登入」按鈕。' },
-                { q: '✏️ 管理員編輯模式', ad: 1, a: '在「更多」頁左下角登入 → 編輯模式，輸入密碼後，行程、地圖、餐食、住宿、提醒都能新增與修改。' },
-                { q: '📖 重看教學', a: '隨時到「更多」頁最下方，點「📖 新手教學」即可重看。' }
+            cats: [{
+                n: '歡迎', it: [
+                    { q: '🧭 五大功能', a: '下方導覽列有行程、地圖、記帳、更多、花絮。點視窗最上方的分頁列，可直接跳到該功能的說明。餐食與住宿總覽收在「行程」裡。' },
+                    { q: '👤 登入與權限', a: '會員可使用記帳、花絮、清單與留言。登入入口在「更多」頁左下角的「登入」按鈕。' },
+                    { q: '✏️ 管理員編輯模式', ad: 1, a: '在「更多」頁左下角登入 → 編輯模式，輸入密碼後，行程、地圖、餐食、住宿、提醒都能新增與修改。' },
+                    { q: '🧪 試試看', a: '標示「🧪 試試看」的區塊是範例操作，用的是範例資料，不會儲存，也不會改到任何真實資料。' },
+                    { q: '📖 重看教學', a: '隨時到「更多」頁最下方，點「📖 新手教學」即可重看。' }
+                ]
+            }]
+        },
+        {
+            nav: '行程', tab: 'itinerary', sel: '#nav-itinerary',
+            cats: [
+                {
+                    n: '日期與天氣', it: [
+                        { q: '📅 日期列與倒數', a: '最上方日期列可橫向滑動，點日期跳到那一天，開啟時會自動定位到今天。出發前會顯示倒數天數。', demo: 'dates' },
+                        { q: '🌤️ 天氣', a: '每天會顯示天氣預報（資料來源 Open-Meteo），可在設定中調整天氣地點。' }
+                    ]
+                },
+                {
+                    n: '路線卡', it: [
+                        { q: '🎯 路線卡怎麼點', a: '路線卡右上角的準星按鈕會切到地圖頁並定位該站；餐食卡點整張會開啟餐食總覽；一般景點卡的導航在地圖頁。', demo: 'route' },
+                        { q: '🏨 住宿卡', a: '住宿卡點下去會跳到地圖上的住宿位置。連住只顯示一張。' },
+                        { q: '🔖 備選標籤', a: '同一餐有多間候選時，第一間是主要安排，其餘在地圖列表會標示「備選」。' }
+                    ]
+                },
+                {
+                    n: '餐食總覽', sel: '#fab-food', it: [
+                        { q: '📂 怎麼開啟', a: '點行程頁右側的「餐食」浮動按鈕，或直接點行程裡的餐食卡。返回即可關閉。' },
+                        { q: '📍 點餐廳導航', a: '點選餐廳名稱會開啟 Google 地圖導航，資料與行程頁同步。' },
+                        { q: '🔖 候選餐廳', a: '同一餐可能有多間候選，可依當天狀況選擇。' }
+                    ]
+                },
+                {
+                    n: '住宿總覽', sel: '#fab-stay', it: [
+                        { q: '📂 怎麼開啟', a: '點行程頁右側的「住宿」浮動按鈕，連住只顯示一張。' },
+                        { q: '🎯 地圖與 📍 導航', a: '每間住宿都有「地圖」按鈕可跳到位置，以及「導航」按鈕開啟 Google 地圖。' }
+                    ]
+                },
+                {
+                    n: '管理員', it: [
+                        { q: '✏️ 新增與排序', ad: 1, a: '可新增路線項目、貼心提醒與住宿，並拖曳「≡」調整順序。' },
+                        { q: '🍽️ 修改餐廳', ad: 1, a: '餐食旁點 ✏️ 可新增、修改或調整候選餐廳，也能設定連結。' },
+                        { q: '🏨 新增住宿', ad: 1, a: '住宿可新增、修改與刪除，與行程頁資料同步。' }
+                    ]
+                }
             ]
         },
         {
-            tab: 'itinerary', sel: '#nav-itinerary', title: '🗓️ 行程',
-            sum: ['每天的路線、時間、餐食、住宿與提醒都在這裡'],
-            det: [
-                { q: '📅 日期列與倒數', a: '最上方日期列可橫向滑動，點日期跳到那一天，開啟時會自動定位到今天。出發前會顯示倒數天數。' },
-                { q: '🎯 路線卡：跳到地圖', a: '每張路線卡右上角的準星按鈕，會切到地圖頁並定位該站。' },
-                { q: '🍽️ 餐食卡：導航', a: '早餐、午餐、晚餐等餐食卡，點整張卡會開啟「餐食總覽」，在那裡點餐廳名稱即可用 Google 地圖導航。' },
-                { q: '🏨 住宿卡', a: '住宿卡點下去會跳到地圖上的住宿位置。連住只顯示一張。' },
-                { q: '🔖 備選標籤', a: '同一餐有多間候選時，第一間是主要安排，其餘在地圖列表會標示「備選」。' },
-                { q: '🌤️ 天氣', a: '每天會顯示天氣預報（資料來源 Open-Meteo），可在設定中調整天氣地點。' },
-                { q: '✏️ 新增與排序', ad: 1, a: '管理員可新增路線項目、貼心提醒與住宿，並拖曳「≡」調整順序，餐食旁的 ✏️ 可修改餐廳。' }
+            nav: '地圖', tab: 'map', sel: '#nav-map',
+            cats: [
+                {
+                    n: '看地圖', it: [
+                        { q: '📌 釘子與逐站導覽', a: '點釘子會彈出名稱與說明，「📍 導航」開啟 Google 地圖。按「下一站 ›」「‹ 上一站」依序走訪每一站。', demo: 'map' },
+                        { q: '🧰 ☰ 工具', a: '點左上 ☰ 展開：⛶ 全螢幕、🗂️ 切換底圖、📍 我的位置、〰️ 路線虛線開關。' }
+                    ]
+                },
+                {
+                    n: '進階', it: [
+                        { q: '📌 固定地圖', a: '左下釘子可固定地圖在畫面上方，捲動列表時仍看得到地圖。' },
+                        { q: '↕️ 調整高度', a: '右下箭頭按鈕可上下拖拉調整地圖高度，點一下切換最矮／最高。' }
+                    ]
+                },
+                { n: '管理員', it: [{ q: '✏️ 新增與調整地點', ad: 1, a: '長按地圖空白處可新增地點或住宿，長按釘子可修改或拖曳調整位置。' }] }
             ]
         },
         {
-            tab: 'itinerary', sel: '#fab-food', title: '🍱 餐食總覽',
-            sum: ['集中列出整趟旅程每一餐的安排'],
-            det: [
-                { q: '📂 怎麼開啟', a: '點行程頁右側的「餐食」浮動按鈕，或直接點行程裡的餐食卡。返回即可關閉。' },
-                { q: '📍 點餐廳導航', a: '點選餐廳名稱會開啟 Google 地圖導航，資料與行程頁同步。' },
-                { q: '🔖 候選餐廳', a: '同一餐可能有多間候選，可依當天狀況選擇。' },
-                { q: '✏️ 修改餐廳', ad: 1, a: '管理員可在餐食旁點 ✏️ 新增、修改或調整候選餐廳，也能設定連結。' }
+            nav: '記帳', tab: 'ledger', sel: '#nav-ledger',
+            cats: [
+                {
+                    n: '基本設定', it: [
+                        { q: '👥 先設定團員', a: '記帳前要先有團員名單。可新增團員，並「綁定我」把自己的帳號對應到自己的名字；綁定後才能以本人身分標記轉帳與確認收款。已用在帳目裡的團員只能改名或停用。' }
+                    ]
+                },
+                {
+                    n: '記一筆', it: [
+                        { q: '📝 怎麼記一筆', a: '到「記帳」分頁：填支出名稱、金額與幣別、日期，選擇付款人、勾選分攤成員（可全選），再選類別與備註，確認預覽後按「儲存支出」。' },
+                        { q: '🏷️ 類別與編輯', a: '類別可「＋ 新增類別」自訂。編輯舊帳時上方會出現「正在編輯」提示，可隨時取消編輯。' }
+                    ]
+                },
+                {
+                    n: '分帳與匯率', it: [
+                        { q: '➗ 三種分帳方式', a: '「平均」均分，除不盡的尾數依名單順序分配。「自訂金額」每人填各自金額，加總需等於總額。「按比例」每人填比例。', demo: 'split' },
+                        { q: '💱 外幣與匯率', a: '外幣預設用「匯率表」換算成台幣；若這一筆想用別的匯率，點「改為自訂此筆匯率」，只影響這一筆，不會改到匯率表。', demo: 'fx' }
+                    ]
+                },
+                {
+                    n: '明細與結算', it: [
+                        { q: '📋 明細與篩選', a: '「明細 → 支出紀錄」列出所有支出，可依類別、付款人、分攤成員、幣別篩選與排序。點開一筆可編輯或刪除，也能匯出 CSV。' },
+                        { q: '🏦 先轉帳', a: '在支出明細中，分攤者可對單筆支出按「先轉帳」，表示已先把錢轉給付款人，對方確認後會計入結算。' },
+                        { q: '🧮 自動結算', a: '「明細 → 自動結算」會算出最少的轉帳建議，可切換「總和」或「依日期」。依日期只是查看，要標記轉帳請切回「總和」。' },
+                        { q: '✅ 標記轉帳與確認收款', a: '付款方按「標記已轉帳」，收款方會看到「待確認」，核對後按「確認收款」；金額不對可按「退回」。', demo: 'transfer' }
+                    ]
+                },
+                { n: '匯率表', it: [{ q: '💹 匯率分頁', a: '「匯率」分頁顯示目前的匯率表與來源、更新時間。一般會員只能查看。' }] },
+                { n: '管理員', it: [{ q: '🔄 維護匯率表', ad: 1, a: '可新增幣別、修改匯率、抓取最新匯率並一鍵套用。已有支出使用的幣別不能刪除。' }] }
             ]
         },
         {
-            tab: 'itinerary', sel: '#fab-stay', title: '🏨 住宿總覽',
-            sum: ['集中列出每晚住宿'],
-            det: [
-                { q: '📂 怎麼開啟', a: '點行程頁右側的「住宿」浮動按鈕，連住只顯示一張。' },
-                { q: '🎯 地圖與 📍 導航', a: '每間住宿都有「地圖」按鈕可跳到位置，以及「導航」按鈕開啟 Google 地圖。' },
-                { q: '✏️ 新增住宿', ad: 1, a: '管理員可新增、修改與刪除住宿，與行程頁資料同步。' }
+            nav: '更多', tab: 'more', sel: '#nav-more',
+            cats: [
+                {
+                    n: '清單', it: [
+                        { q: '✅ 待辦與必買', a: '清單上方可切換「待辦」與「必買」，按「＋ 新增」加入項目。' },
+                        { q: '👥 團體 vs 🔒 我的', a: '待辦分「團體」與「我的」：團體清單所有人共用，「我的」只有自己看得到。' }
+                    ]
+                },
+                {
+                    n: '其他', it: [
+                        { q: '🧳 出發前的小提醒', a: '整理行前注意事項，出發前可以再看一次。' },
+                        { q: '👤 成員名單', a: '「成員」卡片點一下展開，可看目前有哪些人加入。' },
+                        { q: '☁️ 登入與同步狀態', a: '畫面下方左側是登入按鈕，右側顯示雲端同步狀態。離線時會顯示最後同步的資料。' }
+                    ]
+                }
             ]
         },
         {
-            tab: 'map', sel: '#nav-map', title: '🗺️ 地圖',
-            sum: ['所有景點、餐廳與住宿都標在這張地圖上'],
-            det: [
-                { q: '📌 點釘子看說明與導航', a: '點地圖上的釘子會彈出名稱與說明，按「📍 導航」開啟 Google 地圖。' },
-                { q: '➡️ 逐站導覽', a: '按「下一站 ›」「‹ 上一站」依序走訪每一站，也可以點下方列表直接跳到該處。' },
-                { q: '🧰 ☰ 工具', a: '點左上 ☰ 展開：⛶ 全螢幕、🗂️ 切換底圖、📍 我的位置、〰️ 路線虛線開關。' },
-                { q: '📌 固定與調整高度', a: '左下釘子可固定地圖在畫面上方，捲動時仍看得到；右下箭頭按鈕可上下拖拉調整地圖高度。' },
-                { q: '✏️ 新增與調整地點', ad: 1, a: '管理員長按地圖空白處可新增地點或住宿，長按釘子可修改或拖曳調整位置。' }
-            ]
-        },
-        {
-            tab: 'ledger', sel: '#nav-ledger', title: '💰 記帳',
-            sum: ['記帳頁分「記帳」「明細」「匯率」三個分頁', '需要會員登入才能使用'],
-            det: [
-                { q: '👥 先設定團員', a: '記帳前要先有團員名單。可新增團員，並「綁定我」把自己的帳號對應到自己的名字；綁定後才能以本人身分標記轉帳與確認收款。已用在帳目裡的團員只能改名或停用。' },
-                { q: '📝 怎麼記一筆', a: '到「記帳」分頁：填支出名稱、金額與幣別、日期，選擇付款人、勾選分攤成員（可全選），再選類別與備註，確認預覽後按「儲存支出」。' },
-                { q: '➗ 三種分帳方式', a: '「平均」：所選成員均分，除不盡的尾數依名單順序分配。「自訂金額」：每人填各自的金額，加總需等於總額。「按比例」：每人填比例，例如 2:1:1。兩種自訂方式都有「平均填入」按鈕可快速起手。' },
-                { q: '💱 外幣與匯率', a: '金額旁可切換幣別。外幣預設使用「匯率表」的匯率換算成台幣；若這一筆想用別的匯率，點「改為自訂此筆匯率」，只影響這一筆，不會改到匯率表。' },
-                { q: '📋 明細與篩選', a: '「明細 → 支出紀錄」列出所有支出，可依類別、付款人、分攤成員、幣別篩選與排序。點開一筆可編輯或刪除，也能匯出 CSV。' },
-                { q: '🏦 先轉帳', a: '在支出明細中，分攤者可對單筆支出按「先轉帳」，表示已先把錢轉給付款人，對方確認後會計入結算。' },
-                { q: '🧮 自動結算', a: '「明細 → 自動結算」會算出最少的轉帳建議，可切換「總和」或「依日期」。依日期只是查看，要標記轉帳請切回「總和」。' },
-                { q: '✅ 標記轉帳與確認收款', a: '付款方按「標記已轉帳」，收款方會看到「待確認」，核對無誤後按「確認收款」；若金額不對可按「退回」。確認後該筆轉帳才算完成。' },
-                { q: '💹 匯率分頁', a: '「匯率」分頁顯示目前的匯率表與來源、更新時間。一般會員只能查看。' },
-                { q: '🔄 維護匯率表', ad: 1, a: '管理員可新增幣別、修改匯率、抓取最新匯率並一鍵套用。已有支出使用的幣別不能刪除。' }
-            ]
-        },
-        {
-            tab: 'more', sel: '#nav-more', title: '✅ 更多',
-            sum: ['待辦、必買、行前提醒、成員與登入都在這裡'],
-            det: [
-                { q: '✅ 待辦與必買', a: '清單上方可切換「待辦」與「必買」，按「＋ 新增」加入項目。' },
-                { q: '👥 團體 vs 🔒 我的', a: '待辦分「團體」與「我的」：團體清單所有人共用，「我的」只有自己看得到。' },
-                { q: '🧳 出發前的小提醒', a: '整理行前注意事項，出發前可以再看一次。' },
-                { q: '👤 成員名單', a: '「成員」卡片點一下展開，可看目前有哪些人加入。' },
-                { q: '☁️ 登入與同步狀態', a: '畫面下方左側是登入按鈕，右側顯示雲端同步狀態。離線時會顯示最後同步的資料。' }
-            ]
-        },
-        {
-            tab: 'highlights', sel: '#nav-highlights', title: '📸 花絮',
-            sum: ['旅途中的共同相簿，登入後才能分享與互動'],
-            det: [
-                { q: '📤 分享照片', a: '按「＋ 分享照片」選擇照片，並指定所屬日期，加上簡短說明。每人每天有上傳張數上限，超過的不會上傳。' },
-                { q: '🗓️ 每日花絮', a: '依日期瀏覽相簿，每天預設顯示前幾張，可按「查看全部」展開，也能用「全部日期」切換。' },
-                { q: '🎲 隨機回憶', a: '隨機翻看一張大家分享過的照片。' },
-                { q: '✨ 本次旅行精選', a: '自動挑出的精選照片，點「看看回憶」查看。' },
-                { q: '💬 留言與心情', a: '點開照片可送出留言（上限 50 字）並按心情表情；自己的留言與照片可刪除，照片說明也能編輯。' },
-                { q: '🏅 每日稱號', a: '依當天分享、獲得心情與留言數，會頒發分享王、歡迎王、話題王、熱心王等稱號，整趟最多心情的是「旅程人氣王」。' },
-                { q: '🙂 管理表情', ad: 1, a: '管理員可新增或刪除心情表情（已被使用的表情不能刪除）。' }
+            nav: '花絮', tab: 'highlights', sel: '#nav-highlights',
+            cats: [
+                {
+                    n: '分享與瀏覽', it: [
+                        { q: '📤 分享照片', a: '按「＋ 分享照片」選擇照片，指定所屬日期並加上簡短說明。每人每天有上傳張數上限，超過的不會上傳。' },
+                        { q: '🗓️ 每日花絮', a: '依日期瀏覽相簿，每天預設顯示前幾張，可按「查看全部」展開，也能用「全部日期」切換。' },
+                        { q: '🎲 隨機回憶與 ✨ 精選', a: '「隨機回憶」隨機翻看一張照片；「本次旅行精選」是自動挑出的照片，點「看看回憶」查看。' }
+                    ]
+                },
+                {
+                    n: '互動', it: [
+                        { q: '💬 留言與心情', a: '點開照片可送出留言（上限 50 字）並按心情表情；自己的留言與照片可刪除，照片說明也能編輯。' },
+                        { q: '🏅 每日稱號', a: '依當天分享、獲得心情與留言數，會頒發分享王、歡迎王、話題王、熱心王等稱號，整趟最多心情的是「旅程人氣王」。' }
+                    ]
+                },
+                { n: '管理員', it: [{ q: '🙂 管理表情', ad: 1, a: '可新增或刪除心情表情（已被使用的表情不能刪除）。' }] }
             ]
         }
     ];
-    let idx = 0, opts = {}, from = 'itinerary', el = null, timer = 0, open = -1;
+
+    const money = (n) => Math.round(n).toLocaleString();
+    const lbl = (t) => `<p class="dl2">${t}</p>`;
+    const chip = (on, act, attrs, t) => `<button type="button" class="chip${on ? ' on' : ''}" data-do="${act}" ${attrs}>${t}</button>`;
+    const D = {};
+    const reset = () => {
+        D.split = { amt: '900', m: [1, 1, 1], mode: 'equal', a: ['', '', ''], r: ['1', '1', '1'] };
+        D.fx = { amt: '10000', src: 'table', rate: '0.21' };
+        D.transfer = { s: 0 };
+        D.map = { i: -1 };
+        D.route = { msg: '' };
+        D.dates = { d: 0 };
+    };
+
+    const DEMOS = {
+        split: {
+            draw(h) {
+                const S = D.split;
+                const parts = S.mode === 'equal' ? '<p class="dl3">由所選成員平均分攤，除不盡的尾數依名單順序分配。</p>'
+                    : NAMES.map((n, i) => S.m[i] ? `<div class="dr"><span>${n}</span><input class="in" inputmode="numeric" data-k="${S.mode === 'amount' ? 'a' : 'r'}" data-i="${i}" value="${S.mode === 'amount' ? S.a[i] : S.r[i]}" placeholder="${S.mode === 'amount' ? '金額' : '比例'}"></div>` : '').join('');
+                h.innerHTML = `<p class="dl">🧪 試試看・範例資料，不會儲存</p>${lbl('金額（TWD）')}<input class="in" inputmode="numeric" data-k="amt" value="${S.amt}">${lbl('分攤成員')}<div class="chips">${NAMES.map((n, i) => chip(S.m[i], 'mem', `data-i="${i}"`, n)).join('')}</div>${lbl('分帳方式')}<div class="chips">${[['equal', '平均'], ['amount', '自訂金額'], ['ratio', '按比例']].map(([k, t]) => chip(S.mode === k, 'mode', `data-v="${k}"`, t)).join('')}</div>${parts}<div class="pv"></div>`;
+                this.pv(h);
+            },
+            pv(h) {
+                const S = D.split, amt = parseInt(S.amt) || 0, idx = [0, 1, 2].filter(i => S.m[i]);
+                let sh = idx.map(() => 0), msg = '';
+                if (S.mode === 'equal') {
+                    const b = Math.floor(amt / idx.length), r = amt - b * idx.length;
+                    sh = idx.map((_, k) => b + (k < r ? 1 : 0));
+                } else if (S.mode === 'ratio') {
+                    const rs = idx.map(i => parseFloat(S.r[i]) || 0), sum = rs.reduce((a, b) => a + b, 0);
+                    if (sum <= 0) msg = '請輸入比例';
+                    else { sh = rs.map(x => Math.floor(amt * x / sum)); let r = amt - sh.reduce((a, b) => a + b, 0); for (let k = 0; r > 0; k = (k + 1) % sh.length, r--) sh[k]++; }
+                } else {
+                    sh = idx.map(i => parseInt(S.a[i]) || 0);
+                    const diff = amt - sh.reduce((a, b) => a + b, 0);
+                    msg = diff === 0 ? '✓ 金額吻合，可以儲存' : `加總不符，${diff > 0 ? '尚差' : '超出'} ${money(Math.abs(diff))}`;
+                }
+                h.querySelector('.pv').innerHTML = `<p class="dl2">分攤預覽</p>${idx.map((i, k) => `<div class="dr b"><span>${NAMES[i]}</span><span>TWD ${money(sh[k])}</span></div>`).join('')}${msg ? `<p class="dl3">${msg}</p>` : ''}`;
+            },
+            act(h, b) {
+                const S = D.split;
+                if (b.dataset.do === 'mem') { const i = +b.dataset.i; if (S.m[i] && S.m.filter(Boolean).length === 1) return; S.m[i] = S.m[i] ? 0 : 1; }
+                if (b.dataset.do === 'mode') S.mode = b.dataset.v;
+                this.draw(h);
+            },
+            inp(h, t) {
+                const S = D.split;
+                if (t.dataset.k === 'amt') S.amt = t.value;
+                else S[t.dataset.k][+t.dataset.i] = t.value;
+                this.pv(h);
+            }
+        },
+        fx: {
+            draw(h) {
+                const S = D.fx;
+                h.innerHTML = `<p class="dl">🧪 試試看・範例資料，不會儲存</p>${lbl('金額（JPY）')}<input class="in" inputmode="numeric" data-k="amt" value="${S.amt}">${lbl('匯率')}<div class="chips">${chip(S.src === 'table', 'src', 'data-v="table"', '匯率表 1 JPY = 0.21')}${chip(S.src === 'custom', 'src', 'data-v="custom"', '自訂此筆匯率')}</div>${S.src === 'custom' ? `<div class="dr"><span>1 JPY =</span><input class="in" inputmode="decimal" data-k="rate" value="${S.rate}"><span>TWD</span></div>` : ''}<div class="pv"></div>`;
+                this.pv(h);
+            },
+            pv(h) {
+                const S = D.fx, rate = S.src === 'table' ? 0.21 : (parseFloat(S.rate) || 0);
+                h.querySelector('.pv').innerHTML = `<div class="dr b"><span>換算台幣</span><span>≈ TWD ${money((parseFloat(S.amt) || 0) * rate)}</span></div><p class="dl3">${S.src === 'custom' ? '只影響這一筆，不會改到匯率表。' : '使用匯率表的匯率，管理員更新後會跟著變動。'}</p>`;
+            },
+            act(h, b) { D.fx.src = b.dataset.v; this.draw(h); },
+            inp(h, t) { D.fx[t.dataset.k] = t.value; this.pv(h); }
+        },
+        transfer: {
+            draw(h) {
+                const s = D.transfer.s;
+                const body = s === 0 ? `<div class="dr"><span><b>小明</b> → <b>小華</b></span><b>TWD 300</b></div><p class="dl3">付款：未轉帳　收款：未確認</p><button type="button" class="dbtn" data-do="pay">標記已轉帳</button>`
+                    : s === 1 ? `<div class="dr"><span><b>小明</b> → <b>小華</b></span><b>TWD 300</b></div><p class="dl3">付款：已轉帳　收款：待小華確認</p><div class="chips"><button type="button" class="dbtn" data-do="ok">確認收款</button><button type="button" class="dbtn ghost" data-do="void">退回</button></div>`
+                        : `<div class="dr"><span><b>小明</b> → <b>小華</b></span><b>TWD 300</b></div><p class="dl3">✅ 已完成</p><button type="button" class="dbtn ghost" data-do="again">重新示範</button>`;
+                h.innerHTML = `<p class="dl">🧪 試試看・範例資料，不會儲存</p>${body}`;
+            },
+            act(h, b) { D.transfer.s = { pay: 1, ok: 2, void: 0, again: 0 }[b.dataset.do]; this.draw(h); }
+        },
+        map: {
+            draw(h) {
+                const i = D.map.i, P = [['境港波止場', 18, 62], ['水木茂之路', 48, 30], ['鬼太郎機場', 78, 58]];
+                h.innerHTML = `<p class="dl">🧪 試試看・範例資料，不會儲存</p><div class="mm">${P.map((p, k) => `<button type="button" class="pin${k === i ? ' on' : ''}" style="left:${p[1]}%;top:${p[2]}%" data-do="pin" data-i="${k}">📍</button>`).join('')}</div><div class="dr b"><span>${i < 0 ? '點釘子或按「下一站」' : P[i][0]}</span>${i < 0 ? '' : '<span class="dl3">📍 導航（實際會開啟 Google 地圖）</span>'}</div><div class="chips"><button type="button" class="dbtn ghost" data-do="step" data-v="-1">‹ 上一站</button><button type="button" class="dbtn" data-do="step" data-v="1">下一站 ›</button></div>`;
+            },
+            act(h, b) {
+                const M = D.map;
+                M.i = b.dataset.do === 'pin' ? +b.dataset.i : Math.max(0, Math.min(2, M.i + +b.dataset.v));
+                this.draw(h);
+            }
+        },
+        route: {
+            draw(h) {
+                h.innerHTML = `<p class="dl">🧪 試試看・範例資料，不會儲存</p><div class="rc" data-do="stay"><button type="button" class="tm" data-do="goto" data-v="景點卡">🎯</button><b>水木茂之路散步</b><small>一般景點卡</small></div><div class="rc meal" data-do="meal"><button type="button" class="tm" data-do="goto" data-v="餐食卡">🎯</button><b>午餐・海鮮丼</b><small>餐食卡</small></div><p class="dl3">${D.route.msg || '點點看上面的卡片與 🎯 按鈕'}</p>`;
+            },
+            act(h, b) {
+                const v = b.dataset.do;
+                D.route.msg = v === 'goto' ? `→ 實際會切到地圖頁並定位「${b.dataset.v}」` : v === 'meal' ? '→ 實際會開啟餐食總覽，再點餐廳名稱導航' : '→ 一般景點卡沒有導航，請點 🎯 到地圖頁';
+                this.draw(h);
+            }
+        },
+        dates: {
+            draw(h) {
+                const d = D.dates.d;
+                h.innerHTML = `<p class="dl">🧪 試試看・範例資料，不會儲存</p><div class="chips ds">${[...Array(8)].map((_, i) => chip(i === d, 'day', `data-i="${i}"`, `D${i + 1}`)).join('')}</div><p class="dl3">11/0${2 + d} 的行程會顯示在日期列下方；開啟時自動停在今天。</p>`;
+            },
+            act(h, b) { D.dates.d = +b.dataset.i; this.draw(h); }
+        }
+    };
+
+    let pages = [], secs = [], pi = 0, opts = {}, from = 'itinerary', el = null, timer = 0, open = 0, lastS = -1;
+
+    function build() {
+        secs = SEC.map(s => ({ ...s, cats: s.cats.map(c => ({ ...c, it: c.it.filter(i => !i.ad || opts.admin) })).filter(c => c.it.length) }));
+        pages = [];
+        secs.forEach((s, si) => s.cats.forEach((_, ci) => pages.push({ s: si, c: ci })));
+    }
 
     function css() {
         if (document.getElementById('tr-css')) return;
         const s = document.createElement('style');
         s.id = 'tr-css';
-        s.textContent = '#tr-root{position:fixed;inset:0;z-index:9000}#tr-spot{position:fixed;border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,.62);transition:all .25s;pointer-events:none}#tr-card{position:fixed;left:50%;transform:translateX(-50%);width:calc(100% - 2rem);max-width:26rem;background:#fff;border-radius:18px;box-shadow:0 8px 28px rgba(0,0,0,.3);color:#333;font-size:13px;line-height:1.6;display:flex;flex-direction:column;overflow:hidden}#tr-card .bd{padding:16px 16px 8px;overflow-y:auto;-webkit-overflow-scrolling:touch}#tr-card h3{font-size:16px;font-weight:700;color:#3b4d43;margin-bottom:6px}#tr-card ul{padding-left:1.1em;list-style:disc;margin-bottom:8px}#tr-card .q{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;padding:9px 12px;margin-top:6px;border-radius:10px;background:#f0eee8;color:#3b4d43;font-weight:700;font-size:13px}#tr-card .q.ad{background:#f6ecde;color:#8a6234}#tr-card .q i{font-style:normal;opacity:.6;transition:transform .2s}#tr-card .q.on i{transform:rotate(90deg)}#tr-card .a{display:none;padding:8px 12px 4px;color:#555}#tr-card .a.on{display:block}#tr-card .tag{font-size:10px;font-weight:700;color:#8a6234;margin-left:6px}#tr-card .ft{padding:10px 16px 14px;border-top:1px solid #eee;background:#fff}#tr-card .dots{text-align:center;font-size:11px;color:#a39a8e;margin-bottom:8px}#tr-card .row{display:flex;gap:8px}#tr-card .row button{padding:13px 0;border-radius:14px;font-size:15px;font-weight:700}#tr-card .pri{flex:1.3;background:#3b4d43;color:#fff}#tr-card .sec{flex:1;background:#e7e4db;color:#3b4d43}#tr-card .skip{flex:1;background:#fff;color:#777;border:1.5px solid #cfcac0}#tr-card button:disabled{opacity:.35}';
+        s.textContent = '#tr-root{position:fixed;inset:0;z-index:9000}#tr-spot{position:fixed;border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,.62);transition:all .25s;pointer-events:none}#tr-card{position:fixed;left:50%;transform:translateX(-50%);width:calc(100% - 2rem);max-width:26rem;background:#fff;border-radius:18px;box-shadow:0 8px 28px rgba(0,0,0,.3);color:#333;font-size:13px;line-height:1.6;display:flex;flex-direction:column;overflow:hidden}#tr-card button{font-family:inherit}.tr-strip{display:flex;background:#3b4d43;flex:none}.tr-strip button{background:transparent;border:0;flex:1;padding:10px 0;font-size:13px;font-weight:700;color:rgba(255,255,255,.65)}.tr-strip button.on{color:#fff;box-shadow:inset 0 -3px 0 #e0c28f}.tr-cats{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;flex:none;border-bottom:1px solid #eee}.tr-cats button{flex:none;padding:5px 12px;border-radius:9999px;background:#f0eee8;color:#3b4d43;font-size:12px;font-weight:700}.tr-cats button.on{background:#3b4d43;color:#fff}.tr-cats button.ad{background:#f6ecde;color:#8a6234}.tr-cats button.ad.on{background:#8a6234;color:#fff}#tr-card .bd{padding:10px 14px;overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch}#tr-card .q{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;padding:9px 12px;margin-top:6px;border-radius:10px;background:#f0eee8;color:#3b4d43;font-weight:700;font-size:13px}#tr-card .q.ad{background:#f6ecde;color:#8a6234}#tr-card .q i{font-style:normal;opacity:.6;transition:transform .2s}#tr-card .q.on i{transform:rotate(90deg)}#tr-card .a{display:none;padding:8px 12px 4px;color:#555}#tr-card .a.on{display:block}#tr-card .tag{font-size:10px;font-weight:700;color:#8a6234;margin-left:6px}#tr-card .ft{padding:10px 14px 14px;border-top:1px solid #eee;flex:none}#tr-card .dots{text-align:center;font-size:11px;color:#a39a8e;margin-bottom:8px}#tr-card .row{display:flex;gap:8px}#tr-card .row button{padding:13px 0;border-radius:14px;font-size:15px;font-weight:700}#tr-card .pri{flex:1.3;background:#3b4d43;color:#fff}#tr-card .sec{flex:1;background:#e7e4db;color:#3b4d43}#tr-card .skip{flex:1;background:#fff;color:#777;border:1.5px solid #cfcac0}#tr-card .row button:disabled{opacity:.35}.demo{margin-top:8px;padding:10px;border:1.5px dashed #cfcac0;border-radius:12px;background:#faf9f5}.demo .dl{font-size:11px;font-weight:700;color:#8a6234;margin-bottom:4px}.demo .dl2{font-size:11px;color:#888;margin:6px 0 3px}.demo .dl3{font-size:12px;color:#777;margin-top:4px}.demo .in{width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:10px;font-size:14px;background:#fff}.demo .chips{display:flex;gap:6px;flex-wrap:wrap}.demo .chip{padding:6px 12px;border-radius:9999px;background:#fff;border:1.5px solid #ddd;font-size:12px;font-weight:700;color:#777}.demo .chip.on{background:#3b4d43;border-color:#3b4d43;color:#fff}.demo .dr{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;font-size:13px}.demo .dr.b{border-top:1px solid #e8e4da}.demo .dbtn{padding:9px 14px;border-radius:10px;background:#3b4d43;color:#fff;font-size:13px;font-weight:700;margin-top:6px}.demo .dbtn.ghost{background:#e7e4db;color:#3b4d43}.demo .mm{position:relative;height:110px;border-radius:10px;background:linear-gradient(135deg,#dfe8dc,#cfdccb);margin-bottom:6px}.demo .pin{position:absolute;transform:translate(-50%,-50%);font-size:20px;opacity:.55}.demo .pin.on{opacity:1;font-size:26px}.demo .rc{position:relative;padding:10px 40px 10px 12px;margin-top:6px;border-radius:10px;background:#fff;border:1.5px solid #ddd}.demo .rc.meal{background:#fdf3e3}.demo .rc small{display:block;color:#999;font-size:11px}.demo .tm{position:absolute;right:6px;top:6px;width:30px;height:30px;border-radius:8px;background:#f0eee8;font-size:14px}';
         document.head.appendChild(s);
     }
 
+    function itemsHtml(cat) {
+        return cat.it.map((d, i) => `<button class="q${d.ad ? ' ad' : ''}${i === open ? ' on' : ''}" data-q="${i}"><span>${d.q}${d.ad ? '<span class="tag">管理員</span>' : ''}</span><i>▸</i></button><div class="a${i === open ? ' on' : ''}">${d.a}${d.demo ? `<div class="demo" data-demo="${d.demo}"></div>` : ''}</div>`).join('');
+    }
+
+    function drawDemos() {
+        el.querySelectorAll('.demo').forEach(h => DEMOS[h.dataset.demo].draw(h));
+    }
+
     function render() {
-        const st = STEPS[idx];
-        open = -1;
-        switchTab(st.tab);
+        const p = pages[pi], sec = secs[p.s], cat = sec.cats[p.c];
+        open = 0;
+        if (p.s !== lastS) { lastS = p.s; if (sec.tab) switchTab(sec.tab); }
         clearTimeout(timer);
         timer = setTimeout(() => {
             if (!el) return;
             const spot = el.querySelector('#tr-spot'), card = el.querySelector('#tr-card');
-            const t = st.sel && document.querySelector(st.sel);
+            const sel = cat.sel || sec.sel, t = sel && document.querySelector(sel);
             const r = t && t.offsetParent !== null ? t.getBoundingClientRect() : null;
             const low = r && r.top > innerHeight / 2;
             if (r) spot.style.cssText = `left:${r.left - 6}px;top:${r.top - 6}px;width:${r.width + 12}px;height:${r.height + 12}px`;
             else spot.style.cssText = 'left:50%;top:50%;width:0;height:0';
             const room = r ? (low ? r.top - 30 : innerHeight - r.bottom - 30) : innerHeight - 32;
+            const h = Math.max(320, Math.min(room, innerHeight * 0.82));
+            card.style.height = h + 'px';
             card.style.top = low || !r ? '1rem' : 'auto';
             card.style.bottom = low || !r ? 'auto' : '1rem';
-            card.style.maxHeight = Math.max(240, room) + 'px';
-            const last = idx === STEPS.length - 1;
-            const det = st.det.filter(d => !d.ad || opts.admin);
-            card.innerHTML = `<div class="bd"><h3>${st.title}</h3><ul>${st.sum.map(i => `<li>${i}</li>`).join('')}</ul>${det.map((d, i) => `<button class="q${d.ad ? ' ad' : ''}" data-q="${i}"><span>${d.q}${d.ad ? '<span class="tag">管理員</span>' : ''}</span><i>▸</i></button><div class="a" data-a="${i}">${d.a}</div>`).join('')}</div><div class="ft"><div class="dots">${idx + 1} / ${STEPS.length}・點上方項目可展開說明</div><div class="row">${last ? '' : '<button class="skip" data-a="end">略過</button>'}<button class="sec" data-a="prev"${idx ? '' : ' disabled'}>上一步</button><button class="pri" data-a="next">${last ? '完成' : '下一步'}</button></div></div>`;
+            const last = pi === pages.length - 1;
+            card.innerHTML = `<div class="tr-strip">${secs.map((s, i) => s.nav ? `<button data-s="${i}" class="${i === p.s ? 'on' : ''}">${s.nav}</button>` : '').join('')}</div><div class="tr-cats">${sec.cats.map((c, i) => `<button data-c="${i}" class="${c.n === '管理員' ? 'ad ' : ''}${i === p.c ? 'on' : ''}">${c.n}</button>`).join('')}</div><div class="bd">${itemsHtml(cat)}</div><div class="ft"><div class="dots">${pi + 1} / ${pages.length}・點項目展開說明</div><div class="row">${last ? '' : '<button class="skip" data-nav="end">略過</button>'}<button class="sec" data-nav="prev"${pi ? '' : ' disabled'}>上一步</button><button class="pri" data-nav="next">${last ? '完成' : '下一步'}</button></div></div>`;
+            drawDemos();
         }, 450);
     }
 
@@ -134,6 +300,8 @@
         open = was ? -1 : i;
         if (!was) { qs[i].classList.add('on'); as[i].classList.add('on'); qs[i].scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
     }
+
+    function go(n) { pi = n; render(); }
 
     function end() {
         clearTimeout(timer);
@@ -147,21 +315,28 @@
             if (el) return;
             opts = o || {};
             from = (typeof currentTab === 'string' && currentTab !== 'food' && currentTab !== 'stays') ? currentTab : 'itinerary';
-            idx = 0;
-            css();
+            pi = 0; lastS = -1;
+            reset(); build(); css();
             el = document.createElement('div');
             el.id = 'tr-root';
             el.innerHTML = '<div id="tr-spot"></div><div id="tr-card"></div>';
             el.addEventListener('click', (e) => {
-                const q = e.target.closest('[data-q]');
+                const T = e.target;
+                const demo = T.closest('[data-demo]');
+                if (demo) { const b = T.closest('[data-do]'); if (b && DEMOS[demo.dataset.demo].act) DEMOS[demo.dataset.demo].act(demo, b); return; }
+                const s = T.closest('[data-s]'), c = T.closest('[data-c]'), q = T.closest('[data-q]'), n = T.closest('[data-nav]');
+                if (s) return go(pages.findIndex(p => p.s === +s.dataset.s));
+                if (c) return go(pages.findIndex(p => p.s === pages[pi].s && p.c === +c.dataset.c));
                 if (q) return toggle(+q.dataset.q);
-                const b = e.target.closest('[data-a]');
-                const a = b && b.dataset.a;
-                if (!a || b.classList.contains('a')) return;
-                if (a === 'end') return end();
-                if (a === 'next') { if (idx === STEPS.length - 1) return end(); idx++; }
-                if (a === 'prev') idx--;
-                render();
+                if (!n) return;
+                if (n.dataset.nav === 'end') return end();
+                if (n.dataset.nav === 'prev') return go(pi - 1);
+                if (pi === pages.length - 1) return end();
+                go(pi + 1);
+            });
+            el.addEventListener('input', (e) => {
+                const demo = e.target.closest('[data-demo]');
+                if (demo && DEMOS[demo.dataset.demo].inp) DEMOS[demo.dataset.demo].inp(demo, e.target);
             });
             document.body.appendChild(el);
             render();
