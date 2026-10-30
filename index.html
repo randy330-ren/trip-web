@@ -909,14 +909,6 @@
         <!-- 頁面 4：更多 (More) -->
         <div id="page-more" class="hidden space-y-4">
 
-            <!-- 新手教學（會員／管理員） -->
-            <div id="tour-card" class="hidden card p-5 border-t-4 border-[#b08758]">
-                <button type="button" onclick="tourOpen()" class="w-full flex justify-between items-center">
-                    <h2 class="text-lg font-bold">📖 新手教學</h2>
-                    <span class="drawer-hint">點擊開始 ▶</span>
-                </button>
-            </div>
-
             <!-- 清單（待辦／必買） -->
             <div class="card p-5 border-t-4 border-[#4b5563]">
                 <div class="flex justify-between items-center mb-3">
@@ -970,6 +962,14 @@
                 <div id="roster-list" class="hidden mt-3"></div>
             </div>
 
+            <!-- 新手教學（會員／管理員） -->
+            <div id="tour-card" class="hidden card p-5 border-t-4 border-[#b08758]">
+                <button type="button" onclick="tourOpen()" class="w-full flex justify-between items-center">
+                    <h2 class="text-lg font-bold">📖 新手教學</h2>
+                    <span class="drawer-hint">點擊開始 ▶</span>
+                </button>
+            </div>
+
         </div>
 
         <!-- 頁面 5：花絮 (Highlights) -->
@@ -1002,6 +1002,18 @@
             </div>
             <p class="text-[10px] text-gray-500 text-right shrink-0">☁️ <span id="sync-status"
                     class="font-medium text-emerald-700">載入中...</span></p>
+        </div>
+    </div>
+
+    <!-- 新手教學首次提示 -->
+    <div id="tour-prompt" class="hidden fixed left-0 right-0 z-[55] px-4" style="bottom:calc(4.75rem + max(.5rem, env(safe-area-inset-bottom)))">
+        <div class="card max-w-md mx-auto p-3 shadow-lg" style="border-left:4px solid var(--gold)">
+            <p class="text-sm font-bold text-[#3b4d43]">👋 第一次使用？</p>
+            <p class="text-xs text-gray-600 mt-0.5">花 1 分鐘看看各功能怎麼用，之後可在「更多」頁最下方重看。</p>
+            <div class="flex gap-2 mt-2">
+                <button type="button" onclick="tourPromptGo(false)" class="flex-1 py-2 rounded-xl text-sm font-bold bg-gray-100 text-gray-600">略過，開始使用</button>
+                <button type="button" onclick="tourPromptGo(true)" class="flex-1 py-2 rounded-xl text-sm font-bold bg-[#3b4d43] text-white">開始教學</button>
+            </div>
         </div>
     </div>
 
@@ -3785,15 +3797,19 @@
             try { localStorage.setItem('hintsDone', JSON.stringify(hintsDone)); } catch (e) { }
             refreshHints();
         };
-        const TOUR_V = '1';
-        let tourAuto = false;
+        const TOUR_V = '2';
         window.tourOpen = function () {
+            document.getElementById('tour-prompt').classList.add('hidden');
             (window.TOUR ? Promise.resolve() : loadScript('tutorial.js?v=' + TOUR_V)).then(() => TOUR.start({ admin: isEditor })).catch(() => { });
+        };
+        window.tourPromptGo = function (go) {
+            document.getElementById('tour-prompt').classList.add('hidden');
+            if (go) tourOpen(); else hintDone('tour');
         };
         window.tourSync = function () {
             const ok = isMember || !!adminUser;
             document.getElementById('tour-card').classList.toggle('hidden', !ok);
-            if (ok && !hintsDone.tour && !tourAuto) { tourAuto = true; setTimeout(tourOpen, 1500); }
+            document.getElementById('tour-prompt').classList.toggle('hidden', !ok || !!hintsDone.tour || !!(window.TOUR && document.getElementById('tr-root')));
         };
         tourSync();
         function updateFades() {
