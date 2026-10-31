@@ -46,7 +46,7 @@
 
 1. **套用修改**：將修改寫入對應檔案。
 2. **重新產生 CSS**：若有修改 HTML 的 Tailwind class，執行 `npm run css`。
-3. **更新快取版本**：若有修改任何前端檔案（html / css / js），將 `sw.js` 內的快取版本號 +1。
+3. **更新快取版本**：若有修改任何前端檔案（html / css / js），將 `sw.js` 內的快取版本號 +1，並同步改寫 `changelog.json`（只寫最新一次更新，用白話描述給使用者看的重點，`version` 與 sw.js 的版本一致）。
 4. **建立新分支**：以本次修改內容命名（例如 `fix-day2-text`、`add-sand-dune`）。
 5. **Commit 並 push** 到該分支。
 6. **開 Pull Request**：標題用一句話描述本次修改，內文簡述改了哪些檔案。
