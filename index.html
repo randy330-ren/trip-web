@@ -2303,7 +2303,7 @@
             if (!opts.skipScrollTop) window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        const LEDGER_V = '12';
+        const LEDGER_V = '13';
         let ledgerLoading = null;
         const loadScript = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
         function openLedger() {
@@ -3823,7 +3823,7 @@
             try { localStorage.setItem('hintsDone', JSON.stringify(hintsDone)); } catch (e) { }
             refreshHints();
         };
-        const TOUR_V = '9';
+        const TOUR_V = '10';
         window.tourOpen = function () {
             document.getElementById('tour-prompt').classList.add('hidden');
             (window.TOUR ? Promise.resolve() : loadScript('tutorial.js?v=' + TOUR_V)).then(() => TOUR.start({ canAdmin: !!adminUser, isRead: readMode, setRead: setReadMode })).catch(() => { });

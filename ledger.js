@@ -16,7 +16,7 @@
 
     const S = {
         tab: 'add', sub: 'list', data: null, err: null, ref: null, cb: null, key: '', built: false,
-        form: null, editId: null, editOrig: null, partsSig: null, rateSig: null, saving: false,
+        form: null, editId: null, editOrig: null, editSig: '', partsSig: null, rateSig: null, saving: false,
         rosterOpen: false, open: null, showVoid: false,
         stMode: 'all', stDay: '', stCur: 'TWD', fold: { bal: false, sug: false, tr: false },
         listShut: (cacheLoad('ledger_fold') || {}).days || {}, fs: null,
@@ -404,6 +404,7 @@
     function startEdit(id) {
         const e = E()[id];
         if (!e) return;
+        if (editDirty() && !confirm('目前編輯中的支出有尚未儲存的修改，確定要放棄並改編輯這一筆嗎？')) return;
         S.editId = id;
         S.editOrig = e;
         S.form = {
@@ -412,9 +413,16 @@
             parts: { ...(e.parts || {}) }, cat: e.cat || '其他', note: e.note || '', rate: e.cur === BASE ? null : e.rate
         };
         writeForm();
+        S.editSig = formSig();
         setTab('add');
         window.scrollTo({ top: 0, behavior: 'auto' });
     }
+    // 編輯中的表單是否有改動（成員與分攤明細排序不同不算改動）
+    function formSig() {
+        const f = S.form;
+        return JSON.stringify({ ...f, members: [...f.members].sort(), parts: Object.entries(f.parts || {}).sort() });
+    }
+    const editDirty = () => !!S.editId && S.form && S.editSig !== formSig();
     function cancelEdit() {
         const f = S.form;
         S.editId = S.editOrig = null;
@@ -1192,7 +1200,7 @@
             else if (act === 'rate-table') { f.rate = null; renderRate(); renderPreview(); }
             else if (act === 'rate-custom') { const t = R()[f.cur]; f.rate = t ? t.rate : ''; renderRate(); renderPreview(); }
             else if (act === 'save') saveExpense();
-            else if (act === 'cancel-edit') cancelEdit();
+            else if (act === 'cancel-edit') { if (!editDirty() || confirm('這筆支出有尚未儲存的修改，確定要放棄嗎？')) cancelEdit(); }
             else if (act === 'exp-open') { S.open = S.open === id ? null : id; renderItems(); }
             else if (act === 'fold-all') {
                 const ds = [...new Set(filtered().map(([, e]) => e.date || '（無日期）'))], shut = !ds.every((d) => S.listShut[d]);
