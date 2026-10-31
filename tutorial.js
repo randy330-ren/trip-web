@@ -4,15 +4,22 @@
     const find = (s) => (typeof s === 'function' ? s() : s ? vis(s) : null);
     const stayCard = () => [...document.querySelectorAll('#page-itinerary .tl-card')].find(c => c.getClientRects().length && /住宿/.test((c.querySelector('.tl-tag') || {}).textContent || '')) || null;
     const parentOf = (id) => () => { const b = document.getElementById(id); return b && b.getClientRects().length ? b.parentElement : null; };
+    const idBar = () => vis('#identity-bar #edit-controls') || vis('#identity-bar #member-controls') || vis('#id-tab');
     const L_ADD = ['#lg-tabs [data-v="add"]'], L_LIST = ['#lg-tabs [data-v="list"]', '#lg-subs [data-v="list"]'], L_SETTLE = ['#lg-tabs [data-v="list"]', '#lg-subs [data-v="settle"]'], L_FX = ['#lg-tabs [data-v="fx"]'];
+
+    // 自動展開：on 在進入該小項時執行，off 在離開時還原（只還原自己展開的）
+    const rosterEx = { on() { const l = document.getElementById('roster-list'); if (l && l.classList.contains('hidden') && window.toggleRoster) { toggleRoster(); return () => { if (!l.classList.contains('hidden')) toggleRoster(); }; } } };
+    const idEx = { on() { const b = document.getElementById('identity-bar'); if (b && !b.classList.contains('open')) { b.classList.add('open'); return () => b.classList.remove('open'); } } };
+    const toolsEx = { on() { const t = document.getElementById('mp-tools'); if (t && !t.classList.contains('open')) { t.classList.add('open'); return () => t.classList.remove('open'); } } };
 
     const SEC = [
         {
+            nav: '歡迎', tab: 'itinerary', sel: '#main-nav',
             cats: [{
                 n: '歡迎', it: [
                     { q: '🧭 五大功能', a: '下方導覽列有行程、地圖、記帳、更多、花絮。點視窗最上方的分頁列，可直接跳到該功能的說明。餐食與住宿總覽收在「行程」裡。', sel: '#main-nav' },
-                    { q: '👤 登入與權限', a: '會員可使用記帳、花絮、清單與留言。登入後左下角會顯示你的身分標籤（會員是 👤 加名字，管理員是 ✏️），點開可以修改名稱、修改密碼或登出。', sel: '#id-tab' },
-                    { q: '✏️ 管理員編輯模式', ad: 1, a: '管理員登入後，左下角 ✏️ 選單有「儲存」「管理設定」「閱讀模式／編輯模式」與「登出」。編輯模式下，行程、地圖、餐食、住宿、提醒都能新增與修改；切到閱讀模式可避免誤改。', sel: '#id-tab' },
+                    { q: '👤 登入與權限', a: '會員可使用記帳、花絮、清單與留言。登入後左下角會顯示你的身分標籤（會員是 👤 加名字，管理員是 ✏️），點開可以修改名稱、修改密碼或登出。', sel: idBar, ex: idEx },
+                    { q: '✏️ 管理員編輯模式', ad: 1, a: '管理員登入後，左下角 ✏️ 選單有「儲存」「管理設定」「閱讀模式／編輯模式」與「登出」。編輯模式下，行程、地圖、餐食、住宿、提醒都能新增與修改；切到閱讀模式可避免誤改。', sel: idBar, ex: idEx },
                     { q: '🧪 試試看', a: '標示「🧪 試試看」的區塊是範例操作，用的是範例資料，不會儲存，也不會改到任何真實資料。畫面上有框起來的按鈕與手指，代表真實畫面的位置，教學中不會真的按下去。' },
                     { q: '📖 重看教學', a: '隨時到「更多」頁最下方，點「📖 新手教學」即可重看。', tab: 'more', sel: '#tour-card' }
                 ]
@@ -62,7 +69,7 @@
                 {
                     n: '看地圖', it: [
                         { q: '📌 釘子與逐站導覽', a: '點釘子會彈出名稱與說明，「📍 導航」開啟 Google 地圖。按「下一站 ›」「‹ 上一站」依序走訪每一站。', sel: '.mp-nav', demo: 'map' },
-                        { q: '🧰 ☰ 工具', a: '點左上 ☰ 展開：⛶ 全螢幕、🗂️ 切換底圖、📍 我的位置、〰️ 路線虛線開關。', sel: '#mp-tools' }
+                        { q: '🧰 ☰ 工具', a: '點左上 ☰ 展開：⛶ 全螢幕、🗂️ 切換底圖、📍 我的位置、〰️ 路線虛線開關。', sel: '#mp-tools', ex: toolsEx }
                     ]
                 },
                 {
@@ -71,7 +78,7 @@
                         { q: '↕️ 調整高度', a: '右下箭頭按鈕可上下拖拉調整地圖高度，點一下切換最矮／最高。', sel: '#mp-resize' }
                     ]
                 },
-                { n: '管理員', it: [{ q: '✏️ 新增與調整地點', ad: 1, a: '長按地圖空白處可新增地點或住宿，長按釘子可修改或拖曳調整位置。', sel: '#mp-admin-tip' }] }
+                { n: '管理員', it: [{ q: '✏️ 新增與調整地點', ad: 1, a: '框起來的是整個地圖區（含圖層名稱與 ☰ 選單）。長按地圖空白處可新增地點或住宿，長按釘子可修改或拖曳調整位置。下方可實際點點看示範。', sel: '#mp-wrap', demo: 'madm' }] }
             ]
         },
         {
@@ -112,16 +119,18 @@
                 {
                     n: '清單', it: [
                         { q: '✅ 待辦與必買', a: '清單上方可切換「待辦」與「必買」，按「＋ 新增」加入項目。', sel: parentOf('list-kind-todo') },
-                        { q: '👥 團體 vs 🔒 我的', a: '待辦分「團體」與「我的」：團體清單所有人共用，「我的」只有自己看得到。', sel: '#todo-tabs' }
+                        { q: '👥 團體 vs 🔒 我的', a: '待辦分「團體」與「我的」：團體清單所有人共用，「我的」只有自己看得到。', sel: '#todo-tabs' },
+                        { q: '↕️ 排序與沉底', a: '「我的」清單每筆左邊的「≡」按住 0.5 秒可拖曳排序。「已完成沉底」開啟後，打勾的項目會排到最後（此時不能拖曳）。', pre: ['#todo-tab-mine'], sel: '#todo-sort-bar' }
                     ]
                 },
                 {
                     n: '其他', it: [
                         { q: '🧳 出發前的小提醒', a: '整理行前注意事項，出發前可以再看一次。', sel: parentOf('notes-list-container') },
-                        { q: '👤 成員名單', a: '「成員」卡片點一下展開，可看目前有哪些人加入。', sel: '#roster-card' },
-                        { q: '☁️ 離線與同步', a: '資料會即時與雲端同步。網路中斷時，畫面最上方會出現橘色「離線中・顯示最後同步資料」提示列，此時看到的是最後一次同步的內容。' }
+                        { q: '👤 成員名單', a: '「成員」卡片點一下展開，可看目前有哪些人加入、誰正在使用。教學會自動幫你展開。', sel: '#roster-card', ex: rosterEx },
+                        { q: '☁️ 離線與同步', a: '登入後「更多」頁與左下角都會顯示連線狀態（已連線／連線中斷）。資料會即時與雲端同步；網路中斷時，畫面最上方會出現橘色「離線中・顯示最後同步資料」提示列，此時看到的是最後一次同步的內容。', sel: '#more-sync' }
                     ]
-                }
+                },
+                { n: '管理員', it: [{ q: '↕️ 團體清單排序', ad: 1, a: '團體清單只有管理員（編輯模式）能拖曳「≡」調整順序，所有人看到的順序都會一起更新。', pre: ['#todo-tab-group'], sel: '#todo-list-container' }] }
             ]
         },
         {
@@ -140,7 +149,7 @@
                         { q: '🏅 每日稱號', a: '每天依分享、心情與留言的表現頒發稱號，共有 7 種：準時王、分享王、歡迎王、話題王、熱心王，整趟旅程另有旅程人氣王與全勤王。點下面的稱號看得獎條件。', demo: 'titles' }
                     ]
                 },
-                { n: '管理員', it: [{ q: '🙂 管理表情', ad: 1, a: '可新增或刪除心情表情（已被使用的表情不能刪除）。' }] }
+                { n: '管理員', it: [{ q: '🙂 管理表情', ad: 1, a: '照片的心情列最右邊的「＋」可新增或刪除心情表情（已被使用的表情不能刪除）。', sel: '#hl-root [data-a="emo"]' }] }
             ]
         }
     ];
@@ -163,6 +172,7 @@
         D.titles = { i: 1 };
         D.cand = { pick: 0 };
         D.alt = { msg: '' };
+        D.madm = { m: '', sel: -1, t: 0, moved: 0, msg: '' };
         D.react = { on: [0, 0, 0], list: ['小華：好好看！'], txt: '' };
     };
 
@@ -305,6 +315,26 @@
             },
             act(h, b) { D.alt.msg = '→ 實際會在地圖上定位第 ' + (+b.dataset.i + 1) + ' 站'; this.draw(h); }
         },
+        madm: {
+            draw(h) {
+                const S = D.madm, P = [['境港波止場', 18, 62], ['水木茂之路', 48, 30], ['鬼太郎機場', 78, 58]];
+                const pins = P.map((p, k) => `<button type="button" class="pin${S.sel === k ? ' on' : ''}" style="left:${k === S.sel && S.moved ? 62 : p[1]}%;top:${k === S.sel && S.moved ? 70 : p[2]}%" data-do="pin" data-i="${k}">📍</button>`).join('');
+                const tags = '<span class="tg" style="position:absolute;left:6px;top:6px;margin:0">衛星</span><span class="tg" style="position:absolute;right:6px;top:6px;margin:0">☰</span>';
+                let body = '<p class="dl3">點地圖空白處＝長按空白處；點釘子＝長按釘子（實際操作是長按）。</p>';
+                if (S.m === 'add') body = `${lbl('新增地點')}<div class="chips">${['景點', '餐廳', '住宿'].map((t, i) => chip(S.t === i, 'type', `data-i="${i}"`, t)).join('')}</div><input class="in" style="margin-top:6px" placeholder="地點名稱（示範）"><p class="dl3">填好名稱與座標後儲存，地點會出現在地圖與列表。</p>`;
+                else if (S.m === 'edit') body = `${lbl('「' + P[S.sel][0] + '」')}<div class="chips"><button type="button" class="dbtn" data-do="info">✏️ 修改名稱與說明</button><button type="button" class="dbtn ghost" data-do="move">↔ 拖曳調整位置</button></div><p class="dl3">${S.msg || '選一個動作'}</p>`;
+                h.innerHTML = `${head}<div class="mm" data-do="blank">${tags}${pins}</div>${body}`;
+            },
+            act(h, b) {
+                const S = D.madm, d = b.dataset.do;
+                if (d === 'blank') { S.m = 'add'; S.sel = -1; S.moved = 0; }
+                else if (d === 'pin') { S.m = 'edit'; S.sel = +b.dataset.i; S.moved = 0; S.msg = ''; }
+                else if (d === 'type') S.t = +b.dataset.i;
+                else if (d === 'info') S.msg = '→ 實際會開啟修改視窗，可改名稱、說明與類型。';
+                else if (d === 'move') { S.moved = 1; S.msg = '→ 長按後拖到新位置放開，座標會自動儲存。'; }
+                this.draw(h);
+            }
+        },
         meal: tapDemo('meal', [
             { t: '漁港回転寿司 境港波止場店', s: '午餐・主要安排', b: [['📍 導航', '→ 實際會開啟 Google 地圖，導航到「漁港回転寿司」']] },
             { t: '元氣亭丼飯', s: '午餐・備選', b: [['📍 導航', '→ 實際會開啟 Google 地圖，導航到「元氣亭丼飯」']] }
@@ -314,7 +344,7 @@
         ])
     };
 
-    let pages = [], steps = [], secs = [], pi = 0, opts = {}, from = 'itinerary', el = null, open = 0, token = 0, poll = 0, rt = 0;
+    let undo = null, undoKey = '', restoreRead = false, pages = [], steps = [], secs = [], pi = 0, opts = {}, from = 'itinerary', el = null, open = 0, token = 0, poll = 0, rt = 0;
 
     function build() {
         secs = SEC.map(s => ({ ...s, cats: s.cats.map(c => ({ ...c, it: c.it.filter(i => !i.ad || opts.admin) })).filter(c => c.it.length) }));
@@ -327,7 +357,7 @@
         if (document.getElementById('tr-css')) return;
         const s = document.createElement('style');
         s.id = 'tr-css';
-        s.textContent = '#tr-root{position:fixed;inset:0;z-index:9000}#tr-spot{position:fixed;border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,.62);outline:3px solid rgba(224,194,143,.95);transition:all .25s;pointer-events:none;animation:trPulse 1.2s infinite}#tr-spot.fl{animation:trFlash .5s 3,trPulse 1.2s 1.5s infinite}@keyframes trFlash{0%,100%{background:rgba(255,255,255,0)}50%{background:rgba(255,255,255,.4)}}@keyframes trPulse{0%,100%{outline-offset:0}50%{outline-offset:5px}}#tr-hand{position:fixed;display:none;font-size:30px;line-height:1;pointer-events:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.45));animation:trTap 1.1s infinite}#tr-hand.dn{animation-name:trTapD}@keyframes trTapD{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(3px,8px) scale(.88)}}@keyframes trTap{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-3px,-8px) scale(.88)}}#tr-card{position:fixed;left:50%;transform:translateX(-50%);width:calc(100% - 2rem);max-width:26rem;background:#fff;border-radius:18px;box-shadow:0 8px 28px rgba(0,0,0,.3);color:#333;font-size:13px;line-height:1.6;display:flex;flex-direction:column;overflow:hidden}#tr-card button{font-family:inherit}.tr-strip{display:flex;background:#3b4d43;flex:none}.tr-strip button{background:transparent;border:0;flex:1;padding:10px 0;font-size:13px;font-weight:700;color:rgba(255,255,255,.65)}.tr-strip button.on{color:#fff;box-shadow:inset 0 -3px 0 #e0c28f}.tr-cats{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;flex:none;border-bottom:1px solid #eee}.tr-cats button{flex:none;padding:5px 12px;border-radius:9999px;background:#f0eee8;color:#3b4d43;font-size:12px;font-weight:700}.tr-cats button.on{background:#3b4d43;color:#fff}.tr-cats button.ad{background:#f6ecde;color:#8a6234}.tr-cats button.ad.on{background:#8a6234;color:#fff}#tr-card .q.on{animation:trQ .5s 3}@keyframes trQ{0%,100%{background:#f0eee8}50%{background:#ffe6a8}}#tr-card .bd{padding:10px 14px;overflow-y:auto;overscroll-behavior:contain;flex:1;-webkit-overflow-scrolling:touch}#tr-card .q{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;padding:9px 12px;margin-top:6px;border-radius:10px;background:#f0eee8;color:#3b4d43;font-weight:700;font-size:13px}#tr-card .q.ad{background:#f6ecde;color:#8a6234}#tr-card .q i{font-style:normal;opacity:.6;transition:transform .2s}#tr-card .q.on i{transform:rotate(90deg)}#tr-card .a{display:none;padding:8px 12px 4px;color:#555}#tr-card .a.on{display:block}#tr-card .tag{font-size:10px;font-weight:700;color:#8a6234;margin-left:6px}#tr-card .ft{padding:10px 14px 14px;border-top:1px solid #eee;flex:none}#tr-card .dots{text-align:center;font-size:11px;color:#a39a8e;margin-bottom:8px}#tr-card .row{display:flex;gap:8px}#tr-card .row button{padding:13px 0;border-radius:14px;font-size:15px;font-weight:700}#tr-card .pri{flex:1.3;background:#3b4d43;color:#fff}#tr-card .sec{flex:1;background:#e7e4db;color:#3b4d43}#tr-card .skip{flex:1;background:#fff;color:#777;border:1.5px solid #cfcac0}#tr-card .row button:disabled{opacity:.35}.demo{margin-top:8px;padding:10px;border:1.5px dashed #cfcac0;border-radius:12px;background:#faf9f5}.demo .dl{font-size:11px;font-weight:700;color:#8a6234;margin-bottom:4px}.demo .dl2{font-size:11px;color:#888;margin:6px 0 3px}.demo .dl3{font-size:12px;color:#777;margin-top:4px}.demo .in{width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:10px;font-size:14px;background:#fff}.demo .chips{display:flex;gap:6px;flex-wrap:wrap}.demo .chip{padding:6px 12px;border-radius:9999px;background:#fff;border:1.5px solid #ddd;font-size:12px;font-weight:700;color:#777}.demo .chip.on{background:#3b4d43;border-color:#3b4d43;color:#fff}.demo .dr{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;font-size:13px}.demo .dr.b{border-top:1px solid #e8e4da}.demo .dbtn{padding:9px 14px;border-radius:10px;background:#3b4d43;color:#fff;font-size:13px;font-weight:700;margin-top:6px}.demo .dbtn.ghost{background:#e7e4db;color:#3b4d43}.demo .mm{position:relative;height:110px;border-radius:10px;background:linear-gradient(135deg,#dfe8dc,#cfdccb);margin-bottom:6px}.demo .pin{position:absolute;transform:translate(-50%,-50%);font-size:20px;opacity:.55}.demo .pin.on{opacity:1;font-size:26px}.demo .rc{position:relative;padding:10px 40px 10px 12px;margin-top:6px;border-radius:10px;background:#fff;border:1.5px solid #ddd}.demo .rc.meal{background:#fdf3e3}.demo .rc small{display:block;color:#999;font-size:11px}.demo .tg{display:inline-block;margin-left:6px;padding:0 7px;border-radius:9px;font-size:10px;font-weight:700;background:#eef2ee;color:#5c6e63}.demo .rc{padding-right:12px;cursor:pointer}.demo .rc.cand{background:#eef2ee;opacity:.85}.demo .rc.on{border-color:#3b4d43;box-shadow:0 0 0 2px rgba(59,77,67,.25);opacity:1}.demo .tm{position:absolute;right:6px;top:6px;width:30px;height:30px;border-radius:8px;background:#f0eee8;font-size:14px}';
+        s.textContent = '#tr-root{position:fixed;inset:0;z-index:9000}#tr-spot{position:fixed;border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,.62);outline:3px solid rgba(224,194,143,.95);transition:all .25s;pointer-events:none;animation:trPulse 1.2s infinite}#tr-spot.fl{animation:trFlash .5s 3,trPulse 1.2s 1.5s infinite}@keyframes trFlash{0%,100%{background:rgba(255,255,255,0)}50%{background:rgba(255,255,255,.4)}}@keyframes trPulse{0%,100%{outline-offset:0}50%{outline-offset:5px}}#tr-hand{position:fixed;display:none;font-size:30px;line-height:1;pointer-events:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.45));animation:trTap 1.1s infinite}#tr-hand.dn{animation-name:trTapD}@keyframes trTapD{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(3px,8px) scale(.88)}}@keyframes trTap{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-3px,-8px) scale(.88)}}#tr-card{position:fixed;left:50%;transform:translateX(-50%);width:calc(100% - 2rem);max-width:26rem;background:#fff;border-radius:18px;box-shadow:0 8px 28px rgba(0,0,0,.3);color:#333;font-size:13px;line-height:1.6;display:flex;flex-direction:column;overflow:hidden}#tr-card button{font-family:inherit}.tr-strip{display:flex;background:#3b4d43;flex:none;overflow-x:auto}.tr-strip button{background:transparent;border:0;flex:1 0 auto;padding:10px 8px;font-size:13px;font-weight:700;color:rgba(255,255,255,.65)}.tr-strip button.on{color:#fff;box-shadow:inset 0 -3px 0 #e0c28f}.tr-cats{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;flex:none;border-bottom:1px solid #eee}.tr-cats button{flex:none;padding:5px 12px;border-radius:9999px;background:#f0eee8;color:#3b4d43;font-size:12px;font-weight:700}.tr-cats button.on{background:#3b4d43;color:#fff}.tr-cats button.ad{background:#f6ecde;color:#8a6234}.tr-cats button.ad.on{background:#8a6234;color:#fff}#tr-card .q.on{animation:trQ .5s 3}@keyframes trQ{0%,100%{background:#f0eee8}50%{background:#ffe6a8}}#tr-card .bd{padding:10px 14px;overflow-y:auto;overscroll-behavior:contain;flex:1;-webkit-overflow-scrolling:touch}#tr-card .q{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;padding:9px 12px;margin-top:6px;border-radius:10px;background:#f0eee8;color:#3b4d43;font-weight:700;font-size:13px}#tr-card .q.ad{background:#f6ecde;color:#8a6234}#tr-card .q i{font-style:normal;opacity:.6;transition:transform .2s}#tr-card .q.on i{transform:rotate(90deg)}#tr-card .a{display:none;padding:8px 12px 4px;color:#555}#tr-card .a.on{display:block}#tr-card .tag{font-size:10px;font-weight:700;color:#8a6234;margin-left:6px}#tr-card .ft{padding:10px 14px 14px;border-top:1px solid #eee;flex:none}#tr-card .dots{text-align:center;font-size:11px;color:#a39a8e;margin-bottom:8px}#tr-card .row{display:flex;gap:8px}#tr-card .row button{padding:13px 0;border-radius:14px;font-size:15px;font-weight:700}#tr-card .pri{flex:1.3;background:#3b4d43;color:#fff}#tr-card .sec{flex:1;background:#e7e4db;color:#3b4d43}#tr-card .skip{flex:1;background:#fff;color:#777;border:1.5px solid #cfcac0}#tr-card .row button:disabled{opacity:.35}.demo{margin-top:8px;padding:10px;border:1.5px dashed #cfcac0;border-radius:12px;background:#faf9f5}.demo .dl{font-size:11px;font-weight:700;color:#8a6234;margin-bottom:4px}.demo .dl2{font-size:11px;color:#888;margin:6px 0 3px}.demo .dl3{font-size:12px;color:#777;margin-top:4px}.demo .in{width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:10px;font-size:14px;background:#fff}.demo .chips{display:flex;gap:6px;flex-wrap:wrap}.demo .chip{padding:6px 12px;border-radius:9999px;background:#fff;border:1.5px solid #ddd;font-size:12px;font-weight:700;color:#777}.demo .chip.on{background:#3b4d43;border-color:#3b4d43;color:#fff}.demo .dr{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;font-size:13px}.demo .dr.b{border-top:1px solid #e8e4da}.demo .dbtn{padding:9px 14px;border-radius:10px;background:#3b4d43;color:#fff;font-size:13px;font-weight:700;margin-top:6px}.demo .dbtn.ghost{background:#e7e4db;color:#3b4d43}.demo .mm{position:relative;height:110px;border-radius:10px;background:linear-gradient(135deg,#dfe8dc,#cfdccb);margin-bottom:6px}.demo .pin{position:absolute;transform:translate(-50%,-50%);font-size:20px;opacity:.55}.demo .pin.on{opacity:1;font-size:26px}.demo .rc{position:relative;padding:10px 40px 10px 12px;margin-top:6px;border-radius:10px;background:#fff;border:1.5px solid #ddd}.demo .rc.meal{background:#fdf3e3}.demo .rc small{display:block;color:#999;font-size:11px}.demo .tg{display:inline-block;margin-left:6px;padding:0 7px;border-radius:9px;font-size:10px;font-weight:700;background:#eef2ee;color:#5c6e63}.demo .rc{padding-right:12px;cursor:pointer}.demo .rc.cand{background:#eef2ee;opacity:.85}.demo .rc.on{border-color:#3b4d43;box-shadow:0 0 0 2px rgba(59,77,67,.25);opacity:1}.demo .tm{position:absolute;right:6px;top:6px;width:30px;height:30px;border-radius:8px;background:#f0eee8;font-size:14px}#tr-root.adm .tr-strip{background:#7a5428}#tr-root.adm #tr-spot{outline-color:#f0b35c}#tr-root.adm #tr-card{box-shadow:0 8px 28px rgba(0,0,0,.3),0 0 0 3px #b08758}#tr-root.adm .tr-cats button{background:#f3e8d6;color:#7a5428}#tr-root.adm .tr-cats button.on{background:#7a5428;color:#fff}#tr-root.adm .tr-cats button.ad{background:#e8c99a;color:#5c3a14}#tr-root.adm .tr-cats button.ad.on{background:#5c3a14;color:#fff}#tr-root.adm #tr-card .q{background:#f3e8d6;color:#7a5428}#tr-root.adm #tr-card .q.ad{background:#7a5428;color:#fff}#tr-root.adm #tr-card .q.ad .tag{color:#ffd9a0}#tr-root.adm #tr-card .pri{background:#7a5428}#tr-root.adm #tr-card .sec{background:#efe2cc;color:#7a5428}#tr-root.adm #tr-card .dots{color:#a8845a}#tr-root.adm .demo .chip.on,#tr-root.adm .demo .dbtn{background:#7a5428;border-color:#7a5428;color:#fff}#tr-root.adm .demo .dbtn.ghost{background:#efe2cc;color:#7a5428}#tr-root.adm .demo .rc.on{border-color:#7a5428}.tr-ch{padding:16px}.tr-ch h3{font-size:16px;font-weight:700;color:#3b4d43}.tr-ch p{color:#777;font-size:12px;margin:2px 0 6px}.tr-ch .opt{display:block;width:100%;text-align:left;padding:14px;border-radius:14px;margin-top:8px;font-size:14px;font-weight:700;border:2px solid #cfcac0;background:#fff;color:#3b4d43}.tr-ch .opt small{display:block;font-weight:400;color:#888;font-size:12px;margin-top:2px}.tr-ch .opt.ad{border-color:#b08758;background:#fbf4e8;color:#7a5428}.tr-ch .skip{display:block;width:100%;margin-top:10px;padding:10px 0;border-radius:12px;background:#fff;color:#777;border:1.5px solid #cfcac0;font-size:13px;font-weight:700}';
         document.head.appendChild(s);
     }
 
@@ -416,11 +446,17 @@
 
     // 依目前展開的小項聚焦：先框頁面預設按鈕，找得到小項的按鈕就改框它（動態內容會輪詢等待）
     function focus() {
-        if (!el) return;
+        if (!el || !pages.length) return;
         clearTimeout(poll);
         const tk = ++token, p = pages[pi], sec = secs[p.s], cat = sec.cats[p.c], it = open >= 0 ? cat.it[open] : null;
         const want = (it && it.tab) || sec.tab || 'itinerary';
         if (currentTab !== want) switchTab(want);
+        const key = pi + ':' + open;
+        if (undoKey !== key) {
+            if (undo) { undo(); undo = null; }
+            undoKey = key;
+            if (it && it.ex) undo = it.ex.on() || null;
+        }
         const dflt = () => find(cat.sel || sec.sel);
         if (!it || !it.sel) return void place(dflt(), false);
         let preDone = !it.pre;
@@ -442,11 +478,35 @@
         return `<div class="dots">第 ${n + 1} / ${steps.length} 項・點項目可展開或收合</div><div class="row">${last ? '' : '<button class="skip" data-nav="end">略過</button>'}<button class="sec" data-nav="prev"${n ? '' : ' disabled'}>上一步</button><button class="pri" data-nav="next">${last ? '完成' : '下一步'}</button></div>`;
     }
 
+    // 讓目前選中的分頁／分類按鈕捲到橫向列的中間，才找得到教到哪裡
+    function reveal(box, btn) {
+        if (box && btn) box.scrollLeft += btn.getBoundingClientRect().left - box.getBoundingClientRect().left - (box.clientWidth - btn.offsetWidth) / 2;
+    }
+
+    function chooser() {
+        const card = el.querySelector('#tr-card');
+        place(null, false);
+        card.innerHTML = '<div class="tr-ch"><h3>📖 新手教學</h3><p>請先選擇要看的教學內容</p><button type="button" class="opt" data-mode="member">👤 一般會員教學<small>行程、地圖、記帳、清單、花絮等一般功能</small></button><button type="button" class="opt ad" data-mode="admin">✏️ 管理員教學<small>完整教學，管理員專屬項目另外標色（教學期間會暫時切到編輯模式，結束後還原）</small></button><button type="button" class="skip" data-nav="end">略過</button></div>';
+        Object.assign(card.style, { height: 'auto', top: '50%', transform: 'translate(-50%,-50%)' });
+    }
+
+    function begin(mode) {
+        opts.admin = mode === 'admin';
+        el.classList.toggle('adm', opts.admin);
+        if (opts.admin && opts.isRead && opts.setRead) { opts.setRead(false); restoreRead = true; }
+        el.querySelector('#tr-card').style.transform = '';
+        pi = 0;
+        build();
+        render();
+    }
+
     function render(i) {
         const p = pages[pi], sec = secs[p.s], cat = sec.cats[p.c];
         open = i || 0;
         el.querySelector('#tr-card').innerHTML = `<div class="tr-strip">${secs.map((s, k) => s.nav ? `<button data-s="${k}" class="${k === p.s ? 'on' : ''}">${s.nav}</button>` : '').join('')}</div><div class="tr-cats">${sec.cats.map((c, k) => `<button data-c="${k}" class="${c.n === '管理員' ? 'ad ' : ''}${k === p.c ? 'on' : ''}">${c.n}</button>`).join('')}</div><div class="bd">${itemsHtml(cat)}</div><div class="ft">${ftHtml()}</div>`;
         drawDemos();
+        reveal(el.querySelector('.tr-strip'), el.querySelector('.tr-strip .on'));
+        reveal(el.querySelector('.tr-cats'), el.querySelector('.tr-cats .on'));
         if (open > 0) { const bd = el.querySelector('.bd'), q = el.querySelectorAll('.q')[open]; bd.scrollTop = q.offsetTop - bd.offsetTop - 6; }
         focus();
     }
@@ -480,10 +540,13 @@
 
     function end() {
         clearTimeout(poll); clearTimeout(rt); clearTimeout(tick); trackId++; cur = null; lock(false);
+        if (undo) { undo(); undo = null; }
+        undoKey = '';
         window.removeEventListener('resize', onResize);
         if (el) { el.remove(); el = null; }
         if (window.hintDone) hintDone('tour');
         switchTab(from);
+        if (restoreRead && opts.setRead) { restoreRead = false; opts.setRead(true); }
     }
 
     window.TOUR = {
@@ -491,15 +554,18 @@
             if (el) return;
             opts = o || {};
             from = (typeof currentTab === 'string' && currentTab !== 'food' && currentTab !== 'stays') ? currentTab : 'itinerary';
-            pi = 0;
-            reset(); build(); css();
+            pi = 0; pages = []; undo = null; undoKey = ''; restoreRead = false;
+            reset(); css();
             el = document.createElement('div');
             el.id = 'tr-root';
             el.innerHTML = '<div id="tr-spot"></div><div id="tr-hand">👆</div><div id="tr-card"></div>';
             el.addEventListener('click', (e) => {
+                e.stopPropagation();
                 const T = e.target;
                 const demo = T.closest('[data-demo]');
                 if (demo) { const b = T.closest('[data-do]'); if (b && DEMOS[demo.dataset.demo].act) DEMOS[demo.dataset.demo].act(demo, b); return; }
+                const md = T.closest('[data-mode]');
+                if (md) return begin(md.dataset.mode);
                 const s = T.closest('[data-s]'), c = T.closest('[data-c]'), q = T.closest('[data-q]'), n = T.closest('[data-nav]');
                 if (s) return go(pages.findIndex(p => p.s === +s.dataset.s));
                 if (c) return go(pages.findIndex(p => p.s === pages[pi].s && p.c === +c.dataset.c));
@@ -524,7 +590,7 @@
             document.body.appendChild(el);
             lock(true);
             window.addEventListener('resize', onResize);
-            render();
+            if (opts.canAdmin) chooser(); else begin('member');
         }
     };
 })();

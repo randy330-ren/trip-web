@@ -927,6 +927,9 @@
                     <button id="todo-tab-group" onclick="setTodoTab('group')" class="flex-1 py-1.5 rounded-lg text-xs font-bold bg-[#3b4d43] text-white">👥 團體</button>
                     <button id="todo-tab-mine" onclick="setTodoTab('mine')" class="flex-1 py-1.5 rounded-lg text-xs font-bold bg-gray-100 text-gray-600">🔒 我的</button>
                 </div>
+                <div id="todo-sort-bar" class="hidden flex justify-end mb-2">
+                    <button id="todo-sink-btn" type="button" onclick="toggleTodoSink()" class="px-3 py-1 rounded-full text-[11px] font-bold border border-gray-200 bg-white text-gray-500">⬇️ 已完成沉底：關</button>
+                </div>
                 <div id="todo-list-container" class="space-y-2">
                     <p class="text-xs text-gray-400 text-center py-4">正在載入清單...</p>
                 </div>
@@ -953,6 +956,11 @@
                     <span class="text-xs opacity-80 mt-2 block">行程及餐食將會視情況（如季節、預約狀況、觀光地區休假及住宿飯店地點）而有所調整。</span>
                     <span class="text-xs opacity-60 mt-1 block">天氣資料：Open-Meteo.com</span>
                 </p>
+            </div>
+
+            <div id="more-sync" class="hidden card px-5 py-3 border-t-4 border-[#3b4d43] flex justify-between items-center">
+                <span class="text-sm font-bold">☁️ 連線狀態</span>
+                <span id="more-sync-status" class="text-xs font-medium text-emerald-700">載入中...</span>
             </div>
 
             <div id="roster-card" class="hidden card p-5 border-t-4 border-[#3b4d43]">
@@ -1458,7 +1466,8 @@
         let currentUserUid = '';
         let lastMapSpots = null;
         let lastTodos = null, lastNotes = null, lastRoutes = null, lastDayPhotos = null;
-        let todoTab = 'group', listKind = 'todo', todoBindKey = '', todoBindRefs = [];
+        let todoTab = 'group', listKind = 'todo', todoBindKey = '', todoBindRefs = [], todoSink = false;
+        try { todoSink = localStorage.getItem('todoSink') === '1'; } catch (e) { }
         const LISTS = {
             todo: { pub: 'todos', done: 'todo_done', mine: 'todos_personal', word: '待辦', empty: '目前沒有待辦事項。', emptyMine: '你還沒有個人待辦。' },
             buy: { pub: 'buys', done: 'buy_done', mine: 'buys_personal', word: '必買', empty: '目前沒有必買項目。', emptyMine: '你還沒有個人必買。' }
@@ -1942,6 +1951,7 @@
             document.getElementById('login-admin-item').classList.toggle('hidden', !!adminUser);
             document.getElementById('login-member-item').classList.toggle('hidden', isMember);
             document.getElementById('roster-card').classList.toggle('hidden', !(adminUser || isMember));
+            document.getElementById('more-sync').classList.toggle('hidden', !(adminUser || isMember));
             document.getElementById('login-menu').classList.add('hidden');
             document.getElementById('edit-menu').classList.add('hidden');
             document.getElementById('member-menu').classList.add('hidden'); document.getElementById('edit-controls').classList.toggle('hidden', !adminUser);
@@ -2293,7 +2303,7 @@
             if (!opts.skipScrollTop) window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        const LEDGER_V = '11';
+        const LEDGER_V = '12';
         let ledgerLoading = null;
         const loadScript = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
         function openLedger() {
@@ -2647,9 +2657,13 @@
         db.ref('.info/connected').on('value', (snap) => {
             fbOnline = snap.val() === true;
             updateOfflineBar();
-            const statusEl = document.getElementById('sync-status');
-            if (!statusEl) return;
-            statusEl.textContent = snap.val() === true ? '已連線' : '連線中斷，重新連線中...';
+            const txt = snap.val() === true ? '已連線' : '連線中斷，重新連線中...', ok = snap.val() === true;
+            ['sync-status', 'more-sync-status'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.textContent = txt;
+                if (id === 'more-sync-status') el.className = 'text-xs font-medium ' + (ok ? 'text-emerald-700' : 'text-amber-600');
+            });
         });
 
         // ---------- 住宿（map_spots，以 id 為 key；type: lodging） ----------
@@ -3809,10 +3823,10 @@
             try { localStorage.setItem('hintsDone', JSON.stringify(hintsDone)); } catch (e) { }
             refreshHints();
         };
-        const TOUR_V = '8';
+        const TOUR_V = '9';
         window.tourOpen = function () {
             document.getElementById('tour-prompt').classList.add('hidden');
-            (window.TOUR ? Promise.resolve() : loadScript('tutorial.js?v=' + TOUR_V)).then(() => TOUR.start({ admin: isEditor })).catch(() => { });
+            (window.TOUR ? Promise.resolve() : loadScript('tutorial.js?v=' + TOUR_V)).then(() => TOUR.start({ canAdmin: !!adminUser, isRead: readMode, setRead: setReadMode })).catch(() => { });
         };
         window.tourPromptGo = function (go) {
             document.getElementById('tour-prompt').classList.add('hidden');
@@ -3890,15 +3904,22 @@
             updateTodoChrome();
             const cfg = LISTS[listKind], d = LD[listKind];
             const ok = canTodo(), mine = ok && todoTab === 'mine';
-            const entries = Object.entries(mine ? d.mine : d.pub);
-            if (!entries.length) { box.innerHTML = `<p class="text-xs text-gray-400 text-center py-4">${mine ? cfg.emptyMine : cfg.empty}</p>`; return; }
+            const isDone = (id, it) => mine ? !!it.done : !!d.done[id];
+            const entries = todoOrdered(Object.entries(mine ? d.mine : d.pub), isDone);
+            const sortable = canSortTodo();
+            document.getElementById('todo-sort-bar').classList.toggle('hidden', !ok);
+            const sinkBtn = document.getElementById('todo-sink-btn');
+            sinkBtn.textContent = '⬇️ 已完成沉底：' + (todoSink ? '開' : '關');
+            sinkBtn.className = 'px-3 py-1 rounded-full text-[11px] font-bold border ' + (todoSink ? 'border-[#3b4d43] bg-[#3b4d43] text-white' : 'border-gray-200 bg-white text-gray-500');
+            if (!entries.length) { box.innerHTML = `<p class="text-xs text-gray-400 text-center py-4">${mine ? cfg.emptyMine : cfg.empty}</p>`; todoSortSetup(); return; }
             box.innerHTML = entries.map(([id, it], idx) => {
-                const done = mine ? !!it.done : !!d.done[id];
+                const done = isDone(id, it);
                 const canEdit = mine || isEditor || (!!it.uid && it.uid === currentUserUid);
                 const by = !mine && it.author ? `<span class="block text-[10px] text-gray-400">${escapeHtml(it.author)}</span>` : '';
                 return `
-            <div class="flex items-center justify-between p-2.5 bg-[#f7f6f2] rounded-lg border border-gray-200">
+            <div data-id="${id}" class="flex items-center justify-between p-2.5 bg-[#f7f6f2] rounded-lg border border-gray-200">
                 <label class="flex items-center gap-2.5 text-sm flex-1 ${ok ? 'cursor-pointer' : 'cursor-default'}">
+                    ${sortable ? '<span class="drag-handle" onclick="event.preventDefault();event.stopPropagation()">≡</span>' : ''}
                     <span class="step-num">${idx + 1}</span>
                     ${ok ? `<input type="checkbox" ${done ? 'checked' : ''} onchange="toggleTodo('${id}')" class="w-4 h-4 accent-[#3b4d43]">` : ''}
                     <span><span class="${done ? 'todo-done' : 'text-gray-700'}">${escapeHtml(it.text)}</span>${by}</span>
@@ -3906,6 +3927,41 @@
                 ${canEdit ? `<div class="flex shrink-0"><button onclick="editTodo('${id}')" class="text-blue-500 hover:text-blue-700 p-1 text-xs">✏️</button><button onclick="deleteTodo('${id}')" class="text-red-400 hover:text-red-600 p-1 text-xs">🗑️</button></div>` : ''}
             </div>`;
             }).join('');
+            todoSortSetup();
+        }
+
+        window.toggleTodoSink = function () {
+            todoSink = !todoSink;
+            try { localStorage.setItem('todoSink', todoSink ? '1' : '0'); } catch (e) { }
+            renderTodos();
+        };
+        // 順序存在每筆的 o 欄位；沒有 o 的（舊資料、新增的）依新增順序排在後面
+        function todoOrdered(entries, isDone) {
+            const hasO = (it) => typeof it.o === 'number';
+            const list = entries.map(([id, it], i) => ({ e: [id, it], i }));
+            list.sort((a, b) => (hasO(a.e[1]) ? 0 : 1) - (hasO(b.e[1]) ? 0 : 1) || (hasO(a.e[1]) ? a.e[1].o - b.e[1].o : a.i - b.i));
+            if (todoSink) list.sort((a, b) => (isDone(...a.e) ? 1 : 0) - (isDone(...b.e) ? 1 : 0));
+            return list.map((x) => x.e);
+        }
+        // 團體清單僅管理員（編輯模式）可排序，「我的」清單自己排；沉底開啟時不可拖曳
+        function canSortTodo() { return !todoSink && canTodo() && (todoTab === 'mine' || isEditor); }
+        function todoSortSetup() {
+            const box = document.getElementById('todo-list-container');
+            if (!box || (!box._sortable && !canSortTodo())) return;
+            loadSortable().then(() => {
+                if (!box._sortable) box._sortable = Sortable.create(box, { handle: '.drag-handle', animation: 150, delay: 500, delayOnTouchOnly: true, touchStartThreshold: 5, forceFallback: true, scroll: false, onStart: () => dragScroll(true), onEnd: () => { dragScroll(false); onTodoDragEnd(); } });
+                box._sortable.option('disabled', !canSortTodo());
+            }).catch(() => { });
+        }
+        function onTodoDragEnd() {
+            const cfg = LISTS[listKind], d = LD[listKind], mine = todoTab === 'mine';
+            if (!canSortTodo()) return renderTodos();
+            if (isOffline()) { offlineAlert(); return renderTodos(); }
+            const cur = mine ? d.mine : d.pub, upd = {};
+            [...document.querySelectorAll('#todo-list-container [data-id]')].forEach((el, i) => { const it = cur[el.dataset.id]; if (it && it.o !== i) upd[el.dataset.id + '/o'] = i; });
+            if (!Object.keys(upd).length) return;
+            (mine ? createDb().ref(cfg.mine + '/' + currentUserUid) : manageDb().ref(cfg.pub)).update(upd)
+                .catch((e) => { alert('排序儲存失敗：' + e.message); renderTodos(); });
         }
 
         window.toggleTodo = function (id) {
@@ -4528,8 +4584,7 @@
             if (on) DS.raf = requestAnimationFrame(dragLoop);
         }
         let sortableReady = null;
-        function ensureSortable() {
-            if (!isEditor) return;
+        function loadSortable() {
             if (!sortableReady) sortableReady = new Promise((res, rej) => {
                 const sc = document.createElement('script');
                 sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js';
@@ -4537,7 +4592,11 @@
                 sc.onerror = () => { sortableReady = null; rej(); };
                 document.head.appendChild(sc);
             });
-            sortableReady.then(() => ROUTE_DAYS.forEach(day => {
+            return sortableReady;
+        }
+        function ensureSortable() {
+            if (!isEditor) return;
+            loadSortable().then(() => ROUTE_DAYS.forEach(day => {
                 const el = document.getElementById('route-list-' + day);
                 if (!el || el._sortable) return;
                 el._sortable = Sortable.create(el, { handle: '.drag-handle', animation: 150, delay: 500, delayOnTouchOnly: true, touchStartThreshold: 5, forceFallback: true, scroll: false, onStart: () => dragScroll(true), onEnd: (e) => { dragScroll(false); onRouteDragEnd(day, e); } });
