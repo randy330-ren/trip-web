@@ -1144,6 +1144,10 @@
         <div class="max-w-md w-full">
             <img id="lightbox-img" src="" class="w-full rounded-lg object-contain" style="max-height:calc(100vh - 13rem);max-height:calc(100dvh - 13rem)">
             <p id="lightbox-caption" class="text-white text-xs text-center mt-2 whitespace-pre-line"></p>
+            <p id="lightbox-hint" class="hidden text-amber-300 text-[11px] text-center mt-1"></p>
+            <div id="lightbox-retry-wrap" class="hidden justify-center mt-1">
+                <button onclick="lightboxRetry()" class="bg-white/20 text-white px-3 py-1 rounded-full text-[11px]">🔄 重新載入原圖</button>
+            </div>
             <div class="flex items-center justify-center gap-3 mt-3">
                 <button onclick="lightboxStep(-1)" class="bg-white/20 text-white px-4 py-1.5 rounded-full text-xs">‹</button>
                 <button onclick="closeLightbox()" class="bg-white/20 text-white px-4 py-1.5 rounded-full text-xs">關閉</button>
@@ -4861,17 +4865,24 @@
             if (!container) return;
             const entries = Object.entries(photos);
             const addTile = (adminUser || isMember) ? `<button onclick="pickDayPhoto('${day}')" class="ph-add" aria-label="新增圖片">＋</button>` : '';
-            if (entries.length === 0) { container.innerHTML = addTile || '<p class="text-[10px] text-gray-400">尚無圖片。</p>'; return; }
-            lightboxGroups['dp_' + day] = entries.map(([id, p]) => ({ id, uid: p.uid || '', type: 'photo', day, url: p.url, caption: p.caption || '', author: p.author || '' }));
+            if (entries.length === 0) { delete lightboxGroups['dp_' + day]; container.innerHTML = addTile || '<p class="text-[10px] text-gray-400">尚無圖片。</p>'; return; }
+            lightboxGroups['dp_' + day] = entries.map(([id, p]) => ({ id, uid: p.uid || '', type: 'photo', day, url: p.url, thumb: p.thumb || '', caption: p.caption || '', author: p.author || '' }));
             container.innerHTML = entries.map(([id, p], i) => `
             <div class="shrink-0 w-20">
-                <img src="${escapeHtml(p.thumb || p.url)}" loading="lazy" class="w-20 h-20 object-cover rounded-lg cursor-pointer border border-gray-200"
+                <img src="${escapeHtml(p.thumb || p.url)}" data-full="${escapeHtml(p.url || '')}" loading="lazy" class="w-20 h-20 object-cover rounded-lg cursor-pointer border border-gray-200"
                      onclick="openLightbox('dp_${day}', ${i})"
-                     onerror="this.style.display='none'">
+                     onerror="dayThumbFallback(this)">
                 <p class="text-[9px] text-gray-500 mt-0.5 truncate" title="${escapeHtml(p.caption || '')}">${escapeHtml(p.caption || '')}</p>
             </div>
         `).join('') + addTile;
         }
+
+        window.dayThumbFallback = function (img) {
+            const full = img.dataset.full || '';
+            if (full && !img.dataset.fb) { img.dataset.fb = '1'; img.src = full; return; }
+            img.onerror = null;
+            if (img.parentElement) img.parentElement.style.display = 'none';
+        };
 
         document.getElementById('photo-upload-input').addEventListener('change', async (e) => {
             const file = e.target.files[0];
@@ -4903,15 +4914,69 @@
             }
         });
 
-        let lbList = [], lbIdx = 0, lbOpen = false, lbX = null;
-        function showLightbox() {
+        // imgbb 被流量限制時回傳 HTTP 503 + 一張 180x180 的「service unavailable」占位圖，
+        // 且它是合法圖片（onload 會觸發、onerror 不會），只能靠尺寸辨識。
+        // 真實原圖上傳前已被 resizeImage 縮到最長邊 1600，不會是 180x180。
+        const LB_DEAD_PX = 180;
+        let lbList = [], lbIdx = 0, lbOpen = false, lbX = null, lbToken = 0, lbRetryTimer = null;
+
+        function lbHint(text, showRetry) {
+            const h = document.getElementById('lightbox-hint');
+            h.textContent = text || '';
+            h.classList.toggle('hidden', !text);
+            document.getElementById('lightbox-retry-wrap').classList.toggle('hidden', !showRetry);
+            document.getElementById('lightbox-retry-wrap').classList.toggle('flex', !!showRetry);
+        }
+
+        function lbLoadFull(it, token, attempt) {
+            const full = new Image();
+            full.onload = () => {
+                if (lbToken !== token) return;
+                if (full.naturalWidth === LB_DEAD_PX && full.naturalHeight === LB_DEAD_PX) {
+                    if (attempt < 1) {
+                        lbHint('原圖載入中…', false);
+                        lbRetryTimer = setTimeout(() => { if (lbToken === token) lbLoadFull(it, token, attempt + 1); }, 2000);
+                    } else {
+                        lbHint('⚠️ imgbb 流量限制，目前只能顯示縮圖', true);
+                    }
+                    return;
+                }
+                document.getElementById('lightbox-img').src = it.url;
+                lbHint('', false);
+            };
+            full.onerror = () => {
+                if (lbToken !== token) return;
+                lbHint('⚠️ 原圖讀取失敗，已顯示縮圖', true);
+            };
+            full.src = it.url;
+        }
+
+        window.lightboxRetry = function () {
+            const it = lbList[lbIdx];
+            if (!it || !it.url) return;
+            clearTimeout(lbRetryTimer);
+            lbHint('原圖載入中…', false);
+            lbLoadFull(it, lbToken, 0);
+        };
+
+        function showLightbox(keepImg) {
             const it = lbList[lbIdx];
             if (!it) return;
-            document.getElementById('lightbox-img').src = it.url;
             const meta = [it.author ? '📷 ' + it.author : '', lbList.length > 1 ? `${lbIdx + 1}/${lbList.length}` : ''].filter(Boolean).join('　');
             document.getElementById('lightbox-caption').textContent = [it.caption, meta].filter(Boolean).join('\n');
             document.getElementById('lightbox-owner').classList.toggle('hidden', !(isEditor || (currentUserUid && it.uid === currentUserUid)));
-            [lbIdx - 1, lbIdx + 1].forEach(i => { if (lbList[i]) new Image().src = lbList[i].url; });
+            if (keepImg) return;
+
+            const img = document.getElementById('lightbox-img');
+            const token = ++lbToken;
+            const small = it.thumb || it.url || '';
+            clearTimeout(lbRetryTimer);
+            lbHint('', false);
+
+            img.removeAttribute('src');
+            if (small) img.src = small;
+            if (it.url && it.url !== small) lbLoadFull(it, token, 0);
+            [lbIdx - 1, lbIdx + 1].forEach(i => { const n = lbList[i]; if (n) new Image().src = n.thumb || n.url; });
         }
         window.openLightbox = function (key, i) {
             lbList = lightboxGroups[key] || [];
@@ -4928,6 +4993,10 @@
             showLightbox();
         };
         window.closeLightbox = function () {
+            lbToken++;
+            clearTimeout(lbRetryTimer);
+            lbHint('', false);
+            document.getElementById('lightbox-img').removeAttribute('src');
             document.getElementById('lightbox-modal').classList.add('hidden');
             if (lbOpen) { lbOpen = false; unlockScroll(); }
         };
@@ -4939,7 +5008,7 @@
             try { await lbRef(it).update({ caption: r.caption || '' }); }
             catch (e) { alert('儲存失敗：' + (e.code === 'PERMISSION_DENIED' ? '這張是舊照片，請刪除後重新上傳。' : e.message)); return; }
             it.caption = r.caption || '';
-            showLightbox();
+            showLightbox(true);
         };
         window.lightboxDelete = function () {
             const it = lbList[lbIdx];
@@ -4961,6 +5030,7 @@
                 else if (e.key === 'ArrowRight') lightboxStep(1);
                 else if (e.key === 'Escape') closeLightbox();
             });
+
         })();
 
         // ---------- 全螢幕 ----------
