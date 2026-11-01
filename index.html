@@ -1144,6 +1144,10 @@
         <div class="max-w-md w-full">
             <img id="lightbox-img" src="" class="w-full rounded-lg object-contain" style="max-height:calc(100vh - 13rem);max-height:calc(100dvh - 13rem)">
             <p id="lightbox-caption" class="text-white text-xs text-center mt-2 whitespace-pre-line"></p>
+            <p id="lightbox-hint" class="hidden text-amber-300 text-[11px] text-center mt-1"></p>
+            <div id="lightbox-retry-wrap" class="hidden justify-center mt-1">
+                <button onclick="lightboxRetry()" class="bg-white/20 text-white px-3 py-1 rounded-full text-[11px]">🔄 重新載入原圖</button>
+            </div>
             <div class="flex items-center justify-center gap-3 mt-3">
                 <button onclick="lightboxStep(-1)" class="bg-white/20 text-white px-4 py-1.5 rounded-full text-xs">‹</button>
                 <button onclick="closeLightbox()" class="bg-white/20 text-white px-4 py-1.5 rounded-full text-xs">關閉</button>
@@ -4910,7 +4914,51 @@
             }
         });
 
-        let lbList = [], lbIdx = 0, lbOpen = false, lbX = null, lbToken = 0, lbDiag = null;
+        // imgbb 被流量限制時回傳 HTTP 503 + 一張 180x180 的「service unavailable」占位圖，
+        // 且它是合法圖片（onload 會觸發、onerror 不會），只能靠尺寸辨識。
+        // 真實原圖上傳前已被 resizeImage 縮到最長邊 1600，不會是 180x180。
+        const LB_DEAD_PX = 180;
+        let lbList = [], lbIdx = 0, lbOpen = false, lbX = null, lbToken = 0, lbRetryTimer = null;
+
+        function lbHint(text, showRetry) {
+            const h = document.getElementById('lightbox-hint');
+            h.textContent = text || '';
+            h.classList.toggle('hidden', !text);
+            document.getElementById('lightbox-retry-wrap').classList.toggle('hidden', !showRetry);
+            document.getElementById('lightbox-retry-wrap').classList.toggle('flex', !!showRetry);
+        }
+
+        function lbLoadFull(it, token, attempt) {
+            const full = new Image();
+            full.onload = () => {
+                if (lbToken !== token) return;
+                if (full.naturalWidth === LB_DEAD_PX && full.naturalHeight === LB_DEAD_PX) {
+                    if (attempt < 1) {
+                        lbHint('原圖載入中…', false);
+                        lbRetryTimer = setTimeout(() => { if (lbToken === token) lbLoadFull(it, token, attempt + 1); }, 2000);
+                    } else {
+                        lbHint('⚠️ imgbb 流量限制，目前只能顯示縮圖', true);
+                    }
+                    return;
+                }
+                document.getElementById('lightbox-img').src = it.url;
+                lbHint('', false);
+            };
+            full.onerror = () => {
+                if (lbToken !== token) return;
+                lbHint('⚠️ 原圖讀取失敗，已顯示縮圖', true);
+            };
+            full.src = it.url;
+        }
+
+        window.lightboxRetry = function () {
+            const it = lbList[lbIdx];
+            if (!it || !it.url) return;
+            clearTimeout(lbRetryTimer);
+            lbHint('原圖載入中…', false);
+            lbLoadFull(it, lbToken, 0);
+        };
+
         function showLightbox(keepImg) {
             const it = lbList[lbIdx];
             if (!it) return;
@@ -4922,25 +4970,12 @@
             const img = document.getElementById('lightbox-img');
             const token = ++lbToken;
             const small = it.thumb || it.url || '';
-            lbDiag = { token, small, full: it.url || '', sw: 0, sh: 0, fw: 0, fh: 0, state: small ? '小圖載入中' : '無圖片網址' };
+            clearTimeout(lbRetryTimer);
+            lbHint('', false);
 
             img.removeAttribute('src');
-            if (small) {
-                img.src = small;
-                const s = new Image();
-                s.onload = () => { if (lbDiag && lbDiag.token === token) { lbDiag.sw = s.naturalWidth; lbDiag.sh = s.naturalHeight; if (lbDiag.state === '小圖載入中') lbDiag.state = '顯示小圖'; } };
-                s.onerror = () => { if (lbDiag && lbDiag.token === token) lbDiag.state = '小圖載入失敗'; };
-                s.src = small;
-            }
-            if (it.url && it.url !== small) {
-                const full = new Image();
-                full.onload = () => {
-                    if (lbDiag && lbDiag.token === token) { lbDiag.fw = full.naturalWidth; lbDiag.fh = full.naturalHeight; lbDiag.state = '已換上原圖'; }
-                    if (lbToken === token) img.src = it.url;
-                };
-                full.onerror = () => { if (lbDiag && lbDiag.token === token) lbDiag.state = '原圖載入失敗，保留小圖'; };
-                full.src = it.url;
-            }
+            if (small) img.src = small;
+            if (it.url && it.url !== small) lbLoadFull(it, token, 0);
             [lbIdx - 1, lbIdx + 1].forEach(i => { const n = lbList[i]; if (n) new Image().src = n.thumb || n.url; });
         }
         window.openLightbox = function (key, i) {
@@ -4959,7 +4994,8 @@
         };
         window.closeLightbox = function () {
             lbToken++;
-            lbDiag = null;
+            clearTimeout(lbRetryTimer);
+            lbHint('', false);
             document.getElementById('lightbox-img').removeAttribute('src');
             document.getElementById('lightbox-modal').classList.add('hidden');
             if (lbOpen) { lbOpen = false; unlockScroll(); }
@@ -4995,21 +5031,6 @@
                 else if (e.key === 'Escape') closeLightbox();
             });
 
-            // === 暫時診斷：長按大圖顯示尺寸（確認 imgbb 占位圖後移除） ===
-            const dbgImg = document.getElementById('lightbox-img');
-            let dbgTimer = null, dbgBusy = false;
-            const dbgFire = () => {
-                if (dbgBusy) return;
-                dbgBusy = true;
-                const d = lbDiag;
-                alert(d
-                    ? `【圖片診斷】\n狀態：${d.state}\n小圖：${d.sw}×${d.sh}\n原圖：${d.fw}×${d.fh}\n\n小圖網址：\n${d.small}\n\n原圖網址：\n${d.full}`
-                    : '尚無診斷資料');
-                setTimeout(() => { dbgBusy = false; }, 600);
-            };
-            dbgImg.addEventListener('contextmenu', (e) => { e.preventDefault(); dbgFire(); });
-            dbgImg.addEventListener('touchstart', () => { clearTimeout(dbgTimer); dbgTimer = setTimeout(dbgFire, 2000); }, { passive: true });
-            ['touchend', 'touchmove', 'touchcancel'].forEach(ev => dbgImg.addEventListener(ev, () => clearTimeout(dbgTimer), { passive: true }));
         })();
 
         // ---------- 全螢幕 ----------
