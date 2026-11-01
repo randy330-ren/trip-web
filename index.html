@@ -4861,17 +4861,24 @@
             if (!container) return;
             const entries = Object.entries(photos);
             const addTile = (adminUser || isMember) ? `<button onclick="pickDayPhoto('${day}')" class="ph-add" aria-label="新增圖片">＋</button>` : '';
-            if (entries.length === 0) { container.innerHTML = addTile || '<p class="text-[10px] text-gray-400">尚無圖片。</p>'; return; }
-            lightboxGroups['dp_' + day] = entries.map(([id, p]) => ({ id, uid: p.uid || '', type: 'photo', day, url: p.url, caption: p.caption || '', author: p.author || '' }));
+            if (entries.length === 0) { delete lightboxGroups['dp_' + day]; container.innerHTML = addTile || '<p class="text-[10px] text-gray-400">尚無圖片。</p>'; return; }
+            lightboxGroups['dp_' + day] = entries.map(([id, p]) => ({ id, uid: p.uid || '', type: 'photo', day, url: p.url, thumb: p.thumb || '', caption: p.caption || '', author: p.author || '' }));
             container.innerHTML = entries.map(([id, p], i) => `
             <div class="shrink-0 w-20">
-                <img src="${escapeHtml(p.thumb || p.url)}" loading="lazy" class="w-20 h-20 object-cover rounded-lg cursor-pointer border border-gray-200"
+                <img src="${escapeHtml(p.thumb || p.url)}" data-full="${escapeHtml(p.url || '')}" loading="lazy" class="w-20 h-20 object-cover rounded-lg cursor-pointer border border-gray-200"
                      onclick="openLightbox('dp_${day}', ${i})"
-                     onerror="this.style.display='none'">
+                     onerror="dayThumbFallback(this)">
                 <p class="text-[9px] text-gray-500 mt-0.5 truncate" title="${escapeHtml(p.caption || '')}">${escapeHtml(p.caption || '')}</p>
             </div>
         `).join('') + addTile;
         }
+
+        window.dayThumbFallback = function (img) {
+            const full = img.dataset.full || '';
+            if (full && !img.dataset.fb) { img.dataset.fb = '1'; img.src = full; return; }
+            img.onerror = null;
+            if (img.parentElement) img.parentElement.style.display = 'none';
+        };
 
         document.getElementById('photo-upload-input').addEventListener('change', async (e) => {
             const file = e.target.files[0];
@@ -4903,15 +4910,38 @@
             }
         });
 
-        let lbList = [], lbIdx = 0, lbOpen = false, lbX = null;
-        function showLightbox() {
+        let lbList = [], lbIdx = 0, lbOpen = false, lbX = null, lbToken = 0, lbDiag = null;
+        function showLightbox(keepImg) {
             const it = lbList[lbIdx];
             if (!it) return;
-            document.getElementById('lightbox-img').src = it.url;
             const meta = [it.author ? '📷 ' + it.author : '', lbList.length > 1 ? `${lbIdx + 1}/${lbList.length}` : ''].filter(Boolean).join('　');
             document.getElementById('lightbox-caption').textContent = [it.caption, meta].filter(Boolean).join('\n');
             document.getElementById('lightbox-owner').classList.toggle('hidden', !(isEditor || (currentUserUid && it.uid === currentUserUid)));
-            [lbIdx - 1, lbIdx + 1].forEach(i => { if (lbList[i]) new Image().src = lbList[i].url; });
+            if (keepImg) return;
+
+            const img = document.getElementById('lightbox-img');
+            const token = ++lbToken;
+            const small = it.thumb || it.url || '';
+            lbDiag = { token, small, full: it.url || '', sw: 0, sh: 0, fw: 0, fh: 0, state: small ? '小圖載入中' : '無圖片網址' };
+
+            img.removeAttribute('src');
+            if (small) {
+                img.src = small;
+                const s = new Image();
+                s.onload = () => { if (lbDiag && lbDiag.token === token) { lbDiag.sw = s.naturalWidth; lbDiag.sh = s.naturalHeight; if (lbDiag.state === '小圖載入中') lbDiag.state = '顯示小圖'; } };
+                s.onerror = () => { if (lbDiag && lbDiag.token === token) lbDiag.state = '小圖載入失敗'; };
+                s.src = small;
+            }
+            if (it.url && it.url !== small) {
+                const full = new Image();
+                full.onload = () => {
+                    if (lbDiag && lbDiag.token === token) { lbDiag.fw = full.naturalWidth; lbDiag.fh = full.naturalHeight; lbDiag.state = '已換上原圖'; }
+                    if (lbToken === token) img.src = it.url;
+                };
+                full.onerror = () => { if (lbDiag && lbDiag.token === token) lbDiag.state = '原圖載入失敗，保留小圖'; };
+                full.src = it.url;
+            }
+            [lbIdx - 1, lbIdx + 1].forEach(i => { const n = lbList[i]; if (n) new Image().src = n.thumb || n.url; });
         }
         window.openLightbox = function (key, i) {
             lbList = lightboxGroups[key] || [];
@@ -4928,6 +4958,9 @@
             showLightbox();
         };
         window.closeLightbox = function () {
+            lbToken++;
+            lbDiag = null;
+            document.getElementById('lightbox-img').removeAttribute('src');
             document.getElementById('lightbox-modal').classList.add('hidden');
             if (lbOpen) { lbOpen = false; unlockScroll(); }
         };
@@ -4939,7 +4972,7 @@
             try { await lbRef(it).update({ caption: r.caption || '' }); }
             catch (e) { alert('儲存失敗：' + (e.code === 'PERMISSION_DENIED' ? '這張是舊照片，請刪除後重新上傳。' : e.message)); return; }
             it.caption = r.caption || '';
-            showLightbox();
+            showLightbox(true);
         };
         window.lightboxDelete = function () {
             const it = lbList[lbIdx];
@@ -4961,6 +4994,22 @@
                 else if (e.key === 'ArrowRight') lightboxStep(1);
                 else if (e.key === 'Escape') closeLightbox();
             });
+
+            // === 暫時診斷：長按大圖顯示尺寸（確認 imgbb 占位圖後移除） ===
+            const dbgImg = document.getElementById('lightbox-img');
+            let dbgTimer = null, dbgBusy = false;
+            const dbgFire = () => {
+                if (dbgBusy) return;
+                dbgBusy = true;
+                const d = lbDiag;
+                alert(d
+                    ? `【圖片診斷】\n狀態：${d.state}\n小圖：${d.sw}×${d.sh}\n原圖：${d.fw}×${d.fh}\n\n小圖網址：\n${d.small}\n\n原圖網址：\n${d.full}`
+                    : '尚無診斷資料');
+                setTimeout(() => { dbgBusy = false; }, 600);
+            };
+            dbgImg.addEventListener('contextmenu', (e) => { e.preventDefault(); dbgFire(); });
+            dbgImg.addEventListener('touchstart', () => { clearTimeout(dbgTimer); dbgTimer = setTimeout(dbgFire, 2000); }, { passive: true });
+            ['touchend', 'touchmove', 'touchcancel'].forEach(ev => dbgImg.addEventListener(ev, () => clearTimeout(dbgTimer), { passive: true }));
         })();
 
         // ---------- 全螢幕 ----------
