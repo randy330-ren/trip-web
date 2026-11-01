@@ -2977,8 +2977,27 @@
         geoRef.on('value', (snap) => {
             lastGeo = snap.val() || {};
             cacheSave('geo', lastGeo);
+            purgeGenericGeo();
             mpRefresh();
         });
+
+        // 「午餐」「晚餐」「待確定」這類通用詞永遠不該有座標節點。
+        // 若其他分頁／裝置還跑著舊版（或 PWA 讀到舊快取），會把它們寫回來，這裡看到就清掉。
+        let genericPurges = 0, genericWarned = false;
+        function purgeGenericGeo() {
+            if (!isEditor || isOffline() || !lastGeo) return;
+            const up = {};
+            Object.keys(lastGeo).forEach(g => { if (isGenericName(g)) up[`geo/${g}`] = null; });
+            const n = Object.keys(up).length;
+            if (!n) return;
+            if (genericPurges >= 20) return;   // 對方一直寫就停手，避免無限互相覆寫
+            genericPurges += n;
+            adminDb.ref().update(up).catch(() => { });
+            if (genericPurges >= 4 && !genericWarned) {
+                genericWarned = true;
+                alert('偵測到有其他分頁、手機或桌面捷徑還在跑舊版，正不斷把「午餐」「晚餐」這類無效座標寫回資料庫。\n\n請把其他開著本網站的分頁和裝置全部關閉並重新整理，就不會再出現了。');
+            }
+        }
 
         function mpEntries() {
             const out = [];
