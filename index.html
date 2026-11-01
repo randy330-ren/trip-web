@@ -2907,7 +2907,7 @@
         const up = { ...extra };
         if (c.id) Object.entries(data).forEach(([k, v]) => { up[`map_spots/${id}/${k}`] = v; });
         else up[`map_spots/${id}`] = data;
-        if (c.geo) { const gk = gkey(title); if (gk) up[`geo/${gk}`] = { lat: c.geo.lat, lng: c.geo.lng, src: 'pin', ts: Date.now() }; }
+        if (c.geo) { const gk = geoKeyOf(title); if (gk) up[`geo/${gk}`] = { lat: c.geo.lat, lng: c.geo.lng, src: 'pin', ts: Date.now() }; }
         else if (c.spot) carryGeo(c.spot.title, title, up);
         if (c.geo) mpFocusAfter('s:' + id);
         adminDb.ref().update(up).then(closeSpotModal).catch(e => alert('儲存失敗：' + e.message));
@@ -3670,6 +3670,7 @@
             const ll = d.m.getLatLng();
             const back = () => { d.m.setLatLng(d.orig); mpRefresh(); };
             if (!ok) { back(); return; }
+            if (!d.e.g) { alert('這個項目沒有實際的地點名稱，無法儲存位置。'); back(); return; }
             if (isOffline()) { offlineAlert(); back(); return; }
             const shared = MP.entries.filter(x => x.g === d.e.g && x.key !== d.e.key);
             if (shared.length && !confirm(`有 ${shared.length} 個地點共用這個座標，會一起移動：\n${shared.map(x => '・' + (x.src === 'route' ? `D${x.day} ` : '') + x.title).join('\n')}\n\n確定要移動嗎？`)) { back(); return; }
@@ -3712,16 +3713,34 @@
                 (orph.length ? `<button type="button" onclick="mpCleanGeo()" class="w-full text-left text-gray-400 py-1 mt-1">🧹 清理未使用的座標（${orph.length}）</button>` : '');
         }
         window.mpTogglePend = (k) => { MP[k] = !MP[k]; mpRenderAdmin(); };
-        window.mpCleanGeo = function () {
+        window.mpCleanGeo = async function () {
             if (!isEditor) return;
             if (isOffline()) { offlineAlert(); return; }
-            const orph = geoOrphanKeys(mpEntries());
+            // 資料還沒載齊就清理會把正在用的座標當成孤兒誤刪，一律先擋掉
+            if (!lastRoutes || !lastMapSpots || !lastGeo) { alert('行程資料還在載入中，請稍候再按一次。'); return; }
+            const es = mpEntries();
+            if (!es.length) { alert('行程資料還沒載入完成，為避免誤刪已中止。'); return; }
+            const orph = geoOrphanKeys(es);
             if (!orph.length) { mpToast('沒有需要清理的座標'); return; }
             const show = orph.slice(0, 15).map(g => '・' + g).join('\n') + (orph.length > 15 ? `\n…等共 ${orph.length} 筆` : '');
             if (!confirm(`以下座標已經沒有任何路線卡或住宿在使用，確定要清除嗎？\n（之後若再出現同名地點會重新查一次）\n\n${show}`)) return;
-            const up = {};
+            const up = {}, bad = [];
             orph.forEach(g => { up[`geo/${g}`] = null; });
-            adminDb.ref().update(up).then(() => mpToast(`已清除 ${orph.length} 筆未使用座標`)).catch(err => alert('清除失敗：' + err.message));
+            try {
+                await adminDb.ref().update(up);
+            } catch (err) {
+                // 整批被拒 → 逐筆刪，記下真正刪不掉的是哪幾個
+                for (const g of orph) {
+                    try { await geoRef.child(g).remove(); } catch (e2) { bad.push(`${g}（${e2.message}）`); }
+                }
+            }
+            let fresh = {};
+            try { fresh = (await geoRef.once('value')).val() || {}; } catch (e) { alert('清除後重新讀取失敗：' + e.message); return; }
+            const left = orph.filter(g => fresh[g] !== undefined && fresh[g] !== null);
+            if (!left.length && !bad.length) { mpToast(`已清除 ${orph.length} 筆未使用座標`); return; }
+            alert(`已清除 ${orph.length - left.length} 筆。\n\n以下 ${left.length} 筆清不掉或被立刻寫回，請把這段訊息整段回報給我：\n\n` +
+                left.map(g => `・${g} → ${JSON.stringify(fresh[g])}`).join('\n') +
+                (bad.length ? `\n\n寫入被拒：\n${bad.join('\n')}` : ''));
         };
         window.mpSetPlacing = async function (g) {
             if (!isEditor || !MP.map) return;
@@ -3766,6 +3785,7 @@
             return { cur: s.placeUrl || '', ups: { [`route_steps/${e.dayKey}/${e.id}/placeUrl`]: url } };
         }
         async function mpInputCoord(e) {
+            if (!e.g) { alert('「' + (e.name || e.title) + '」還沒有實際的地點名稱（例如「待確定」），請先填上標題或地點再設定座標。'); return; }
             const g0 = posOf(e), src0 = lastGeo[e.g] && lastGeo[e.g].src;
             const SRC = { url: '連結', osm: '自動搜尋', pin: '手動設定', drag: '手動設定' };
             const note = g0 ? `目前座標：${g0.lat.toFixed(5)}, ${g0.lng.toFixed(5)}\n來源：${SRC[src0] || '—'}` : '目前尚無座標';
@@ -4438,6 +4458,10 @@
         async function linkForCard(day, f, cur, allowBack) {
             const k = linkKind(f);
             if (!k) return { link: null, more: {} };
+            // 標題是「待確定」這類通用詞、又沒填地點，且本來就沒連結過 → 這餐還沒定，先不連結餐廳
+            const unset = k !== 'stay' && !String(f.place || '').trim() && isGenericName(f.title)
+                && !(cur && cur.link && cur.link.t === 'meal');
+            if (unset) return { link: null, more: {} };
             return k === 'stay' ? linkStay(day, f, cur, allowBack) : linkMeal(day, `${day}_${k}`, f, cur, allowBack);
         }
 
@@ -4460,7 +4484,7 @@
                 const L = resolveLink(day, s), ok = L && !L.need, cand = ok && L.cand;
                 const navUrl = ok ? L.url : (sanitizeUrl(s.placeUrl) || (s.place ? mapSearch(s.place) : ''));
                 const nav = navUrl ? `<a href="${escapeHtml(navUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="tl-place">📍 ${escapeHtml(ok ? L.name : (s.place || '開啟地圖'))}</a>` : '<span></span>';
-                const warn = isEditor && L && (L.need ? '⚠️ 尚未連結，請編輯此卡選擇連結對象' : L.warn ? '⚠️ 此卡不在住宿期間內' : '');
+                const warn = isEditor && L && (L.need ? (isGenericName(s.place || s.title) ? '' : '⚠️ 尚未連結，請編輯此卡選擇連結對象') : L.warn ? '⚠️ 此卡不在住宿期間內' : '');
                 const btns = isEditor ? `<span class="shrink-0">
                     <button onclick="event.stopPropagation();editRouteStep('${day}','${s.id}')" class="tl-btn">✏️</button>
                     <button onclick="event.stopPropagation();deleteRouteStep('${day}','${s.id}')" class="tl-btn">🗑️</button></span>` : '';
@@ -4496,7 +4520,13 @@
             if (v.type === '__food') return '請選擇哪一餐';
             if (!v.title) {
                 if (!(KINDS[v.type] && KINDS[v.type][3] === 'food')) return '請輸入標題';
-                if (!confirm('這張餐食卡還沒有標題。\n\n按「確定」＝先用「待確定」當標題\n按「取消」＝回去輸入標題')) return false;
+                const pick = await openChoiceModal({ title: `這張${KINDS[v.type][0]}卡還沒有標題`, options: [
+                    { label: '✏️ 回去輸入標題', value: 'edit' },
+                    { label: '⏳ 先用「待確定」', value: 'tbd' }
+                ]});
+                if (pick !== 'tbd') return false;
+                const el = document.getElementById('im-title');
+                if (el) el.value = '待確定';
                 return { title: '待確定' };
             }
             if (v.placeUrl && !/^https?:\/\//i.test(v.placeUrl)) return '請輸入有效的 http(s) 網址';
