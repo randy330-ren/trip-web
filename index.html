@@ -1185,8 +1185,7 @@
     </div>
 
     <!-- 圖片選項 Modal -->
-    <div id="photo-options-modal" class="hidden fixed inset-0 z-[62] flex items-center justify-center p-4"
-        onclick="if(event.target===this) closePhotoOptionsModal()">
+    <div id="photo-options-modal" class="hidden fixed inset-0 z-[62] flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl">
             <h3 id="photo-options-title" class="text-sm font-bold text-[#3b4d43] mb-3">圖片選項</h3>
             <div class="space-y-2">
@@ -1257,13 +1256,14 @@
         </div>
     </div>
     <!-- 通用輸入視窗 Modal -->
-    <div id="input-modal" class="hidden fixed inset-0 z-[75] flex items-center justify-center p-4"
-        onclick="if(event.target===this) closeInputModal()">
+    <div id="input-modal" class="hidden fixed inset-0 z-[75] flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl">
             <h3 id="input-modal-title" class="text-sm font-bold text-[#3b4d43] mb-3"></h3>
             <div id="input-modal-fields" class="space-y-2 mb-1"></div>
             <div class="flex gap-2 mt-3">
-                <button onclick="closeInputModal()"
+                <button id="input-modal-back" onclick="closeInputModal('__back')"
+                    class="hidden flex-1 bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold">← 上一步</button>
+                <button id="input-modal-cancel" onclick="inputCancel()"
                     class="flex-1 bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold">取消</button>
                 <button id="input-modal-submit"
                     class="flex-1 bg-[#3b4d43] text-white rounded-lg py-2 text-xs font-bold">確認</button>
@@ -1327,18 +1327,22 @@
     </div>
 
     <!-- 按鈕選單 Modal -->
-    <div id="choice-modal" class="hidden fixed inset-0 z-[67] flex items-center justify-center p-4"
-        style="background:rgba(0,0,0,0.45);" onclick="if(event.target===this) closeChoiceModal()">
+    <div id="choice-modal" class="hidden fixed inset-0 z-[80] flex items-center justify-center p-4"
+        style="background:rgba(0,0,0,0.45);">
         <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl max-h-[85vh] overflow-y-auto">
             <h3 id="choice-modal-title" class="text-sm font-bold text-[#3b4d43] mb-3"></h3>
             <div id="choice-modal-options" class="space-y-2"></div>
-            <button onclick="closeChoiceModal()"
-                class="w-full bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold mt-3">取消</button>
+            <div class="flex gap-2 mt-3">
+                <button id="choice-modal-back" onclick="closeChoiceModal('__back')"
+                    class="hidden flex-1 bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold">← 上一步</button>
+                <button id="choice-modal-cancel" onclick="closeChoiceModal()"
+                    class="flex-1 bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold">取消</button>
+            </div>
         </div>
     </div>
 
     <!-- 地圖長按新增 Modal -->
-    <div id="mp-add" class="hidden fixed inset-0 flex items-center justify-center p-4" onclick="if(event.target===this) mpAddCancel()">
+    <div id="mp-add" class="hidden fixed inset-0 flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl">
             <h3 class="text-sm font-bold text-[#3b4d43] mb-1">📌 在這裡新增地點</h3>
             <p id="mp-add-coord" class="text-[11px] text-gray-400 mb-3"></p>
@@ -1532,10 +1536,11 @@
         }
 
         // ---------- 通用輸入視窗 ----------
-        let inputModalResolve = null;
-        function openInputModal({ title, fields, submitLabel }) {
+        let inputModalResolve = null, IM = {};
+        function openInputModal({ title, fields, submitLabel, cancelLabel, backLabel, dirtyConfirm, validate }) {
             return new Promise((resolve) => {
                 inputModalResolve = resolve;
+                IM = { dirtyConfirm: dirtyConfirm || '', validate: validate || null, snap: null };
                 document.getElementById('input-modal-title').textContent = title;
                 const fieldsEl = document.getElementById('input-modal-fields');
                 fieldsEl.innerHTML = fields.map(f => f.type === 'note' ? `<div class="text-[11px] text-gray-600 bg-gray-50 rounded-lg px-3 py-2 whitespace-pre-line">${escapeHtml(f.text || '')}</div>`
@@ -1550,15 +1555,33 @@
                 ).join('');
                 fieldsEl.querySelectorAll('.cat-field').forEach(bindCatField);
                 document.getElementById('input-modal-submit').textContent = submitLabel || '確認';
+                document.getElementById('input-modal-cancel').textContent = cancelLabel || '取消';
+                const bk = document.getElementById('input-modal-back');
+                bk.classList.toggle('hidden', !backLabel);
+                if (backLabel) bk.textContent = backLabel;
                 lockScroll();
                 document.getElementById('input-modal').classList.remove('hidden');
+                IM.snap = imValues();
                 const firstInput = fieldsEl.querySelector('input,textarea');
                 if (firstInput) setTimeout(() => firstInput.focus(), 50);
             });
         }
-        const CAT_MAIN = [['', '自動'], ['none', '一般'], ['food', '餐食'], ['stay', '住宿'], ['spot', '景點'], ['station', '車站']];
+        function imValues() {
+            const v = {};
+            document.querySelectorAll('#input-modal-fields [id^="im-"]').forEach(el => { v[el.id.replace('im-', '')] = el.value.trim(); });
+            return v;
+        }
+        function imDirty() {
+            const a = IM.snap || {}, b = imValues();
+            return Object.keys(b).some(k => (a[k] || '') !== (b[k] || ''));
+        }
+        window.inputCancel = function () {
+            if (IM.dirtyConfirm && imDirty() && !confirm(IM.dirtyConfirm)) return;
+            closeInputModal();
+        };
+        const CAT_MAIN = [['none', '一般'], ['food', '餐食'], ['stay', '住宿'], ['spot', '景點'], ['station', '車站']];
         const CAT_FOOD = ['breakfast', 'lunch', 'dinner', 'snack', 'tea', 'night'];
-        const CAT_HINT = { '': '依標題自動判斷（含「早餐」「入住」等字）', none: '不加標籤', food: '請選擇哪一餐；儲存後會請你連結餐食頁的餐廳', stay: '儲存後會請你連結地圖頁的住宿', spot: '標籤點了會飛到行程地圖上的這個點', station: '標籤點了會飛到行程地圖上的這個點' };
+        const CAT_HINT = { none: '不加標籤', food: '請選擇哪一餐；會自動帶到餐食頁', stay: '儲存後會請你連結地圖頁的住宿', spot: '標籤點了會飛到行程地圖上的這個點', station: '標籤點了會飛到行程地圖上的這個點' };
         function catFieldHtml(key, v) {
             return `<div class="cat-field"><input type="hidden" id="im-${key}" value="${escapeHtml(v || '')}"><p class="text-[11px] text-gray-500 mb-1">分類</p><div class="cat-grid"></div><div class="cat-sub"></div><p class="cat-hint"></p></div>`;
         }
@@ -1573,7 +1596,7 @@
         }
         function bindCatField(root) {
             const inp = root.querySelector('input');
-            if (!CAT_MAIN.some(([k]) => k === inp.value) && !CAT_FOOD.includes(inp.value)) inp.value = '';
+            if (inp.value !== '__food' && !CAT_MAIN.some(([k]) => k === inp.value) && !CAT_FOOD.includes(inp.value)) inp.value = 'none';
             renderCatField(root);
             root.addEventListener('click', (ev) => {
                 const b = ev.target.closest('button[data-v]');
@@ -1585,13 +1608,22 @@
         }
         function closeInputModal(result) {
             document.getElementById('input-modal').classList.add('hidden');
+            IM = {};
             unlockScroll();
             if (inputModalResolve) { inputModalResolve(result || null); inputModalResolve = null; }
-        } document.getElementById('input-modal-submit').addEventListener('click', () => {
-            const values = {};
-            document.querySelectorAll('#input-modal-fields [id^="im-"]').forEach(el => {
-                values[el.id.replace('im-', '')] = el.value.trim();
-            });
+        }
+        document.getElementById('input-modal-submit').addEventListener('click', async () => {
+            const btn = document.getElementById('input-modal-submit');
+            if (btn.disabled) return;
+            const values = imValues();
+            if (IM.validate) {
+                btn.disabled = true;
+                let r;
+                try { r = await IM.validate(values); } finally { btn.disabled = false; }
+                if (r === false) return;
+                if (typeof r === 'string') { alert(r); return; }
+                if (r && typeof r === 'object') Object.assign(values, r);
+            }
             closeInputModal(values);
         });
 
@@ -1971,6 +2003,7 @@
             if (!adminUser && !isMember) idCollapse();
             bindMyTodos();
             document.getElementById('migrate-btn').classList.toggle('hidden', readMode || routeMigrated);
+            fixLegacyTypes();
             ensureSortable();
             document.getElementById('add-note-btn').classList.toggle('hidden', !isEditor);
             document.querySelectorAll('.add-route-btn').forEach(btn => btn.classList.toggle('hidden', !isEditor));
@@ -2087,9 +2120,12 @@
     }
 
     let choiceResolve = null;
-    function openChoiceModal({ title, options }) {
+    function openChoiceModal({ title, options, backLabel }) {
         return new Promise((resolve) => {
             choiceResolve = resolve;
+            const bk = document.getElementById('choice-modal-back');
+            bk.classList.toggle('hidden', !backLabel);
+            if (backLabel) bk.textContent = backLabel;
             document.getElementById('choice-modal-title').textContent = title;
             const box = document.getElementById('choice-modal-options');
             box.innerHTML = '';
@@ -2799,6 +2835,7 @@
                 if (!confirm(`確定要刪除「${spot.title}」嗎？` + (cards.length ? `\n\n以下路線卡也會一併刪除：\n${cards.map(s => `・D${s.day.slice(1)} ${s.title}`).join('\n')}` : ''))) return;
                 const up = { [`map_spots/${id}`]: null };
                 cards.forEach(s => { up[`route_steps/${s.day}/${s.id}`] = null; });
+                Object.assign(up, geoPruneUps([`s:${id}`, ...cards.map(s => `r:${s.day}:${s.id}`)]));
                 adminDb.ref().update(up).catch(e => alert('刪除失敗：' + e.message));
             });
         };
@@ -2931,7 +2968,7 @@
             return item.place || item.title || '';
         }
         function carryGeo(oldName, newName, more) {
-            const a = gkey(oldName), b = gkey(newName);
+            const a = geoKeyOf(oldName), b = geoKeyOf(newName);
             if (!a || !b || a === b || lastGeo[b]) return;
             const g = lastGeo[a];
             if (g && typeof g.lat === 'number' && (g.src === 'pin' || g.src === 'drag')) more[`geo/${b}`] = g;
@@ -2949,7 +2986,7 @@
                 const R = resolveLink(day, s), ok = R && !R.need;
                 const name = String((ok ? R.name : (s.place || s.title)) || '').trim();
                 out.push({
-                    key: `r:${day}:${s.id}`, src: 'route', day: di + 1, dayKey: day, id: s.id, order: i + 1, start: s.start, time: s.time, name, title: s.title, kind: kindOf(s), cand: !!(ok && R.cand), g: gkey(name),
+                    key: `r:${day}:${s.id}`, src: 'route', day: di + 1, dayKey: day, id: s.id, order: i + 1, start: s.start, time: s.time, name, title: s.title, kind: kindOf(s), cand: !!(ok && R.cand), g: geoKeyOf(name),
                     url: ok ? R.url : (sanitizeUrl(s.placeUrl) || mapSearch(s.place || s.title)), raw: ok ? R.raw : s.placeUrl, q: name
                 });
             }));
@@ -2958,13 +2995,27 @@
                 const name = String(sp.title || '').trim();
                 const day = a >= 1 && a <= dayMeta.length ? a : 0;
                 out.push({
-                    key: `s:${id}`, src: 'spot', day, span: [day, b || day], id, name, title: name, kind: spotType(sp), g: gkey(name),
+                    key: `s:${id}`, src: 'spot', day, span: [day, b || day], id, name, title: name, kind: spotType(sp), g: geoKeyOf(name),
                     url: sanitizeUrl(sp.customUrl) || mapSearch(sp.query || sp.title), raw: sp.customUrl, q: sp.query || sp.title
                 });
             });
             return out;
         }
 
+        // 傳入「即將消失的 entry key」，回傳可一併清除的 geo 節點（仍有其他卡在用的不動）
+        function geoPruneUps(goneKeys) {
+            const gone = new Set(goneKeys), dead = new Set(), live = new Set();
+            mpEntries().forEach(e => { if (e.g) (gone.has(e.key) ? dead : live).add(e.g); });
+            const up = {};
+            dead.forEach(g => { if (!live.has(g) && lastGeo[g]) up[`geo/${g}`] = null; });
+            return up;
+        }
+        // 目前沒有任何卡片或住宿在使用的 geo 節點
+        function geoOrphanKeys(entries) {
+            const live = new Set();
+            (entries || MP.entries || []).forEach(e => { if (e.g) live.add(e.g); });
+            return Object.keys(lastGeo || {}).filter(g => !live.has(g));
+        }
         function mpRefresh() {
             if (MP.rt) return;
             MP.rt = setTimeout(() => { MP.rt = null; mpRender(); }, 60);
@@ -3643,7 +3694,8 @@
             document.getElementById('mp-admin-tip').classList.toggle('hidden', !isEditor);
             if (!isEditor) { box.classList.add('hidden'); box.innerHTML = ''; return; }
             const { pend, skipped } = mpPendingLists();
-            box.classList.toggle('hidden', !pend.length && !skipped.length && !MP.gcBusy);
+            const orph = geoOrphanKeys();
+            box.classList.toggle('hidden', !pend.length && !skipped.length && !orph.length && !MP.gcBusy);
             const where = (e) => { if (e.src === 'route') return `D${e.day}` + (KINDS[e.kind] ? ' ' + KINDS[e.kind][0] : ''); const t = SPOT_TYPES[e.kind][0].slice(2).trim(); return e.day ? `D${e.day} ${t}` : t; };
             const row = (e, state, btns) => `
                 <div class="flex items-center gap-2 py-1.5 border-t border-gray-100">
@@ -3656,9 +3708,21 @@
                 (pend.length ? `<button type="button" onclick="mpTogglePend('pendOpen')" class="w-full flex justify-between items-center font-bold text-amber-700 py-1">⚠️ 座標待補（${pend.length}）<span>${MP.pendOpen ? '▲' : '▼'}</span></button>
                     ${MP.pendOpen ? pend.map(([e, g]) => row(e, g && g.fail ? '查不到' : '等待查詢', btn('mpSetPlacing', e.g, '📌 設定') + btn('mpSkip', e.g, '🚫 不顯示'))).join('') : ''}` : '') +
                 (skipped.length ? `<button type="button" onclick="mpTogglePend('skipOpen')" class="w-full flex justify-between items-center text-gray-400 py-1 mt-1">已設為不顯示（${skipped.length}）<span>${MP.skipOpen ? '▲' : '▼'}</span></button>
-                    ${MP.skipOpen ? skipped.map(e => row(e, '', btn('mpUnskip', e.g, '↩️ 恢復'))).join('') : ''}` : '');
+                    ${MP.skipOpen ? skipped.map(e => row(e, '', btn('mpUnskip', e.g, '↩️ 恢復'))).join('') : ''}` : '') +
+                (orph.length ? `<button type="button" onclick="mpCleanGeo()" class="w-full text-left text-gray-400 py-1 mt-1">🧹 清理未使用的座標（${orph.length}）</button>` : '');
         }
         window.mpTogglePend = (k) => { MP[k] = !MP[k]; mpRenderAdmin(); };
+        window.mpCleanGeo = function () {
+            if (!isEditor) return;
+            if (isOffline()) { offlineAlert(); return; }
+            const orph = geoOrphanKeys(mpEntries());
+            if (!orph.length) { mpToast('沒有需要清理的座標'); return; }
+            const show = orph.slice(0, 15).map(g => '・' + g).join('\n') + (orph.length > 15 ? `\n…等共 ${orph.length} 筆` : '');
+            if (!confirm(`以下座標已經沒有任何路線卡或住宿在使用，確定要清除嗎？\n（之後若再出現同名地點會重新查一次）\n\n${show}`)) return;
+            const up = {};
+            orph.forEach(g => { up[`geo/${g}`] = null; });
+            adminDb.ref().update(up).then(() => mpToast(`已清除 ${orph.length} 筆未使用座標`)).catch(err => alert('清除失敗：' + err.message));
+        };
         window.mpSetPlacing = async function (g) {
             if (!isEditor || !MP.map) return;
             if (isOffline()) { offlineAlert(); return; }
@@ -4129,7 +4193,24 @@
             cacheSave('route_steps', data);
             renderAllRouteLists(data);
             hideSplash();
+            fixLegacyTypes();
         });
+
+        // 舊卡的分類原本靠標題關鍵字（「晚餐」「入住」）判斷，關鍵字判斷移除後改由 link 補寫 type，只跑一次
+        let legacyTypeFixed = true, fixingTypes = false;
+        settingsRef.child('legacyTypeFixed').on('value', (snap) => { legacyTypeFixed = !!snap.val(); fixLegacyTypes(); });
+        function fixLegacyTypes() {
+            if (legacyTypeFixed || fixingTypes || !isEditor || !lastRoutes || isOffline()) return;
+            const up = {};
+            ROUTE_DAYS.forEach(day => getSteps(day).forEach(st => {
+                if (st.type) return;
+                const t = typeFromLink(st.link);
+                if (t && KINDS[t]) up[`route_steps/${day}/${st.id}/type`] = t;
+            }));
+            fixingTypes = true;
+            up['settings/legacyTypeFixed'] = true;
+            adminDb.ref().update(up).catch(() => { fixingTypes = false; });
+        }
 
         const TIME_RE = /^\s*(\d{1,2}:\d{2})(?:\s*[-~～–－]\s*(\d{1,2}:\d{2}))?\s*/;
         const pad5 = (t) => t.padStart(5, '0');
@@ -4146,14 +4227,14 @@
             stay: ['住宿', '#E1F5EE', '#085041', 'pin'],
             spot: ['景點', '#eef2ee', '#3b4d43', 'pin'], station: ['車站', '#E6F1FB', '#0C447C', 'pin']
         };
-        const KIND_WORDS = [['早餐', 'breakfast'], ['午餐', 'lunch'], ['晚餐', 'dinner'], ['點心', 'snack'], ['下午茶', 'tea'], ['宵夜', 'night'], ['入住', 'stay'], ['住宿', 'stay'], ['飯店', 'stay'], ['旅館', 'stay'], ['民宿', 'stay']];
+        // 分類只認 type 欄位；標題關鍵字自動判斷已移除（舊卡由 fixLegacyTypes 一次性補齊）
         function kindOf(s) {
-            if (s.type === 'none') return null;
-            if (KINDS[s.type]) return s.type;
-            let best = null, at = -1;
-            KIND_WORDS.forEach(([w, k]) => { const i = (s.title || '').lastIndexOf(w); if (i > at) { at = i; best = k; } });
-            return best;
+            return KINDS[s.type] ? s.type : null;
         }
+        // 通用詞不是真地點，不查座標也不上地圖（避免「午餐」「晚餐」被亂定位或多卡疊在一起）
+        const GENERIC_NAMES = new Set(['早餐', '午餐', '晚餐', '點心', '下午茶', '宵夜', '夜食', '待確定', '未定', '待定', '未確定']);
+        const isGenericName = (n) => { const t = String(n || '').trim(); return !t || GENERIC_NAMES.has(t) || /^(待確定|未定|待定|未確定)/.test(t); };
+        const geoKeyOf = (name) => isGenericName(name) ? '' : gkey(name);
         window.routeMap = (day, id) => mpFocus(`r:${day}:${id}`, +day.slice(1));
         window.routeJump = function (day, kind, id) {
             const k = KINDS[kind];
@@ -4212,6 +4293,8 @@
         const MEAL_SLOTS = { breakfast: 1, lunch: 1, dinner: 1 };
         const mapSearch = (q) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
         const linkKind = (s) => { const k = kindOf(s); return k === 'stay' || MEAL_SLOTS[k] ? k : null; };
+        const BACK = '__BACK__';
+        const typeFromLink = (lk) => !lk ? '' : lk.t === 'stay' ? 'stay' : (lk.t === 'meal' && lk.k ? (lk.k.split('_')[1] || '') : '');
         const dupMsg = (n) => `「${n}」已在這餐的候選中`;
         function cardsLinkedMeal(key, name) {
             return getSteps(key.split('_')[0]).filter(s => s.link && s.link.t === 'meal' && s.link.k === key && s.link.n === name);
@@ -4259,6 +4342,7 @@
             if (!confirm(cards.length ? `${msg}\n\n以下路線卡也會一併刪除：\n${cards.map(s => '・' + s.title).join('\n')}` : msg)) return null;
             const up = {};
             cards.forEach(s => { up[`route_steps/${day}/${s.id}`] = null; });
+            Object.assign(up, geoPruneUps(cards.map(s => `r:${day}:${s.id}`)));
             return up;
         }
         async function cardFor(day, k, link, newTitle, header, skip) {
@@ -4283,12 +4367,12 @@
         }
         function mealCard(key, name) {
             const [day, k] = key.split('_');
-            return cardFor(day, k, { t: 'meal', k: key, n: name }, `${KINDS[k][0]}：${name}`, `「${name}」要對應哪張路線卡？`);
+            return cardFor(day, k, { t: 'meal', k: key, n: name }, `${KINDS[k][0]}：${name}`, `「${name}」要對應哪張路線卡？`, true);
         }
         function stayCard(id, dn, title) {
             return cardFor('d' + dn, 'stay', { t: 'stay', id }, `入住：${title}`, `「${title}」要不要在 D${dn} 加一張入住路線卡？`, true);
         }
-        async function linkMeal(day, key, f, cur) {
+        async function linkMeal(day, key, f, cur, allowBack) {
             const items = getMealItems(key), rests = items.filter(i => !i.isText);
             const name = cleanMealName(f.place), url = f.placeUrl || '';
             const linked = cur.link && cur.link.t === 'meal' && cur.link.k === key && rests.find(i => i.name === cur.link.n);
@@ -4303,11 +4387,15 @@
             }
             const hit = name && rests.find(i => i.name === name);
             if (hit) return { link: { t: 'meal', k: key, n: hit.name }, more: {} };
-            const pick = await openChoiceModal({ title: `連結到 D${day.slice(1)} ${KINDS[key.split('_')[1]][0]}（類型選「一般」可不連結）`, options: [
-                ...rests.map((i, idx) => ({ label: '🍽️ ' + i.name, value: idx })),
-                { label: name ? `＋ 新增「${name}」為候選` : '＋ 新增餐廳', value: 'new' }
-            ]});
-            if (pick === null) return null;
+            let pick = 'new';
+            if (!name) {
+                pick = await openChoiceModal({ title: `連結到 D${day.slice(1)} ${KINDS[key.split('_')[1]][0]}（類型選「一般」可不連結）`, options: [
+                    ...rests.map((i, idx) => ({ label: '🍽️ ' + i.name, value: idx })),
+                    { label: '＋ 新增餐廳', value: 'new' }
+                ], backLabel: allowBack ? '← 上一步' : '' });
+                if (pick === '__back') return BACK;
+                if (pick === null) return null;
+            }
             if (pick !== 'new') return { link: { t: 'meal', k: key, n: rests[pick].name }, more: {} };
             const entry = name ? { name, url, isText: false } : await askMealRestaurant('新增餐廳', {});
             if (!entry) return null;
@@ -4315,7 +4403,7 @@
             const base = (items.length === 1 && items[0].name === '待確定') ? [] : items;
             return { link: { t: 'meal', k: key, n: entry.name }, more: mealUps(key, [...base, entry]) };
         }
-        async function linkStay(day, f, cur) {
+        async function linkStay(day, f, cur, allowBack) {
             const dn = +day.slice(1), name = (f.place || '').trim(), url = f.placeUrl || '';
             const sp0 = cur.link && cur.link.t === 'stay' && lastMapSpots && lastMapSpots[cur.link.id];
             const cover = Object.entries(lastMapSpots || {}).filter(([, sp]) => { if (sp.type !== 'lodging') return false; const [a, b] = daySpan(sp.day); return dn >= a && dn <= b; });
@@ -4334,7 +4422,8 @@
             const pick = await openChoiceModal({ title: `連結到 D${dn} 的住宿（類型選「一般」可不連結）`, options: [
                 ...cover.map(([id, sp]) => ({ label: `🏨 ${sp.title}（${sp.day}）`, value: id })),
                 { label: name ? `＋ 新增住宿「${name}」（D${dn}）` : `＋ 新增住宿（D${dn}）`, value: '__new' }
-            ]});
+            ], backLabel: allowBack ? '← 上一步' : '' });
+            if (pick === '__back') return BACK;
             if (pick === null) return null;
             if (pick !== '__new') return { link: { t: 'stay', id: pick }, more: {} };
             let title = name;
@@ -4346,10 +4435,10 @@
             const id = mapRef.push().key;
             return { link: { t: 'stay', id }, more: { [`map_spots/${id}`]: { day: `Day ${dn}`, title, desc: '', query: title, customUrl: url, type: 'lodging', address: '', checkIn: '', checkOut: '', phone: '' } } };
         }
-        async function linkForCard(day, f, cur) {
+        async function linkForCard(day, f, cur, allowBack) {
             const k = linkKind(f);
             if (!k) return { link: null, more: {} };
-            return k === 'stay' ? linkStay(day, f, cur) : linkMeal(day, `${day}_${k}`, f, cur);
+            return k === 'stay' ? linkStay(day, f, cur, allowBack) : linkMeal(day, `${day}_${k}`, f, cur, allowBack);
         }
 
         function renderAllRouteLists(data) {
@@ -4401,34 +4490,72 @@
             ROUTE_DAYS.forEach(d => ['breakfast', 'lunch', 'dinner'].forEach(k => getMealItems(`${d}_${k}`).forEach(it => { if (!it.isText) add(it.name, it.url); })));
             return m;
         }
-        async function stepForm(title, s = {}) {
+        const normHM = (t) => { const m = /^(\d{1,2})[:：](\d{2})$/.exec(t); return m && +m[1] < 24 && +m[2] < 60 ? pad5(`${+m[1]}:${m[2]}`) : null; };
+        // 驗證不通過時回傳訊息字串（視窗不關、資料保留）；回傳 false 代表已自行提示
+        async function stepValidate(v) {
+            if (v.type === '__food') return '請選擇哪一餐';
+            if (!v.title) {
+                if (!(KINDS[v.type] && KINDS[v.type][3] === 'food')) return '請輸入標題';
+                if (!confirm('這張餐食卡還沒有標題。\n\n按「確定」＝先用「待確定」當標題\n按「取消」＝回去輸入標題')) return false;
+                return { title: '待確定' };
+            }
+            if (v.placeUrl && !/^https?:\/\//i.test(v.placeUrl)) return '請輸入有效的 http(s) 網址';
+            const st = v.start ? normHM(v.start) : '', en = v.end ? normHM(v.end) : '';
+            if (st === null || en === null) return '時間格式錯誤，例：09:30';
+            if (en && !st) return '請先填開始時間';
+            if (en && startMin(en) <= startMin(st)) return '結束時間必須晚於開始時間';
+            return null;
+        }
+        async function stepForm(title, s = {}, sugg) {
             const [s0, e0] = s.time ? s.time.split('-') : ['', ''];
-            const sugg = placeSuggestions();
+            sugg = sugg || placeSuggestions();
             document.getElementById('place-suggest').innerHTML = [...sugg.keys()].map(n => `<option value="${escapeHtml(n)}">`).join('');
-            const p = openInputModal({ title, fields: [
-                { key: 'start', type: 'time', value: s0, placeholder: '開始時間（可留空）' },
-                { key: 'end', type: 'time', value: e0, placeholder: '結束時間（選填）' },
-                { key: 'type', type: 'cat', value: s.type || '' },
-                { key: 'title', value: s.title, placeholder: '標題', max: 100 },
-                { key: 'place', value: s.place, placeholder: '地點（選填，可點擊導航）', max: 100, list: 'place-suggest' },
-                { key: 'placeUrl', value: s.placeUrl, placeholder: 'Google Maps 連結（選填）' },
-                { key: 'note', type: 'textarea', value: s.note, placeholder: '備註（選填）', max: 200 }
-            ], submitLabel: '儲存' });
+            const p = openInputModal({
+                title, submitLabel: '儲存', cancelLabel: '取消編輯',
+                dirtyConfirm: '這張卡已經改過但還沒儲存，確定要取消編輯嗎？',
+                validate: stepValidate,
+                fields: [
+                    { key: 'start', type: 'time', value: s0, placeholder: '開始時間（可留空）' },
+                    { key: 'end', type: 'time', value: e0, placeholder: '結束時間（選填）' },
+                    { key: 'type', type: 'cat', value: s.type || typeFromLink(s.link) || 'none' },
+                    { key: 'title', value: s.title, placeholder: '標題', max: 100 },
+                    { key: 'place', value: s.place, placeholder: '地點（選填，可點擊導航）', max: 100, list: 'place-suggest' },
+                    { key: 'placeUrl', value: s.placeUrl, placeholder: 'Google Maps 連結（選填）' },
+                    { key: 'note', type: 'textarea', value: s.note, placeholder: '備註（選填）', max: 200 }
+                ]
+            });
             const pe = document.getElementById('im-place'), ue = document.getElementById('im-placeUrl');
             pe.addEventListener('input', () => { const u = sugg.get(pe.value.trim()); if (u && !ue.value.trim()) ue.value = u; });
             const r = await p;
             if (!r) return null;
-            if (!r.title) { alert('請輸入標題'); return null; }
-            if (r.type === '__food') { alert('請選擇哪一餐'); return null; }
-            if (r.placeUrl && !/^https?:\/\//i.test(r.placeUrl)) { alert('請輸入有效的 http(s) 網址'); return null; }
-            const norm = (t) => { const m = /^(\d{1,2})[:：](\d{2})$/.exec(t); return m && +m[1] < 24 && +m[2] < 60 ? pad5(`${+m[1]}:${m[2]}`) : null; };
-            const st = r.start ? norm(r.start) : '', en = r.end ? norm(r.end) : '';
-            if (st === null || en === null) { alert('時間格式錯誤，例：09:30'); return null; }
-            if (en && !st) { alert('請先填開始時間'); return null; }
-            if (en && startMin(en) <= startMin(st)) { alert('結束時間必須晚於開始時間'); return null; }
+            const st = r.start ? normHM(r.start) : '', en = r.end ? normHM(r.end) : '';
             const time = st + (en ? '-' + en : '');
             if (isShortMapUrl(r.placeUrl) && r.placeUrl !== (s.placeUrl || '')) alert(SHORT_URL_MSG);
             return { time, start: startMin(time), title: r.title, place: r.place, placeUrl: r.placeUrl, note: r.note, type: r.type || '' };
+        }
+        // 表單 → 選連結 → 選位置，三步可用「← 上一步」回退，內容保留
+        async function routeStepFlow(day, title, init, cur, withPos) {
+            const sugg = placeSuggestions();
+            let s = { ...init }, step = 0, f = null, L = null;
+            for (;;) {
+                if (step === 0) {
+                    f = await stepForm(title, s, sugg);
+                    if (!f) return null;
+                    s = { ...s, ...f };
+                    step = 1;
+                } else if (step === 1) {
+                    L = await linkForCard(day, f, cur, true);
+                    if (L === BACK) { step = 0; continue; }
+                    if (!L) return null;
+                    step = 2;
+                } else {
+                    if (!withPos) return { f, L, pos: 0 };
+                    const pos = await pickPos(day, f, true);
+                    if (pos === BACK) { step = 1; continue; }
+                    if (pos === null) return null;
+                    return { f, L, pos };
+                }
+            }
         }
 
         const TIP_PREFIX = '💡 貼心提醒：';
@@ -4484,14 +4611,10 @@
 
         window.addRouteStep = async function (day) {
             if (!isEditor) return;
-            const f = await stepForm('新增路線項目');
-            if (!f) return;
             const id = routeStepsRef.child(day).push().key;
-            const L = await linkForCard(day, f, { id });
-            if (!L) return;
-            const pos = await pickPos(day, f);
-            if (pos === null) return;
-            saveStep(day, { id, ...f, ...(L.link ? { place: '', placeUrl: '' } : {}), link: L.link }, getSteps(day), pos, L.more);
+            const r = await routeStepFlow(day, '新增路線項目', {}, { id }, true);
+            if (!r) return;
+            saveStep(day, { id, ...r.f, ...(r.L.link ? { place: '', placeUrl: '' } : {}), link: r.L.link }, getSteps(day), r.pos, r.L.more);
         };
         window.editRouteStep = async function (day, id) {
             if (!isEditor) return;
@@ -4500,28 +4623,22 @@
             if (idx < 0) return;
             const cur = list[idx], R = resolveLink(day, cur);
             const oldName = R && !R.need ? R.name : (cur.place || cur.title);
-            const f = await stepForm('修改路線項目', R && !R.need ? { ...cur, place: R.name, placeUrl: R.raw } : cur);
-            if (!f) return;
-            const L = await linkForCard(day, f, cur);
-            if (!L) return;
-            const item = { id, ...f, ...(L.link ? { place: '', placeUrl: '' } : {}), link: L.link };
-            carryGeo(oldName, geoNameFor(item, L.more), L.more);
-            saveStep(day, item, list.filter(s => s.id !== id), idx, L.more);
+            const r = await routeStepFlow(day, '修改路線項目', R && !R.need ? { ...cur, place: R.name, placeUrl: R.raw } : cur, cur, false);
+            if (!r) return;
+            const item = { id, ...r.f, ...(r.L.link ? { place: '', placeUrl: '' } : {}), link: r.L.link };
+            carryGeo(oldName, geoNameFor(item, r.L.more), r.L.more);
+            saveStep(day, item, list.filter(s => s.id !== id), idx, r.L.more);
         };
         async function addRouteStepAt(day, ll) {
-            const f = await stepForm(`新增路線項目（D${day.slice(1)}）`);
-            if (!f) return;
             const id = routeStepsRef.child(day).push().key;
-            const lk = await linkForCard(day, f, { id });
-            if (!lk) return;
-            const item = { id, ...f, ...(lk.link ? { place: '', placeUrl: '' } : {}), link: lk.link };
-            const more = { ...lk.more };
-            const gk = gkey(geoNameFor(item, more));
+            const r = await routeStepFlow(day, `新增路線項目（D${day.slice(1)}）`, {}, { id }, true);
+            if (!r) return;
+            const item = { id, ...r.f, ...(r.L.link ? { place: '', placeUrl: '' } : {}), link: r.L.link };
+            const more = { ...r.L.more };
+            const gk = geoKeyOf(geoNameFor(item, more));
             if (gk) more[`geo/${gk}`] = { lat: ll.lat, lng: ll.lng, src: 'pin', ts: Date.now() };
-            const pos = await pickPos(day, f);
-            if (pos === null) return;
             mpFocusAfter(`r:${day}:${id}`);
-            await saveStep(day, item, getSteps(day), pos, more);
+            await saveStep(day, item, getSteps(day), r.pos, more);
         }
         function routeDelUps(day, id, msg) {
             const s = getSteps(day).find(x => x.id === id);
@@ -4533,9 +4650,11 @@
                 Object.assign(up, mealUps(lk.k, getMealItems(lk.k).filter(i => i.isText || i.name !== lk.n)));
                 extra = `\n\n餐廳「${lk.n}」也會從餐食總覽移除。`;
             }
-            return confirm((msg || '確定要刪除這個路線項目嗎？') + extra) ? up : null;
+            if (!confirm((msg || '確定要刪除這個路線項目嗎？') + extra)) return null;
+            Object.assign(up, geoPruneUps([`r:${day}:${id}`]));
+            return up;
         }
-        async function pickPos(day, f) {
+        async function pickPos(day, f, allowBack) {
             const list = getSteps(day);
             if (!list.length) return 0;
             const t = startMin(f.time);
@@ -4544,7 +4663,8 @@
             if (ok(0)) opts.push({ label: '⬆️ 放在最前面', value: 0 });
             list.forEach((s, i) => { if (ok(i + 1)) opts.push({ label: `⬇️ 放在「${s.title}」之後`, value: i + 1 }); });
             if (opts.length === 1) return opts[0].value;
-            return openChoiceModal({ title: `要放在 D${day.slice(1)} 的哪個位置？${t != null ? '（只列出符合時間順序的位置）' : ''}`, options: opts });
+            const pick = await openChoiceModal({ title: `要放在 D${day.slice(1)} 的哪個位置？${t != null ? '（只列出符合時間順序的位置）' : ''}`, options: opts, backLabel: allowBack ? '← 上一步' : '' });
+            return pick === '__back' ? BACK : pick;
         }
         window.deleteRouteStep = function (day, id) {
             if (!isEditor) return;
