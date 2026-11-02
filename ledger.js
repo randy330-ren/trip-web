@@ -5,7 +5,7 @@
     const BASE = 'TWD', BASE_DEC = 0;
     const CATS = ['餐飲', '交通', '住宿', '門票', '購物', '其他'];
     const DEC_FIX = { TWD: 0, JPY: 0, KRW: 0 };
-    const MODES = [['equal', '平均'], ['amount', '自訂金額'], ['ratio', '按比例']];
+    const MODES = [['equal', '平均'], ['amount', '自訂金額'], ['ratio', '按比例'], ['each', '每人同額']];
     const TABS = ['add', 'list', 'fx'];
     const up = (m) => Object.fromEntries(Object.entries(m || {}).map(([k, v]) => [k.toUpperCase(), v]));
     const FX_SRC = [
@@ -246,7 +246,7 @@
             <div id="lg-f-banner" class="lg-banner hidden">✏️ 正在編輯：<b id="lg-f-etitle"></b><button type="button" data-act="cancel-edit">取消編輯</button></div>
             <label class="lg-lbl" for="lg-f-title">支出名稱</label>
             <input id="lg-f-title" class="lg-in" maxlength="50" placeholder="例：午餐 迴轉壽司">
-            <label class="lg-lbl" for="lg-f-amount">金額</label>
+            <label id="lg-f-amount-l" class="lg-lbl" for="lg-f-amount">金額</label>
             <div class="lg-row"><input id="lg-f-amount" class="lg-in lg-amt" inputmode="none" readonly placeholder="0"><input id="lg-f-cur" class="lg-in lg-cur" data-pick="f-cur" readonly autocomplete="off"></div>
             <label class="lg-lbl" for="lg-f-date">日期</label>
             <input id="lg-f-date" type="date" class="lg-in">
@@ -280,6 +280,7 @@
         $('lg-f-banner').classList.toggle('hidden', !S.editId);
         if (S.editId) $('lg-f-etitle').textContent = f.title || (E()[S.editId] || {}).title || '';
         pickSet($('lg-f-cur'), f.cur);
+        $('lg-f-amount-l').textContent = f.mode === 'each' ? '每人金額' : '金額';
         const pay = activeIds();
         if (f.payer && P()[f.payer] && !pay.includes(f.payer)) pay.push(f.payer);
         $('lg-f-payer').innerHTML = `<option value="">請選擇付款人</option>` + selOpts(pay.map((p) => [p, pname(p)]), f.payer);
@@ -307,6 +308,7 @@
         const box = $('lg-f-parts');
         if (!f.members.length) { box.innerHTML = ''; return; }
         if (f.mode === 'equal') { box.innerHTML = `<p class="lg-muted lg-mt">由 ${f.members.length} 人平均分攤，除不盡的尾數依團員名單順序分配。</p>`; return; }
+        if (f.mode === 'each') { box.innerHTML = `<p class="lg-muted lg-mt">每位成員各分攤上方「每人金額」，總額 = 每人金額 × ${f.members.length} 人。付款人也勾選即代表自己也要出。</p>`; return; }
         const unit = f.mode === 'ratio' ? '%' : f.cur;
         box.innerHTML = `<div class="lg-parts">` + f.members.map((p) =>
             `<div class="lg-part"><span>${esc(pname(p))}</span><input class="lg-in" inputmode="none" readonly data-part="${p}" value="${esc(f.parts[p] || '')}" placeholder="0"><small>${esc(unit)}</small></div>`).join('') +
@@ -338,9 +340,11 @@
     function computeForm() {
         const f = S.form, errs = [], dec = decOf(f.cur);
         if (!f.title.trim()) errs.push('請輸入支出名稱');
+        const each = f.mode === 'each';
         const amt = C.parseAmount(f.amount, dec);
-        if (!amt.ok) errs.push('金額：' + amt.err);
-        else if (amt.v <= 0) errs.push('支出金額必須大於零');
+        if (!amt.ok) errs.push((each ? '每人金額：' : '金額：') + amt.err);
+        else if (amt.v <= 0) errs.push(each ? '每人金額必須大於零' : '支出金額必須大於零');
+        if (each && amt.ok) amt.v *= f.members.length;
         const ri = rateInfo(), r = C.parseRate(ri.rate);
         if (!ri.rate) errs.push(`匯率表沒有 ${f.cur}，請管理員先新增`);
         else if (!r.ok) errs.push('匯率' + r.err);
@@ -348,7 +352,7 @@
         if (!/^\d{4}-\d{2}-\d{2}$/.test(f.date)) errs.push('請選擇日期');
         let sp = null;
         if (amt.ok && amt.v > 0 && r.ok) {
-            sp = C.computeSplit({ amount: amt.v, dec, mode: f.mode, members: f.members, parts: f.parts, rate: r.s, baseDec: BASE_DEC });
+            sp = C.computeSplit({ amount: amt.v, dec, mode: each ? 'amount' : f.mode, members: f.members, parts: each ? Object.fromEntries(f.members.map((p) => [p, f.amount])) : f.parts, rate: r.s, baseDec: BASE_DEC });
             errs.push(...sp.errors);
         } else if (!f.members.length) errs.push('請至少選擇一位分攤成員');
         return { errs, amt, dec, rate: r.ok ? r.s : '', sp };
@@ -383,7 +387,8 @@
         const rec = {
             title: f.title.trim(), amount: c.amt.v, cur: f.cur, dec: c.dec, rate: c.rate, rateRef,
             base: BASE, baseAmt: c.sp.baseAmt, date: f.date, payer: f.payer, mode: f.mode,
-            parts: f.mode === 'equal' ? null : Object.fromEntries(f.members.map((p) => [p, String(f.parts[p] || '0').trim()])),
+            unit: f.mode === 'each' ? f.amount.trim() : null,
+            parts: f.mode === 'equal' || f.mode === 'each' ? null : Object.fromEntries(f.members.map((p) => [p, String(f.parts[p] || '0').trim()])),
             shares: c.sp.shares, cat: f.cat, note: f.note.trim(), updBy: m.uid, updName: m.name, uts: TS()
         };
         S.saving = true;
@@ -408,7 +413,7 @@
         S.editId = id;
         S.editOrig = e;
         S.form = {
-            title: e.title || '', amount: C.toPlain(e.amount, Number.isInteger(e.dec) ? e.dec : decOf(e.cur)), cur: e.cur, date: e.date || today(),
+            title: e.title || '', amount: e.mode === 'each' && e.unit ? e.unit : C.toPlain(e.amount, Number.isInteger(e.dec) ? e.dec : decOf(e.cur)), cur: e.cur, date: e.date || today(),
             payer: e.payer, members: order().filter((p) => e.shares && e.shares[p]), mode: e.mode || 'equal',
             parts: { ...(e.parts || {}) }, cat: e.cat || '其他', note: e.note || '', rate: e.cur === BASE ? null : e.rate
         };
