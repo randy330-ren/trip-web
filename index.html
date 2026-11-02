@@ -378,12 +378,14 @@
         #ov-bar { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; padding: 8px 16px max(.75rem, env(safe-area-inset-bottom)); background: #f7f6f2; border-radius: 24px 24px 0 0; box-shadow: 0 -4px 16px rgba(0,0,0,.08); }
         #ov-bar button { display: block; width: 100%; max-width: 28rem; margin: 0 auto; padding: 11px; border-radius: 12px; background: var(--green); color: #fff; font-size: 14px; font-weight: 700; }
         body.ov #ov-bar { display: block; }
-        #upd-bar { display: none; position: fixed; left: 50%; transform: translateX(-50%); top: calc(8px + env(safe-area-inset-top)); z-index: 60; max-width: calc(100vw - 2rem); align-items: center; padding: 2px 4px 2px 12px; border-radius: 9999px; background: rgba(59,77,67,.95); color: #fff; font-size: 12px; font-weight: 700; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
+        #top-notices { position: fixed; left: 50%; transform: translateX(-50%); top: calc(8px + env(safe-area-inset-top)); z-index: 60; width: calc(100vw - 2rem); max-width: 26rem; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+        #top-notices > * { pointer-events: auto; }
+        #upd-bar { display: none; flex-wrap: wrap; justify-content: center; align-items: center; max-width: 100%; padding: 4px 6px 4px 18px; border-radius: 22px; background: rgba(59,77,67,.97); color: #fff; font-size: 15px; font-weight: 700; box-shadow: 0 4px 14px rgba(0,0,0,.28); }
         #upd-bar.show { display: flex; }
         #upd-bar button { color: inherit; font: inherit; white-space: nowrap; }
-        #upd-bar .upd-go { padding: 8px 4px; }
-        #upd-bar .upd-log { padding: 8px 6px; text-decoration: underline; opacity: .85; }
-        #upd-bar .upd-x { padding: 8px 10px; opacity: .7; }
+        #upd-bar .upd-go { padding: 11px 6px; }
+        #upd-bar .upd-log { padding: 11px 8px; text-decoration: underline; opacity: .85; font-size: 14px; }
+        #upd-bar .upd-x { padding: 11px 12px; opacity: .7; }
         body.ov #main-nav { display: none; }
         #mp-body.pinned #mp-wrap { position: fixed; top: calc(var(--stick-h, 0px) + 5px); left: var(--mp-l, 0px); width: var(--mp-w, 100%); margin: 0; z-index: 30; }
         #mp-card { border-top-width: 0; padding-top: 0; }
@@ -979,6 +981,13 @@
                 </button>
             </div>
 
+            <div class="card p-5 border-t-4 border-[#b08758]">
+                <button type="button" onclick="showUpdateLog(true)" class="w-full flex justify-between items-center">
+                    <h2 class="text-lg font-bold">📜 版本更新日誌</h2>
+                    <span class="drawer-hint"><span id="ver-label"></span> ▶</span>
+                </button>
+            </div>
+
         </div>
 
         <!-- 頁面 5：花絮 (Highlights) -->
@@ -1127,16 +1136,21 @@
     <div id="ov-bar"><button type="button" id="ov-close" onclick="closeOverlay()"></button></div>
     <div id="upd-log" style="display:none;position:fixed;inset:0;z-index:61;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.5)">
         <div style="width:100%;max-width:24rem;max-height:80vh;overflow-y:auto;background:#fff;border-radius:18px;padding:18px;box-shadow:0 8px 28px rgba(0,0,0,.3)">
-            <p style="font-size:11px;color:#a39a8e;font-weight:700">本次更新 <span id="upd-log-ver"></span></p>
-            <h3 id="upd-log-title" style="font-size:17px;font-weight:700;color:#3b4d43;margin:2px 0 10px"></h3>
+            <p style="font-size:11px;color:#a39a8e;font-weight:700"><span id="upd-log-head">本次更新</span></p>
+            <p id="upd-log-ver" style="font-size:22px;font-weight:800;color:#3b4d43;line-height:1.2;margin-top:2px"></p>
+            <p id="upd-log-date" style="font-size:12px;color:#a39a8e;margin-top:2px"></p>
+            <h3 id="upd-log-title" style="font-size:16px;font-weight:700;color:#3b4d43;margin:10px 0"></h3>
             <ul id="upd-log-list" style="padding-left:1.1em;list-style:disc;font-size:13px;line-height:1.7;color:#444"></ul>
             <div style="display:flex;gap:8px;margin-top:14px">
                 <button type="button" onclick="closeUpdateLog()" style="flex:1;padding:11px 0;border-radius:12px;background:#e7e4db;color:#3b4d43;font-size:14px;font-weight:700">關閉</button>
-                <button type="button" onclick="applyUpdate()" style="flex:1.3;padding:11px 0;border-radius:12px;background:#3b4d43;color:#fff;font-size:14px;font-weight:700">立即更新</button>
+                <button type="button" id="upd-log-go" onclick="applyUpdate()" style="flex:1.3;padding:11px 0;border-radius:12px;background:#3b4d43;color:#fff;font-size:14px;font-weight:700">立即更新</button>
             </div>
         </div>
     </div>
-    <div id="upd-bar"><button type="button" class="upd-go" onclick="applyUpdate()">🔄 有新版本，點此更新</button><button type="button" class="upd-log" onclick="showUpdateLog()">看更新內容</button><button type="button" class="upd-x" onclick="dismissUpdate()" aria-label="稍後再說">✕</button></div>
+    <div id="top-notices">
+        <div id="upd-bar"><button type="button" class="upd-go" onclick="applyUpdate()">🔄 有新版本，點此更新</button><button type="button" class="upd-log" onclick="showUpdateLog()">看更新內容</button><button type="button" class="upd-x" onclick="dismissUpdate()" aria-label="稍後再說">✕</button></div>
+        <div id="hl-notices"></div>
+    </div>
 
     <!-- 圖片燈箱 Modal -->
     <div id="lightbox-modal" class="hidden fixed inset-0 z-[70] flex items-center justify-center p-4"
@@ -2359,7 +2373,7 @@
             }
             ledgerLoading.then(() => { if (window.LEDGER) LEDGER.open(); });
         }
-        const HL_V = '5';
+        const HL_V = '6';
         let hlLoading = null;
         function openHighlights() {
             if (!hlLoading) {
@@ -3926,7 +3940,7 @@
             try { localStorage.setItem('hintsDone', JSON.stringify(hintsDone)); } catch (e) { }
             refreshHints();
         };
-        const TOUR_V = '12';
+        const TOUR_V = '13';
         window.tourOpen = function () {
             document.getElementById('tour-prompt').classList.add('hidden');
             (window.TOUR ? Promise.resolve() : loadScript('tutorial.js?v=' + TOUR_V)).then(() => TOUR.start({ canAdmin: !!adminUser, isRead: readMode, setRead: setReadMode })).catch(() => { });
@@ -5323,6 +5337,28 @@
             const cPhotos = cacheLoad('day_photos'); if (cPhotos) { lastDayPhotos = cPhotos; renderAllDayPhotos(cPhotos); }
         })();
         setTimeout(hideSplash, 3000);
+        const fmtLogDate = (v) => {
+            const d = new Date(v);
+            if (!/T/.test(v || '') || isNaN(d)) return v || '';
+            const p = (n) => String(n).padStart(2, '0');
+            return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+        };
+        window.showUpdateLog = (viewOnly) => {
+            const box = document.getElementById('upd-log'), list = document.getElementById('upd-log-list');
+            box.style.display = 'flex';
+            document.getElementById('upd-log-head').textContent = viewOnly ? '版本更新日誌' : '本次更新';
+            document.getElementById('upd-log-go').style.display = viewOnly ? 'none' : '';
+            list.innerHTML = '<li>載入中…</li>';
+            fetch('changelog.json', { cache: 'no-store' }).then(r => r.json()).then(d => {
+                document.getElementById('upd-log-ver').textContent = d.version || '';
+                document.getElementById('upd-log-date').textContent = d.date ? '更新時間　' + fmtLogDate(d.date) : '';
+                document.getElementById('upd-log-title').textContent = d.title || '';
+                list.innerHTML = '';
+                (d.items || []).forEach(t => { const li = document.createElement('li'); li.textContent = t; list.appendChild(li); });
+            }).catch(() => { list.innerHTML = '<li>目前無法載入更新內容，請稍後再試。</li>'; });
+        };
+        window.closeUpdateLog = () => { document.getElementById('upd-log').style.display = 'none'; };
+        fetch('changelog.json', { cache: 'no-store' }).then(r => r.json()).then(d => { document.getElementById('ver-label').textContent = d.version || ''; }).catch(() => { });
         if ('serviceWorker' in navigator) {
             const hadController = !!navigator.serviceWorker.controller;
             const updBar = document.getElementById('upd-bar');
@@ -5338,18 +5374,6 @@
                 if (updReady) updBar.classList.add('show');
                 else if (swReg) swReg.update().catch(() => { });
             });
-            window.showUpdateLog = () => {
-                const box = document.getElementById('upd-log'), list = document.getElementById('upd-log-list');
-                box.style.display = 'flex';
-                list.innerHTML = '<li>載入中…</li>';
-                fetch('changelog.json', { cache: 'no-store' }).then(r => r.json()).then(d => {
-                    document.getElementById('upd-log-ver').textContent = d.version || '';
-                    document.getElementById('upd-log-title').textContent = d.title || '';
-                    list.innerHTML = '';
-                    (d.items || []).forEach(t => { const li = document.createElement('li'); li.textContent = t; list.appendChild(li); });
-                }).catch(() => { list.innerHTML = '<li>目前無法載入更新內容，請稍後再試。</li>'; });
-            };
-            window.closeUpdateLog = () => { document.getElementById('upd-log').style.display = 'none'; };
             window.dismissUpdate = () => updBar.classList.remove('show');
             window.applyUpdate = () => {
                 if (isEditor && !confirm('更新會重新載入頁面，尚未按「儲存」的文字會消失。\n\n確定要現在更新嗎？')) return;

@@ -11,6 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: 把合併時間寫進 changelog.json
+        env:
+          MERGED_AT: ${{ github.event.head_commit.timestamp }}
+        run: node -e "const f='changelog.json',fs=require('fs'),j=JSON.parse(fs.readFileSync(f,'utf8'));if(process.env.MERGED_AT)j.date=process.env.MERGED_AT;fs.writeFileSync(f,JSON.stringify(j,null,2))"
       - run: npm ci && npm run css
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
