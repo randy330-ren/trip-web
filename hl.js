@@ -44,9 +44,11 @@
                 const st = d.objectStoreNames.contains(QST) ? r.transaction.objectStore(QST) : d.createObjectStore(QST, { keyPath: 'id' });
                 if (!st.indexNames.contains('uid')) st.createIndex('uid', 'uid');
             };
-            r.onsuccess = () => res(r.result);
+            r.onsuccess = () => { r.result.onversionchange = () => { r.result.close(); qdbP = null; }; res(r.result); };
             r.onerror = () => rej(r.error || new Error('無法開啟本機暫存'));
+            r.onblocked = () => rej(new Error('本機暫存被其他分頁占用'));
         });
+        qdbP.catch(() => { qdbP = null; });
         return qdbP;
     }
     function qTx(mode, fn) {
@@ -57,6 +59,16 @@
         }));
     }
     const qPut = (rec) => qTx('readwrite', st => st.put(rec));
+    const errName = (e) => (e && (e.name || e.message)) ? String(e.name || e.message).slice(0, 60) : '未知錯誤';
+    async function qSave(rec) {
+        try { await qPut(rec); return; } catch (e1) {
+            try {
+                const { blob, ...rest } = rec;
+                await qPut({ ...rest, buf: await blob.arrayBuffer(), type: blob.type || 'image/jpeg' });
+            } catch (e2) { throw new Error(errName(e1) + ' / ' + errName(e2)); }
+        }
+    }
+    const recBlob = (r) => (r && (r.blob || (r.buf ? new Blob([r.buf], { type: r.type || 'image/jpeg' }) : null)));
     const qDel = (id) => qTx('readwrite', st => st.delete(id));
     const qMine = (uid) => (uid ? qTx('readonly', st => st.index('uid').getAll(uid)) : Promise.resolve([]));
     const qKeys = (uid) => (uid ? qTx('readonly', st => st.index('uid').getAllKeys(uid)) : Promise.resolve([]));
@@ -591,7 +603,7 @@
         const warn = !edit && s.items.some(it => it.big) ? '<p class="hl-tip">⚠️ 有照片無法縮圖，會以原檔上傳，訊號弱時比較容易失敗。</p>' : '';
         const keep = !edit && !s.busy && s.items.some(it => it.st === 'fail')
             ? (s.saved ? '<p class="hl-tip">📥 沒傳成功的照片已經存在手機裡，連上網路後會自動補傳，可以放心按「完成」關閉。</p>'
-                : '<p class="hl-tip">⚠️ 這台裝置無法暫存照片（可能是無痕模式），請保持此畫面開啟再重試。</p>')
+                : `<p class="hl-tip">⚠️ 這台裝置無法暫存照片，請保持此畫面開啟再重試。<br>原因：${esc(s.qerr || '未知')}</p>`)
             : '';
         $('hl-sbody').innerHTML = edit
             ? `${test}<p class="hl-lb">所屬日期</p><div class="hl-dps">${days}</div>${tip}${s.items.map(row).join('')}`
@@ -621,9 +633,9 @@
             it.big = it.blob === it.file && it.file.size > 4e6;
             it.qid = it.qid || qid();
             try {
-                await qPut({ id: it.qid, day: s.day, cap: it.cap, blob: it.blob, uid: currentUserUid, name: currentUserName || ADMIN_NAME, ts: Date.now(), tries: 0 });
+                await qSave({ id: it.qid, day: s.day, cap: it.cap, blob: it.blob, uid: currentUserUid, name: currentUserName || ADMIN_NAME, ts: Date.now(), tries: 0 });
                 saved++;
-            } catch (e) { it.qid = ''; }
+            } catch (e) { it.qid = ''; s.qerr = (e && e.message) || '未知錯誤'; }
             it.st = 'wait';
             renderSheet();
         }
@@ -758,7 +770,7 @@
         }
         flushing = true;
         try {
-            const recs = ((await qSafe(qMine(currentUserUid))) || []).filter(r => r && r.blob).sort((a, b) => (a.ts || 0) - (b.ts || 0));
+            const recs = ((await qSafe(qMine(currentUserUid))) || []).filter(r => recBlob(r)).sort((a, b) => (a.ts || 0) - (b.ts || 0));
             pendN = recs.length;
             const todo = manual ? recs : recs.filter(r => (r.tries || 0) < QMAX);
             if (!todo.length) return;
@@ -768,7 +780,7 @@
                 pendBusy++; sched();
                 if (!isEditor && myCount(rec.day) >= MAX_HIGHLIGHTS_PER_DAY) continue;
                 try {
-                    const r = await doUpload(rec.blob, () => { }, () => { });
+                    const r = await doUpload(recBlob(rec), () => { }, () => { });
                     await saveRec(rec.day, r, rec.cap, rec.name, rec.uid);
                     await qSafe(qDel(rec.id));
                     pendN = Math.max(0, pendN - 1);
