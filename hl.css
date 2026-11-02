@@ -114,6 +114,9 @@
 .hl-tip { margin: 10px 0 4px; padding: 7px 10px; border-radius: 8px; background: #fef3c7; color: #92400e; font-size: 12px; }
 .hl-pend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding: 9px 10px; border-radius: 12px; background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; font-size: 12px; line-height: 1.5; }
 .hl-pend > span { flex: 1; min-width: 140px; }
+.hl-pills { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.hl-bdg { display: inline-block; min-width: 18px; margin-left: 5px; padding: 0 5px; border-radius: 9999px; background: #ea580c; color: #fff; font-size: 11px; line-height: 18px; text-align: center; }
+.hl-ra { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .hl-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 8px; background: #fff; border: 1px solid #ece8df; border-radius: 12px; }
 .hl-row.over { opacity: .5; }
 .hl-row.bad { border-color: #f7c1c1; }

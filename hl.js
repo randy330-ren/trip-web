@@ -24,6 +24,7 @@
     const S = {
         built: false, active: false, jumped: false,
         photos: cacheLoad('highlights') || {}, photosLive: false, emojis: cacheLoad('hl_emojis'), emoLoaded: false, seeding: false,
+        tasks: [], gone: new Set(), qerr: '',
         react: {}, comments: {}, members: {}, ready: {}, pubRefs: [], privRefs: [], privKey: null,
         open: new Set(), html: {}, raf: 0, det: null, zoom: false, toBottom: false, sheet: null, pickDay: null, winOpen: false
     };
@@ -35,7 +36,7 @@
 
     // ---------- 離線上傳佇列（IndexedDB，撐得過關 App / 重開機） ----------
     const QDB = 'hl-queue', QST = 'q', QMAX = 6;
-    let qdbP = null, pendN = 0, pendBusy = 0, pendTot = 0, flushing = false, flushAt = 0;
+    let qdbP = null;
     function qdb() {
         if (!qdbP) qdbP = new Promise((res, rej) => {
             const r = indexedDB.open(QDB, 1);
@@ -71,15 +72,9 @@
     const recBlob = (r) => (r && (r.blob || (r.buf ? new Blob([r.buf], { type: r.type || 'image/jpeg' }) : null)));
     const qDel = (id) => qTx('readwrite', st => st.delete(id));
     const qMine = (uid) => (uid ? qTx('readonly', st => st.index('uid').getAll(uid)) : Promise.resolve([]));
-    const qKeys = (uid) => (uid ? qTx('readonly', st => st.index('uid').getAllKeys(uid)) : Promise.resolve([]));
-    const qCount = (uid) => (uid ? qTx('readonly', st => st.index('uid').count(uid)) : Promise.resolve(0));
+    const qTries = (id, n) => qTx('readwrite', st => { const g = st.get(id); g.onsuccess = () => { const r = g.result; if (r) { r.tries = n; st.put(r); } }; return g; });
     const qSafe = (p) => p.catch(() => null);
     const qid = () => 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-    async function refreshPend() {
-        pendN = (await qSafe(qCount(currentUserUid))) || 0;
-        sched();
-        return pendN;
-    }
 
     // ---------- 資料 ----------
     function dayList(k) {
@@ -93,7 +88,7 @@
     const comments = (p) => Object.entries(((S.comments[p.day] || {})[p.id]) || {})
         .map(([cid, c]) => ({ ...c, cid })).sort((a, b) => (a.ts || 0) - (b.ts || 0));
     const myCount = (k) => dayList(k).filter(p => p.uid === currentUserUid).length;
-    const quota = (k) => (isEditor ? Infinity : Math.max(0, MAX_HIGHLIGHTS_PER_DAY - myCount(k)));
+    const quota = (k) => (isEditor ? Infinity : Math.max(0, MAX_HIGHLIGHTS_PER_DAY - myCount(k) - taskCount(k)));
     function emoList() {
         const src = S.emojis || Object.fromEntries(DEF_EMO.map((e, i) => ['e' + (i + 1), { e, o: i }]));
         return Object.entries(src).filter(([, v]) => v && v.e).map(([k, v]) => ({ k, e: v.e, o: +v.o || 0 })).sort((a, b) => a.o - b.o);
@@ -164,7 +159,7 @@
     function off(bag) { bag.forEach(([r, f]) => r.off('value', f)); bag.length = 0; }
     function bindPub() {
         if (!S.active || S.pubRefs.length) return;
-        on(db.ref('highlights'), S.pubRefs, (v) => { S.photos = v || {}; S.photosLive = true; cacheSave('highlights', S.photos); sched(); flushQueue(); });
+        on(db.ref('highlights'), S.pubRefs, (v) => { S.photos = v || {}; S.photosLive = true; cacheSave('highlights', S.photos); sched(); pump(); });
         on(db.ref('settings/hl_emojis'), S.pubRefs, (v) => { S.emojis = v; S.emoLoaded = true; cacheSave('hl_emojis', v); seed(); sched(); });
     }
     function bindPriv() {
@@ -210,9 +205,12 @@
             if (S.det && !st.hl) closeDet(true);
             if (S.sheet && !st.hls) closeSheet(true);
         });
-        window.addEventListener('online', () => { flushAt = 0; flushQueue(); });
-        document.addEventListener('visibilitychange', () => { if (!document.hidden) flushQueue(); });
-        setInterval(() => { if (pendN) flushQueue(); }, 60000);
+        window.addEventListener('online', () => {
+            S.tasks.forEach(t => { if (t.st === 'fail' && t.soft) { t.st = 'wait'; t.tries = 0; } });
+            pumpAt = 0; tick(); pump();
+        });
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) pump(); });
+        setInterval(() => { if (activeTasks().length) pump(); }, 60000);
         const vv = window.visualViewport;
         if (vv) { vv.addEventListener('resize', fitVV); vv.addEventListener('scroll', fitVV); }
         document.addEventListener('keydown', (e) => {
@@ -242,13 +240,14 @@
         const stats = [[all.length, '張旅行照片'], [new Set(real.map(p => p.uid)).size, '位旅伴分享']];
         if (si) stats.push([nc, '則留言']);
         const trip = medalsHtml(tripTitles(), ['pop', 'full'], true);
-        put('hl-head', `<div class="hl-ht"><h2>📸 旅途花絮</h2><button type="button" data-a="album" class="hl-pill"${all.length ? '' : ' disabled'}>共同相簿</button></div>
+        const act = activeTasks(), running = act.some(t => BUSY.includes(t.st));
+        put('hl-head', `<div class="hl-ht"><h2>📸 旅途花絮</h2><span class="hl-pills">${si ? `<button type="button" data-a="tasks" class="hl-pill">📋 任務${act.length ? `<b class="hl-bdg">${act.length}</b>` : ''}</button>` : ''}<button type="button" data-a="album" class="hl-pill"${all.length ? '' : ' disabled'}>共同相簿</button></span></div>
             <p class="hl-sub">${si ? `每人每天最多分享 ${MAX_HIGHLIGHTS_PER_DAY} 張，記錄這趟旅程的片刻` : '登入後可以分享照片、留言和心情'}</p>
             <div class="hl-stats c${stats.length}">${stats.map(([v, l]) => `<div><b>${v}</b><small>${l}</small></div>`).join('')}</div>
             ${trip ? `<div class="hl-mds">${trip}</div>` : ''}
             <div class="hl-acts">${si ? '<button type="button" data-a="share" class="hl-btn pri">＋ 分享照片</button>' : '<button type="button" data-a="login" class="hl-btn pri">👤 會員登入</button>'}
             <button type="button" data-a="random" class="hl-btn soft"${all.length ? '' : ' disabled'}>🎲 隨機回憶</button></div>`);
-        put('hl-pend', pendN ? `<div class="hl-pend"><span>${pendBusy ? `📤 正在補傳 ${pendBusy} / ${pendTot}…` : `📤 還有 ${pendN} 張照片沒傳上去，連上網路會自動補傳`}</span>${pendBusy ? '' : '<button type="button" data-a="pflush" class="hl-btn line sm">立即重試</button><button type="button" data-a="pdrop" class="hl-btn line sm">清除</button>'}</div>` : '');
+        put('hl-pend', act.length ? `<div class="hl-pend"><span>${running ? `📤 正在上傳…（還剩 ${act.length} 張）` : `📤 還有 ${act.length} 張照片待上傳，連上網路會自動上傳`}</span><button type="button" data-a="tasks" class="hl-btn line sm">查看任務</button></div>` : '');
         const f = featured(all, si);
         put('hl-feat', f ? `<div class="hl-sec"><span>✨ 本次旅行精選</span><button type="button" data-a="det" data-l="all" data-d="${f.day}" data-i="${esc(f.id)}">看看回憶 →</button></div>
             <button type="button" class="hl-feat" data-a="det" data-l="all" data-d="${f.day}" data-i="${esc(f.id)}">
@@ -285,8 +284,7 @@
         if (!b || b.disabled) return;
         const { a, d, l, i } = b.dataset;
         if (a === 'share') share(d);
-        else if (a === 'pflush') { flushAt = 0; flushQueue(true); }
-        else if (a === 'pdrop') { if (confirm(`確定要清除這 ${pendN} 張還沒上傳的照片嗎？清掉就救不回來了。`)) dropQueue(); }
+        else if (a === 'tasks') openTasks();
         else if (a === 'login') openMemberModal();
         else if (a === 'det') openDet(l, d, i);
         else if (a === 'album') { const p = allList()[0]; if (p) openDet('all', p.day, p.id); }
@@ -538,7 +536,8 @@
             else if (a === 'sday') { S.sheet.day = d; renderSheet(); }
             else if (a === 'srm') { const it = S.sheet.items.splice(+x, 1)[0]; if (it) URL.revokeObjectURL(it.prev); if (!S.sheet.items.length) closeSheet(); else renderSheet(); }
             else if (a === 'sgo') startUpload();
-            else if (a === 'sretry') runAll(S.sheet.items.filter((it, i) => it.st === 'fail' && (x === undefined || i === +x)));
+            else if (a === 'sretry') retryTasks(x);
+            else if (a === 'tdel') delTask(x);
         });
         sheetEl.addEventListener('input', (e) => {
             const ix = e.target.dataset.ix;
@@ -550,110 +549,147 @@
         S.pickDay = d || (todayDayN() ? 'd' + todayDayN() : 'd1');
         $('hl-file').click();
     }
+    function showSheet(sh) {
+        S.sheet = sh;
+        sheetEl.classList.remove('hidden');
+        lockScroll();
+        try { history.pushState({ hls: 1 }, ''); } catch (err) { }
+        fitVV();
+    }
     function onFiles(e) {
         const files = [...e.target.files].filter(f => /^image\//.test(f.type) || /\.(heic|heif)$/i.test(f.name));
         e.target.value = '';
         if (!files.length) return;
-        const items = files.map(file => ({ file, prev: URL.createObjectURL(file), cap: '', st: 'wait', pct: 0, err: '', host: '' }));
-        if (S.sheet) { if (S.sheet.phase === 'edit') S.sheet.items.push(...items); else items.forEach(it => URL.revokeObjectURL(it.prev)); }
-        else {
-            S.sheet = { day: S.pickDay || 'd1', items, phase: 'edit', busy: false };
-            sheetEl.classList.remove('hidden');
-            lockScroll();
-            try { history.pushState({ hls: 1 }, ''); } catch (err) { }
-            fitVV();
-        }
+        const items = files.map(file => ({ file, prev: URL.createObjectURL(file), cap: '' }));
+        const s = S.sheet;
+        if (s && s.busy) { items.forEach(it => URL.revokeObjectURL(it.prev)); return; }
+        if (s && s.phase === 'edit') s.items.push(...items);
+        else if (s) { s.phase = 'edit'; s.items = items; s.day = S.pickDay || 'd1'; }
+        else showSheet({ day: S.pickDay || 'd1', items, phase: 'edit', busy: false });
+        renderSheet();
+    }
+    function openTasks() {
+        if (!signed()) { openMemberModal(); return; }
+        if (!S.sheet) showSheet({ day: 'd1', items: [], phase: 'tasks', busy: false });
         renderSheet();
     }
     function closeSheet(fromPop) {
-        if (!S.sheet || (S.sheet.busy && fromPop !== true)) return;
+        const s = S.sheet;
+        if (!s || (s.busy && fromPop !== true)) return;
         if (fromPop !== true && history.state && history.state.hls) { history.back(); return; }
-        if (S.sheet.busy) { try { history.pushState({ hls: 1 }, ''); } catch (e) { } return; }
-        S.sheet.items.forEach(it => URL.revokeObjectURL(it.prev));
+        if (s.busy) { try { history.pushState({ hls: 1 }, ''); } catch (e) { } return; }
+        s.items.forEach(it => URL.revokeObjectURL(it.prev));
         S.sheet = null;
         sheetEl.classList.add('hidden');
         unlockScroll();
+        S.tasks.filter(t => t.st === 'done').forEach(dropTask);
         sched();
     }
-    const ST = { wait: '等待上傳', resize: '處理中…', up: '上傳中', save: '儲存中…', done: '✓ 已完成', fail: '' };
+
+    // 任務 = 已確定要上傳的照片；記憶體與手機暫存（IndexedDB）同步，手動重試與自動補傳共用同一條流程
+    const BUSY = ['resize', 'up', 'save'];
+    const myTasks = () => S.tasks.filter(t => t.uid === currentUserUid);
+    const activeTasks = () => myTasks().filter(t => t.st !== 'done');
+    const taskCount = (k) => activeTasks().filter(t => t.day === k).length;
+    function tick() { sched(); if (S.sheet && S.sheet.phase === 'tasks') renderSheet(); }
+    function dropTask(t) {
+        S.tasks = S.tasks.filter(x => x !== t);
+        S.gone.add(t.id);
+        URL.revokeObjectURL(t.prev);
+        qSafe(qDel(t.id));
+    }
+    function retryTasks(id) {
+        myTasks().filter(t => t.st === 'fail' && (!id || t.id === id)).forEach(t => { t.st = 'wait'; t.err = ''; t.tries = 0; if (!t.mem) qSafe(qTries(t.id, 0)); });
+        tick();
+        pump({ force: true });
+    }
+    function delTask(id) {
+        const t = S.tasks.find(x => x.id === id);
+        if (!t || BUSY.includes(t.st)) return;
+        if (!confirm('確定要刪除這張還沒上傳的照片嗎？刪掉就救不回來了。')) return;
+        dropTask(t);
+        tick();
+    }
+
+    const ST = { wait: '等待上傳', resize: '處理中…', save: '儲存中…', done: '✓ 已完成' };
     function renderSheet() {
         const s = S.sheet;
         if (!s) return;
-        const edit = s.phase === 'edit', q = quota(s.day), n = s.items.length;
-        const doneN = s.items.filter(it => it.st === 'done').length;
-        $('hl-stitle').textContent = edit ? `分享照片（${n} 張）` : (s.busy ? `上傳中 ${doneN} / ${n}` : `上傳結果 ${doneN} / ${n}`);
-        $('hl-scancel').classList.toggle('hl-inv', s.busy || !edit);
-        $('hl-sadd').classList.toggle('hl-inv', !edit);
+        if (s.phase === 'edit') renderEdit(s); else renderTaskList(s);
+    }
+    function renderEdit(s) {
+        const q = quota(s.day), n = s.items.length, pend = taskCount(s.day);
+        $('hl-stitle').textContent = `分享照片（${n} 張）`;
+        $('hl-scancel').textContent = '取消';
+        $('hl-scancel').classList.toggle('hl-inv', s.busy);
+        $('hl-sadd').classList.toggle('hl-inv', s.busy);
         const days = dayMeta.map(d => `<button type="button" data-a="sday" data-d="d${d.n}" class="hl-dp${s.day === 'd' + d.n ? ' on' : ''}">D${d.n}</button>`).join('');
-        const tip = isEditor ? '' : `<p class="hl-tip">你在 D${meta(s.day).n} 已分享 ${myCount(s.day)} 張，${q ? `這次最多還能上傳 ${q} 張` : '今天的額度已用完'}</p>`;
+        const tip = isEditor ? '' : `<p class="hl-tip">你在 D${meta(s.day).n} 已分享 ${myCount(s.day)} 張${pend ? `、待上傳 ${pend} 張` : ''}，${q ? `這次最多還能上傳 ${q} 張` : '今天的額度已用完'}</p>`;
         const test = (cldOnly() ? '<p class="hl-tip">🧪 測試模式：這次只會上傳到備用的 Cloudinary</p>' : '')
-            + (edit && isOffline() ? '<p class="hl-tip">📶 目前偵測不到網路。還是可以先選好照片按上傳，照片會存在手機裡，等有網路自動補傳。</p>' : '');
+            + (isOffline() ? '<p class="hl-tip">📶 目前偵測不到網路。還是可以先選好照片按上傳，照片會存在手機裡，等有網路自動補傳。</p>' : '');
         const row = (it, i) => {
-            const over = edit && i >= q;
-            const bk = it.host === 'cld' ? '（備用）' : '';
-            const st = it.st === 'fail' ? `<span class="hl-err">⚠️ ${esc(it.err || '上傳失敗')}</span>`
-                : it.st === 'up' ? `<span class="hl-bar"><i style="width:${it.pct}%"></i></span><span class="hl-mu">上傳中${bk} ${it.pct}%</span>`
-                    : `<span class="${it.st === 'done' ? 'hl-ok' : 'hl-mu'}">${ST[it.st]}${it.st === 'done' ? bk : ''}</span>`;
-            return `<div class="hl-row${over ? ' over' : ''}${it.st === 'fail' ? ' bad' : ''}"><img src="${it.prev}" alt="">
-                <div class="hl-rb">${edit ? `<input data-ix="${i}" maxlength="${CAP}" placeholder="寫一句說明（選填，${CAP} 字內）" value="${esc(it.cap)}">${over ? '<span class="hl-err">超過今天的上限，不會上傳</span>' : ''}`
-                    : `<span class="hl-rc">${esc(it.cap || '（無說明）')}</span>${st}`}</div>
-                ${edit ? `<button type="button" data-a="srm" data-x="${i}" class="hl-cx" aria-label="移除">✕</button>`
-                    : (it.st === 'fail' && !s.busy ? `<button type="button" data-a="sretry" data-x="${i}" class="hl-btn line sm">重試</button>` : '')}</div>`;
+            const over = i >= q;
+            return `<div class="hl-row${over ? ' over' : ''}"><img src="${it.prev}" alt="">
+                <div class="hl-rb"><input data-ix="${i}" maxlength="${CAP}" placeholder="寫一句說明（選填，${CAP} 字內）" value="${esc(it.cap)}"${s.busy ? ' disabled' : ''}>${over ? '<span class="hl-err">超過今天的上限，不會上傳</span>' : ''}</div>
+                <button type="button" data-a="srm" data-x="${i}" class="hl-cx" aria-label="移除"${s.busy ? ' disabled' : ''}>✕</button></div>`;
         };
-        const warn = !edit && s.items.some(it => it.big) ? '<p class="hl-tip">⚠️ 有照片無法縮圖，會以原檔上傳，訊號弱時比較容易失敗。</p>' : '';
-        const keep = !edit && !s.busy && s.items.some(it => it.st === 'fail')
-            ? (s.saved ? '<p class="hl-tip">📥 沒傳成功的照片已經存在手機裡，連上網路後會自動補傳，可以放心按「完成」關閉。</p>'
-                : `<p class="hl-tip">⚠️ 這台裝置無法暫存照片，請保持此畫面開啟再重試。<br>原因：${esc(s.qerr || '未知')}</p>`)
-            : '';
-        $('hl-sbody').innerHTML = edit
-            ? `${test}<p class="hl-lb">所屬日期</p><div class="hl-dps">${days}</div>${tip}${s.items.map(row).join('')}`
-            : `${test}<p class="hl-lb">${dayLabel(s.day)}</p>${warn}${keep}${s.items.map(row).join('')}`;
+        $('hl-sbody').innerHTML = `${test}<p class="hl-lb">所屬日期</p><div class="hl-dps">${days}</div>${tip}${s.items.map(row).join('')}`;
         const go = Math.min(n, q);
-        $('hl-sfoot').innerHTML = edit
-            ? `<button type="button" data-a="sgo" class="hl-btn pri"${go ? '' : ' disabled'}>${go ? `上傳 ${go} 張` : '沒有可上傳的照片'}</button>`
-            : (s.busy ? `<button type="button" class="hl-btn pri" disabled>上傳中，請勿關閉…</button>`
-                : `<div class="hl-two">${s.items.some(it => it.st === 'fail') ? '<button type="button" data-a="sretry" class="hl-btn line">全部重試</button>' : ''}<button type="button" data-a="sdone" class="hl-btn pri">完成</button></div>`);
+        $('hl-sfoot').innerHTML = s.busy ? '<button type="button" class="hl-btn pri" disabled>處理並存入手機中…</button>'
+            : `<button type="button" data-a="sgo" class="hl-btn pri"${go ? '' : ' disabled'}>${go ? `上傳 ${go} 張` : '沒有可上傳的照片'}</button>`;
+    }
+    function renderTaskList(s) {
+        const ts = myTasks(), doneN = ts.filter(t => t.st === 'done').length;
+        $('hl-stitle').textContent = `上傳任務 ${doneN} / ${ts.length}`;
+        $('hl-scancel').textContent = '稍後處理';
+        $('hl-scancel').classList.remove('hl-inv');
+        $('hl-sadd').classList.add('hl-inv');
+        const row = (t) => {
+            const bk = t.host === 'cld' ? '（備用）' : '';
+            const st = t.st === 'fail' ? `<span class="hl-err">⚠️ ${esc(t.err || '上傳失敗')}</span>`
+                : t.st === 'up' ? `<span class="hl-bar"><i style="width:${t.pct}%"></i></span><span class="hl-mu">上傳中${bk} ${t.pct}%</span>`
+                    : t.st === 'wait' ? `<span class="hl-mu">${isOffline() ? '排隊中，連上網路會自動上傳' : '等待上傳'}</span>`
+                        : `<span class="${t.st === 'done' ? 'hl-ok' : 'hl-mu'}">${ST[t.st]}${t.st === 'done' ? bk : ''}</span>`;
+            const acts = (t.st === 'fail' ? `<button type="button" data-a="sretry" data-x="${esc(t.id)}" class="hl-btn line sm">重試</button>` : '')
+                + (t.st === 'fail' || t.st === 'wait' ? `<button type="button" data-a="tdel" data-x="${esc(t.id)}" class="hl-cx" aria-label="刪除">✕</button>` : '');
+            return `<div class="hl-row${t.st === 'fail' ? ' bad' : ''}"><img src="${t.prev}" alt="">
+                <div class="hl-rb"><span class="hl-mu">${dayLabel(t.day)}</span><span class="hl-rc">${esc(t.cap || '（無說明）')}</span>${st}</div>
+                ${acts ? `<div class="hl-ra">${acts}</div>` : ''}</div>`;
+        };
+        const open = ts.filter(t => t.st !== 'done');
+        const memN = open.filter(t => t.mem).length;
+        const tips = (open.some(t => t.big) ? '<p class="hl-tip">⚠️ 有照片無法縮圖，會以原檔上傳，訊號弱時比較容易失敗。</p>' : '')
+            + (memN ? `<p class="hl-tip">⚠️ 有 ${memN} 張照片無法存進手機（原因：${esc(S.qerr || '未知')}），關掉 App 就會消失，請保持此畫面開啟直到上傳完成。</p>`
+                : (open.length ? '<p class="hl-tip">📥 未完成的照片都已存在手機裡，連上網路會自動上傳，可以先按「稍後處理」離開，之後從花絮頁的「任務」回來看。</p>' : ''));
+        $('hl-sbody').innerHTML = ts.length ? tips + ts.map(row).join('') : '<p class="hl-empty">目前沒有上傳任務。</p>';
+        $('hl-sfoot').innerHTML = `<div class="hl-two">${ts.some(t => t.st === 'fail') ? '<button type="button" data-a="sretry" class="hl-btn line">全部重試</button>' : ''}<button type="button" data-a="sdone" class="hl-btn pri">完成</button></div>`;
     }
     async function startUpload() {
         const s = S.sheet;
-        if (!s || s.phase !== 'edit') return;
-        const q = quota(s.day);
-        s.items.splice(q).forEach(it => URL.revokeObjectURL(it.prev));
+        if (!s || s.phase !== 'edit' || s.busy) return;
+        s.items.splice(quota(s.day)).forEach(it => URL.revokeObjectURL(it.prev));
         if (!s.items.length) return;
-        s.items.forEach(it => { it.cap = it.cap.trim().slice(0, CAP); });
-        s.phase = 'run';
         s.busy = true;
-        s.items.forEach(it => { it.st = 'resize'; it.err = ''; it.host = ''; });
         renderSheet();
-        // 先把縮好的檔案存進手機，之後就算關掉 App 或重開機也不會掉
-        let saved = 0;
+        S.qerr = '';
+        // 先縮圖並存進手機，之後就算關掉 App 或重開機也不會掉
         for (const it of s.items) {
-            if (S.sheet !== s) return;
-            if (!it.blob) it.blob = await toBlob(it.file);
-            it.big = it.blob === it.file && it.file.size > 4e6;
-            it.qid = it.qid || qid();
-            try {
-                await qSave({ id: it.qid, day: s.day, cap: it.cap, blob: it.blob, uid: currentUserUid, name: currentUserName || ADMIN_NAME, ts: Date.now(), tries: 0 });
-                saved++;
-            } catch (e) { it.qid = ''; s.qerr = (e && e.message) || '未知錯誤'; }
-            it.st = 'wait';
-            renderSheet();
+            const blob = await toBlob(it.file);
+            const t = {
+                id: qid(), day: s.day, cap: it.cap.trim().slice(0, CAP), blob, uid: currentUserUid, name: currentUserName || ADMIN_NAME,
+                ts: Date.now(), tries: 0, st: 'wait', pct: 0, err: '', host: '', soft: false, mem: false,
+                prev: URL.createObjectURL(blob), big: blob === it.file && it.file.size > 4e6
+            };
+            try { await qSave({ id: t.id, day: t.day, cap: t.cap, blob, uid: t.uid, name: t.name, ts: t.ts, tries: 0 }); }
+            catch (e) { t.mem = true; S.qerr = (e && e.message) || '未知錯誤'; }
+            S.tasks.push(t);
+            URL.revokeObjectURL(it.prev);
         }
-        s.saved = saved === s.items.length;
+        s.items = [];
         s.busy = false;
-        refreshPend();
-        runAll(s.items);
-    }
-    async function runAll(items) {
-        const s = S.sheet;
-        if (!s || s.busy || !items.length) return;
-        s.busy = true;
-        items.forEach(it => { it.st = 'wait'; it.err = ''; it.host = ''; });
-        renderSheet();
-        for (const it of items) { if (S.sheet !== s) break; await runOne(s, it); }
-        s.busy = false;
-        renderSheet();
-        sched();
+        s.phase = 'tasks';
+        tick();
+        pump({ force: true });
     }
 
     const cldOnly = () => /[?&]hltest=cld\b/.test(location.search);
@@ -738,66 +774,67 @@
         await ref.set({ url: r.url, thumb: r.thumb, caption: cap || '', author: who, uid });
         if (String(r.del).startsWith('https://ibb.co/')) createDb().ref('img_del/' + ref.key).set({ del: r.del, ...(r.thumb ? { thumb: r.thumb } : {}), author: who, uid, ts: Date.now() }).catch(() => { });
     }
-    async function runOne(s, it) {
-        const set = (st, extra = {}) => { Object.assign(it, { st }, extra); renderSheet(); };
+    async function runTask(t) {
+        const set = (st, extra = {}) => { Object.assign(t, { st }, extra); tick(); };
         try {
             if (!navigator.onLine) throw soft('目前離線中');
-            if (!isEditor && myCount(s.day) >= MAX_HIGHLIGHTS_PER_DAY) throw new Error('已達今天的上限');
-            if (!it.blob) { set('resize'); it.blob = await toBlob(it.file); }
+            if (!isEditor && myCount(t.day) >= MAX_HIGHLIGHTS_PER_DAY) throw Object.assign(new Error('已達今天的上限'), { hard: true });
             let last = 0;
             const onp = (pct) => { if (pct - last >= 5 || pct === 100) { last = pct; set('up', { pct }); } };
-            const r = await doUpload(it.blob, onp, (h) => { last = 0; set('up', { pct: 0, host: h }); });
+            if (!t.r) t.r = await doUpload(t.blob, onp, (h) => { last = 0; set('up', { pct: 0, host: h }); });
             set('save');
-            await saveRec(s.day, r, it.cap, currentUserName, currentUserUid);
-            if (it.qid) await qSafe(qDel(it.qid));
-            set('done');
+            await saveRec(t.day, t.r, t.cap, t.name, t.uid);
+            await qSafe(qDel(t.id));
+            set('done', { err: '' });
+            if (!S.sheet || S.sheet.phase !== 'tasks') dropTask(t);
+            return true;
         } catch (e) {
-            const denied = e && e.code === 'PERMISSION_DENIED';
-            let m = denied ? '沒有權限（請確認 Firebase Rules 已更新）' : ((e && e.message) || '上傳失敗');
-            if (e && e.soft && it.qid) m += '（已存在手機裡，有網路會自動補傳）';
-            set('fail', { err: m });
+            t.tries++;
+            t.soft = !!(e && e.soft);
+            if (e && e.hard) t.tries = QMAX;
+            set('fail', { err: e && e.code === 'PERMISSION_DENIED' ? '沒有權限（請確認 Firebase Rules 已更新）' : ((e && e.message) || '上傳失敗') });
+            if (!t.mem) qSafe(qTries(t.id, t.tries));
+            return false;
         }
-        refreshPend();
     }
 
     // ---------- 自動補傳 ----------
-    async function flushQueue(manual) {
-        if (flushing || !signed() || !S.photosLive) return;
-        if (S.sheet && S.sheet.busy) return;
-        if (!manual) {
-            if (!navigator.onLine || Date.now() - flushAt < 20000) return;
-            flushAt = Date.now();
+    let pumping = false, pumpAt = 0;
+    async function pump(o = {}) {
+        if (pumping || !signed() || !S.photosLive || (!o.force && !navigator.onLine)) return;
+        const todo = myTasks().filter(t => t.st === 'wait' || (t.st === 'fail' && t.tries < QMAX));
+        if (!todo.length) return;
+        if (!o.force) {
+            if (Date.now() - pumpAt < 20000) return;
+            pumpAt = Date.now();
         }
-        flushing = true;
+        pumping = true;
+        tick();
         try {
-            const recs = ((await qSafe(qMine(currentUserUid))) || []).filter(r => recBlob(r)).sort((a, b) => (a.ts || 0) - (b.ts || 0));
-            pendN = recs.length;
-            const todo = manual ? recs : recs.filter(r => (r.tries || 0) < QMAX);
-            if (!todo.length) return;
-            pendTot = todo.length; pendBusy = 0;
-            for (const rec of todo) {
-                if (!signed() || currentUserUid !== rec.uid) break;
-                pendBusy++; sched();
-                if (!isEditor && myCount(rec.day) >= MAX_HIGHLIGHTS_PER_DAY) continue;
-                try {
-                    const r = await doUpload(recBlob(rec), () => { }, () => { });
-                    await saveRec(rec.day, r, rec.cap, rec.name, rec.uid);
-                    await qSafe(qDel(rec.id));
-                    pendN = Math.max(0, pendN - 1);
-                } catch (e) {
-                    await qSafe(qPut({ ...rec, tries: (rec.tries || 0) + 1 }));
-                    if (e && e.soft) break; // 網路不通就別硬撐，省電省流量
-                }
+            for (const t of todo) {
+                if (!S.tasks.includes(t) || t.uid !== currentUserUid) continue;
+                if (!(await runTask(t)) && t.soft) break; // 網路不通就別硬撐，省電省流量
             }
-        } finally {
-            flushing = false; pendBusy = 0; pendTot = 0;
-            await refreshPend();
-        }
+        } finally { pumping = false; tick(); }
     }
-    async function dropQueue() {
-        const keys = (await qSafe(qKeys(currentUserUid))) || [];
-        for (const k of keys) await qSafe(qDel(k));
-        await refreshPend();
+    async function loadTasks() {
+        const uid = currentUserUid;
+        S.tasks = S.tasks.filter(t => { if (t.uid === uid) return true; URL.revokeObjectURL(t.prev); return false; });
+        if (uid) {
+            const recs = ((await qSafe(qMine(uid))) || []).sort((a, b) => (a.ts || 0) - (b.ts || 0));
+            if (uid !== currentUserUid) return;
+            recs.forEach(r => {
+                const blob = recBlob(r);
+                if (!blob || S.gone.has(r.id) || S.tasks.some(t => t.id === r.id)) return;
+                const tries = r.tries || 0, dead = tries >= QMAX;
+                S.tasks.push({
+                    id: r.id, day: r.day, cap: r.cap || '', blob, uid: r.uid, name: r.name, ts: r.ts || 0, tries, st: dead ? 'fail' : 'wait',
+                    err: dead ? '已多次失敗，請按「重試」' : '', pct: 0, host: '', soft: false, mem: false, prev: URL.createObjectURL(blob), big: false
+                });
+            });
+            S.tasks.sort((a, b) => a.ts - b.ts);
+        }
+        tick();
     }
 
     // ---------- 對外 ----------
@@ -809,7 +846,7 @@
             bindPriv();
             seed();
             renderNow();
-            refreshPend().then(() => flushQueue());
+            loadTasks().then(() => pump());
             if (!S.jumped && currentTab === 'highlights') {
                 S.jumped = true;
                 const n = tabDay.highlights || todayDayN();
@@ -826,7 +863,7 @@
             bindPriv();
             seed();
             if (S.sheet && S.sheet.phase === 'edit') renderSheet();
-            refreshPend().then(() => flushQueue());
+            loadTasks().then(() => pump());
             sched();
         }
     };
