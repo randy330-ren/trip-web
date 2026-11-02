@@ -263,7 +263,8 @@
             <textarea id="lg-f-note" class="lg-in" maxlength="200" rows="2" placeholder="選填"></textarea>
             <div id="lg-f-rate"></div>
             <div id="lg-f-preview" class="lg-preview"></div>
-            <button type="button" id="lg-f-save" class="lg-btn wide" data-act="save">儲存支出</button>`;
+            <button type="button" id="lg-f-save" class="lg-btn wide" data-act="save">儲存支出</button>
+            <button type="button" id="lg-f-clear" class="lg-btn ghost wide hidden" data-act="clear-form">取消新增</button>`;
     }
     function writeForm() {
         const f = S.form;
@@ -362,6 +363,7 @@
         const btn = $('lg-f-save');
         btn.disabled = !!c.errs.length || S.saving;
         btn.textContent = S.saving ? '儲存中...' : (S.editId ? '儲存修改' : '儲存支出');
+        $('lg-f-clear').classList.toggle('hidden', !!S.editId || !(f.title || f.amount || f.note || f.members.length || Object.keys(f.parts).length));
         let h = '';
         if (c.sp && c.sp.ok) {
             const fx = f.cur !== BASE;
@@ -1205,6 +1207,7 @@
             else if (act === 'rate-table') { f.rate = null; renderRate(); renderPreview(); }
             else if (act === 'rate-custom') { const t = R()[f.cur]; f.rate = t ? t.rate : ''; renderRate(); renderPreview(); }
             else if (act === 'save') saveExpense();
+            else if (act === 'clear-form') { if (confirm('確定要清空目前輸入的內容嗎？')) { S.form = blankForm({ date: f.date, cur: f.cur }); writeForm(); } }
             else if (act === 'cancel-edit') { if (!editDirty() || confirm('這筆支出有尚未儲存的修改，確定要放棄嗎？')) cancelEdit(); }
             else if (act === 'exp-open') { S.open = S.open === id ? null : id; renderItems(); }
             else if (act === 'fold-all') {
