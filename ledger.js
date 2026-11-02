@@ -20,7 +20,7 @@
         rosterOpen: false, open: null, showVoid: false,
         stMode: 'all', stDay: '', stCur: 'TWD', fold: { bal: false, sug: false, tr: false },
         listShut: (cacheLoad('ledger_fold') || {}).days || {}, fs: null,
-        filter: { sort: 'desc', cat: '', payer: '', members: [], cur: '', q: '' },
+        stOpen: {}, filter: { sort: 'desc', cat: '', payer: '', members: [], cur: '', q: '' },
         fx: cacheLoad('fx'), fxBusy: false, fxErr: ''
     };
 
@@ -351,12 +351,13 @@
         else if (!r.ok) errs.push('匯率' + r.err);
         if (!f.payer || !P()[f.payer]) errs.push('請選擇付款人');
         if (!/^\d{4}-\d{2}-\d{2}$/.test(f.date)) errs.push('請選擇日期');
+        const seed = S.editId ? ((S.editOrig && S.editOrig.seed) | 0) : Object.keys(E()).length;
         let sp = null;
         if (amt.ok && amt.v > 0 && r.ok) {
-            sp = C.computeSplit({ amount: amt.v, dec, mode: each ? 'amount' : f.mode, members: f.members, parts: each ? Object.fromEntries(f.members.map((p) => [p, f.amount])) : f.parts, rate: r.s, baseDec: BASE_DEC });
+            sp = C.computeSplit({ amount: amt.v, dec, mode: each ? 'amount' : f.mode, members: f.members, parts: each ? Object.fromEntries(f.members.map((p) => [p, f.amount])) : f.parts, rate: r.s, baseDec: BASE_DEC, seed });
             errs.push(...sp.errors);
         } else if (!f.members.length) errs.push('請至少選擇一位分攤成員');
-        return { errs, amt, dec, rate: r.ok ? r.s : '', sp };
+        return { errs, amt, dec, rate: r.ok ? r.s : '', sp, seed };
     }
     function renderPreview() {
         const f = S.form, c = computeForm();
@@ -391,7 +392,7 @@
             base: BASE, baseAmt: c.sp.baseAmt, date: f.date, payer: f.payer, mode: f.mode,
             unit: f.mode === 'each' ? f.amount.trim() : null,
             parts: f.mode === 'equal' || f.mode === 'each' ? null : Object.fromEntries(f.members.map((p) => [p, String(f.parts[p] || '0').trim()])),
-            shares: c.sp.shares, cat: f.cat, note: f.note.trim(), updBy: m.uid, updName: m.name, uts: TS()
+            shares: c.sp.shares, seed: c.seed, cat: f.cat, note: f.note.trim(), updBy: m.uid, updName: m.name, uts: TS()
         };
         S.saving = true;
         renderPreview();
@@ -710,6 +711,19 @@
         const open = Object.values(B).reduce((s, x) => s + Math.max(0, x.net), 0);
         const netCell = (v) => v > 0 ? `<b class="pos">+${num(v)}</b><small>應收</small>` : v < 0 ? `<b class="neg">${num(v)}</b><small>應付</small>` : `<b>0</b><small>平衡</small>`;
         const trE = (t) => { if (!t.eid) return ''; const x = E()[t.eid]; return `<small class="lg-tr-e">📌 依「${esc(x ? x.title : '已刪除的支出')}」${x && x.date ? `（${mdLabel(x.date)}）` : ''}先轉帳</small>`; };
+        const li = (a, b) => `<div class="lg-bd-r"><span>${a}</span><span>${b}</span></div>`;
+        const eLbl = (e) => `${esc(e.title || '')}${e.date ? `（${mdLabel(e.date)}）` : ''}`;
+        const bd = (p) => {
+            const x = B[p], ex = Object.values(exps).filter((e) => e && e.shares && Number.isInteger(e.baseAmt));
+            const sec = (t, rows) => (rows.length ? `<p class="lg-bd-h">${t}</p>${rows.join('')}` : '');
+            const live = Object.values(trs).filter((t) => t && (t.status === 'paid' || t.status === 'done') && Number.isInteger(t.amt));
+            return `<div class="lg-bd"><p class="lg-bd-n">${esc(pname(p))}</p>`
+                + sec(`已付 ${money(x.paid, BASE)}`, ex.filter((e) => e.payer === p).map((e) => li(eLbl(e), money(e.baseAmt, BASE))))
+                + sec(`應負擔 ${money(x.owe, BASE)}`, ex.filter((e) => e.shares[p] && e.shares[p].b > 0).map((e) => li(`${eLbl(e)}${e.payer === p ? '（自己付）' : ''}`, money(e.shares[p].b, BASE))))
+                + sec(`已轉出 ${money(x.sent, BASE)}`, live.filter((t) => t.from === p).map((t) => li(`給 ${esc(pname(t.to))}`, money(t.amt, BASE))))
+                + sec(`已收到 ${money(x.recv, BASE)}`, live.filter((t) => t.to === p).map((t) => li(`來自 ${esc(pname(t.from))}`, money(t.amt, BASE))))
+                + `<p class="lg-bd-s">淨額 ＝ ${money(x.paid, BASE)} − ${money(x.owe, BASE)} ＋ ${money(x.sent, BASE)} − ${money(x.recv, BASE)} ＝ <b>${money(x.net, BASE)}</b></p></div>`;
+        };
         const trLine = ([, t], btns) => `<div class="lg-tr"><p><b>${esc(pname(t.from))}</b> → <b>${esc(pname(t.to))}</b><span>${amt(t.amt)}</span></p>${trE(t)}${btns}</div>`;
 
         let h = `<div class="card lg-card">
@@ -725,16 +739,20 @@
             (rows.length ? `<div class="lg-bal"><div class="lg-bal-r h"><span>成員</span><span>已付</span><span>應負擔</span><span>淨額</span></div>
             ${rows.map((p) => {
                 const x = B[p];
-                return `<div class="lg-bal-r"><span>${esc(pname(p))}${x.sent || x.recv ? `<small>轉出 ${num(x.sent)}・收到 ${num(x.recv)}</small>` : ''}</span><span>${num(x.paid)}</span><span>${num(x.owe)}</span><span>${netCell(x.net)}</span></div>`;
+                const k = 'b:' + p, op = !!S.stOpen[k];
+                return `<div class="lg-bal-r lg-tap" data-act="st-open" data-k="${esc(k)}"><span>${esc(pname(p))}<i class="lg-chev">${op ? '▲' : '▼'}</i>${x.sent || x.recv ? `<small>轉出 ${num(x.sent)}・收到 ${num(x.recv)}</small>` : ''}</span><span>${num(x.paid)}</span><span>${num(x.owe)}</span><span>${netCell(x.net)}</span></div>${op ? bd(p) : ''}`;
             }).join('')}</div>` : '<p class="lg-muted">還沒有團員。</p>') +
             `<p class="lg-sum lg-mt">${day ? '當天未平衡' : '尚未結清'}：<b>${amt(open)}</b></p>
             <p class="lg-muted">淨額 ＝ 已付 − 應負擔 ＋ 已轉出 − 已收到；已標記轉帳的金額會立即計入${day ? '（只算指定當天支出的先轉帳）' : ''}。</p>`);
 
-        h += foldCard('sug', '💸 清帳建議', sug.length ? sug.map((s) =>
-            `<div class="lg-tr"><p><b>${esc(pname(s.from))}</b> → <b>${esc(pname(s.to))}</b><span>${amt(s.amt)}</span></p>
+        h += foldCard('sug', '💸 清帳建議', sug.length ? sug.map((s) => {
+            const k = `s:${s.from}>${s.to}`, op = !!S.stOpen[k];
+            return `<div class="lg-tr"><p class="lg-tap" data-act="st-open" data-k="${esc(k)}"><b>${esc(pname(s.from))}</b> → <b>${esc(pname(s.to))}</b><i class="lg-chev">${op ? '▲' : '▼'}</i><span>${amt(s.amt)}</span></p>
+            ${op ? `<p class="lg-muted">依淨額配對：由欠最多的人付給應收最多的人。${esc(pname(s.from))} 應付 ${money(-B[s.from].net, BASE)}、${esc(pname(s.to))} 應收 ${money(B[s.to].net, BASE)}，本筆 ${money(s.amt, BASE)}。</p>${bd(s.from)}${bd(s.to)}` : ''}
             <div class="lg-st">${day ? '<small>依日期檢視，僅供參考</small>' : `<em>付款：未轉帳</em><em>收款：未確認</em>${canAct(s.from)
                 ? `<button type="button" class="lg-btn sm" data-act="st-pay" data-from="${s.from}" data-to="${s.to}" data-amt="${s.amt}">標記已轉帳</button>`
-                : `<small>由 ${esc(pname(s.from))} 本人或管理員標記</small>`}`}</div></div>`).join('')
+                : `<small>由 ${esc(pname(s.from))} 本人或管理員標記</small>`}`}</div></div>`;
+        }).join('')
             : `<p class="lg-muted">🎉 ${day ? '這天' : ''}帳務已平衡，沒有需要轉帳的項目。</p>`);
 
         if (!day) {
@@ -1203,6 +1221,7 @@
             else if (act === 'calc-swap' || act === 'calc-del') calcAct(act, +b.dataset.i);
             else if (act === 'st-mode') { S.stMode = v; renderSettle(); }
             else if (act === 'fold') { S.fold[v] = !S.fold[v]; renderSettle(); }
+            else if (act === 'st-open') { S.stOpen[b.dataset.k] = !S.stOpen[b.dataset.k]; renderSettle(); }
             else if (act === 'fill') fillParts();
             else if (act === 'rate-table') { f.rate = null; renderRate(); renderPreview(); }
             else if (act === 'rate-custom') { const t = R()[f.cur]; f.rate = t ? t.rate : ''; renderRate(); renderPreview(); }

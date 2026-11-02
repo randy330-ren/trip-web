@@ -64,21 +64,22 @@
         return Number(divRound(BigInt(minor) * mustRate(rateFrom).n * pow10(toDec), pow10(fromDec) * mustRate(rateTo).n));
     }
 
-    // 最大餘數法：依權重把整數 total 拆開，加總必等於 total；餘數相同時依順序優先
-    function allocate(total, weights) {
+    // 最大餘數法：依權重把整數 total 拆開，加總必等於 total；餘數相同時依順序優先（seed 讓優先起點輪替，尾數不固定落在前面的人）
+    function allocate(total, weights, seed = 0) {
+        const n = weights.length, rot = (i) => (((i - seed) % n) + n) % n;
         const W = weights.reduce((s, w) => s + BigInt(w), 0n);
         if (W <= 0n) return weights.map(() => 0);
         const T = BigInt(total);
         const rows = weights.map((w, i) => { const p = T * BigInt(w); return { i, q: p / W, r: p % W }; });
         let left = T - rows.reduce((s, x) => s + x.q, 0n);
-        [...rows].sort((a, b) => (b.r > a.r ? 1 : b.r < a.r ? -1 : a.i - b.i)).forEach((x) => {
+        [...rows].sort((a, b) => (b.r > a.r ? 1 : b.r < a.r ? -1 : rot(a.i) - rot(b.i))).forEach((x) => {
             if (left > 0n) { x.q += 1n; left -= 1n; }
         });
         return rows.map((x) => Number(x.q));
     }
 
     // 先依原幣別分攤，再把基準幣別總額依原幣別份額分配，確保兩邊加總都正確
-    function computeSplit({ amount, dec, mode, members, parts = {}, rate, baseDec }) {
+    function computeSplit({ amount, dec, mode, members, parts = {}, rate, baseDec, seed = 0 }) {
         const errors = [];
         if (!(Number.isInteger(amount) && amount > 0)) errors.push('支出金額必須大於零');
         if (!members || !members.length) errors.push('請至少選擇一位分攤成員');
@@ -88,7 +89,7 @@
 
         let orig;
         if (mode === 'equal') {
-            orig = allocate(amount, members.map(() => 1));
+            orig = allocate(amount, members.map(() => 1), seed);
         } else if (mode === 'amount') {
             const vals = members.map((p) => parseAmount(String(parts[p] ?? '').trim() || '0', dec));
             const bad = vals.findIndex((v) => !v.ok);
@@ -103,13 +104,13 @@
             const w = vals.map((v) => v.v);
             const sum = w.reduce((s, v) => s + v, 0);
             if (sum !== 10000) return { ok: false, errors: [`比例加總 ${formatAmount(sum, 2)}%，必須等於 100%`] };
-            orig = allocate(amount, w);
+            orig = allocate(amount, w, seed);
         } else {
             return { ok: false, errors: ['未知的分帳方式'] };
         }
 
         const baseAmt = convert(amount, dec, r.s, baseDec);
-        const base = allocate(baseAmt, orig);
+        const base = allocate(baseAmt, orig, seed);
         const shares = {};
         members.forEach((p, i) => { shares[p] = { o: orig[i], b: base[i] }; });
         return { ok: true, errors: [], baseAmt, shares, rate: r.s };
