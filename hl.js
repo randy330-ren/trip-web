@@ -33,6 +33,42 @@
     const fail = (e) => alert('操作失敗：' + (e && e.code === 'PERMISSION_DENIED' ? '沒有權限（請確認 Firebase Rules 已更新）' : (e && e.message) || e));
     const guard = () => { if (isOffline()) { offlineAlert(); return false; } return true; };
 
+    // ---------- 離線上傳佇列（IndexedDB，撐得過關 App / 重開機） ----------
+    const QDB = 'hl-queue', QST = 'q', QMAX = 6;
+    let qdbP = null, pendN = 0, pendBusy = 0, pendTot = 0, flushing = false, flushAt = 0;
+    function qdb() {
+        if (!qdbP) qdbP = new Promise((res, rej) => {
+            const r = indexedDB.open(QDB, 1);
+            r.onupgradeneeded = () => {
+                const d = r.result;
+                const st = d.objectStoreNames.contains(QST) ? r.transaction.objectStore(QST) : d.createObjectStore(QST, { keyPath: 'id' });
+                if (!st.indexNames.contains('uid')) st.createIndex('uid', 'uid');
+            };
+            r.onsuccess = () => res(r.result);
+            r.onerror = () => rej(r.error || new Error('無法開啟本機暫存'));
+        });
+        return qdbP;
+    }
+    function qTx(mode, fn) {
+        return qdb().then(d => new Promise((res, rej) => {
+            const t = d.transaction(QST, mode), rq = fn(t.objectStore(QST));
+            t.oncomplete = () => res(rq ? rq.result : undefined);
+            t.onerror = t.onabort = () => rej(t.error || new Error('本機暫存失敗'));
+        }));
+    }
+    const qPut = (rec) => qTx('readwrite', st => st.put(rec));
+    const qDel = (id) => qTx('readwrite', st => st.delete(id));
+    const qMine = (uid) => (uid ? qTx('readonly', st => st.index('uid').getAll(uid)) : Promise.resolve([]));
+    const qKeys = (uid) => (uid ? qTx('readonly', st => st.index('uid').getAllKeys(uid)) : Promise.resolve([]));
+    const qCount = (uid) => (uid ? qTx('readonly', st => st.index('uid').count(uid)) : Promise.resolve(0));
+    const qSafe = (p) => p.catch(() => null);
+    const qid = () => 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    async function refreshPend() {
+        pendN = (await qSafe(qCount(currentUserUid))) || 0;
+        sched();
+        return pendN;
+    }
+
     // ---------- 資料 ----------
     function dayList(k) {
         return Object.entries(S.photos[k] || {}).filter(([, p]) => p && p.url)
@@ -116,7 +152,7 @@
     function off(bag) { bag.forEach(([r, f]) => r.off('value', f)); bag.length = 0; }
     function bindPub() {
         if (!S.active || S.pubRefs.length) return;
-        on(db.ref('highlights'), S.pubRefs, (v) => { S.photos = v || {}; S.photosLive = true; cacheSave('highlights', S.photos); sched(); });
+        on(db.ref('highlights'), S.pubRefs, (v) => { S.photos = v || {}; S.photosLive = true; cacheSave('highlights', S.photos); sched(); flushQueue(); });
         on(db.ref('settings/hl_emojis'), S.pubRefs, (v) => { S.emojis = v; S.emoLoaded = true; cacheSave('hl_emojis', v); seed(); sched(); });
     }
     function bindPriv() {
@@ -149,7 +185,7 @@
     // ---------- 主畫面 ----------
     function build() {
         S.built = true;
-        $('hl-root').innerHTML = `<div class="hl-wrap"><div id="hl-head" class="hl-head"></div><div id="hl-feat"></div>
+        $('hl-root').innerHTML = `<div class="hl-wrap"><div id="hl-head" class="hl-head"></div><div id="hl-pend"></div><div id="hl-feat"></div>
             <div class="hl-sec"><span>🗓️ 每日花絮</span><button type="button" data-a="days">全部日期 ∨</button></div>
             ${dayMeta.map(d => `<section id="hl-day${d.n}" class="card hl-day"></section>`).join('')}
             <input type="file" id="hl-file" accept="image/*" multiple hidden></div>`;
@@ -162,6 +198,9 @@
             if (S.det && !st.hl) closeDet(true);
             if (S.sheet && !st.hls) closeSheet(true);
         });
+        window.addEventListener('online', () => { flushAt = 0; flushQueue(); });
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) flushQueue(); });
+        setInterval(() => { if (pendN) flushQueue(); }, 60000);
         const vv = window.visualViewport;
         if (vv) { vv.addEventListener('resize', fitVV); vv.addEventListener('scroll', fitVV); }
         document.addEventListener('keydown', (e) => {
@@ -197,6 +236,7 @@
             ${trip ? `<div class="hl-mds">${trip}</div>` : ''}
             <div class="hl-acts">${si ? '<button type="button" data-a="share" class="hl-btn pri">＋ 分享照片</button>' : '<button type="button" data-a="login" class="hl-btn pri">👤 會員登入</button>'}
             <button type="button" data-a="random" class="hl-btn soft"${all.length ? '' : ' disabled'}>🎲 隨機回憶</button></div>`);
+        put('hl-pend', pendN ? `<div class="hl-pend"><span>${pendBusy ? `📤 正在補傳 ${pendBusy} / ${pendTot}…` : `📤 還有 ${pendN} 張照片沒傳上去，連上網路會自動補傳`}</span>${pendBusy ? '' : '<button type="button" data-a="pflush" class="hl-btn line sm">立即重試</button><button type="button" data-a="pdrop" class="hl-btn line sm">清除</button>'}</div>` : '');
         const f = featured(all, si);
         put('hl-feat', f ? `<div class="hl-sec"><span>✨ 本次旅行精選</span><button type="button" data-a="det" data-l="all" data-d="${f.day}" data-i="${esc(f.id)}">看看回憶 →</button></div>
             <button type="button" class="hl-feat" data-a="det" data-l="all" data-d="${f.day}" data-i="${esc(f.id)}">
@@ -233,6 +273,8 @@
         if (!b || b.disabled) return;
         const { a, d, l, i } = b.dataset;
         if (a === 'share') share(d);
+        else if (a === 'pflush') { flushAt = 0; flushQueue(true); }
+        else if (a === 'pdrop') { if (confirm(`確定要清除這 ${pendN} 張還沒上傳的照片嗎？清掉就救不回來了。`)) dropQueue(); }
         else if (a === 'login') openMemberModal();
         else if (a === 'det') openDet(l, d, i);
         else if (a === 'album') { const p = allList()[0]; if (p) openDet('all', p.day, p.id); }
@@ -493,7 +535,6 @@
     }
     function share(d) {
         if (!signed()) { openMemberModal(); return; }
-        if (!guard()) return;
         S.pickDay = d || (todayDayN() ? 'd' + todayDayN() : 'd1');
         $('hl-file').click();
     }
@@ -522,7 +563,7 @@
         unlockScroll();
         sched();
     }
-    const ST = { wait: '等待上傳', resize: '縮圖中…', up: '上傳中', save: '儲存中…', done: '✓ 已完成', fail: '' };
+    const ST = { wait: '等待上傳', resize: '處理中…', up: '上傳中', save: '儲存中…', done: '✓ 已完成', fail: '' };
     function renderSheet() {
         const s = S.sheet;
         if (!s) return;
@@ -533,7 +574,8 @@
         $('hl-sadd').classList.toggle('hl-inv', !edit);
         const days = dayMeta.map(d => `<button type="button" data-a="sday" data-d="d${d.n}" class="hl-dp${s.day === 'd' + d.n ? ' on' : ''}">D${d.n}</button>`).join('');
         const tip = isEditor ? '' : `<p class="hl-tip">你在 D${meta(s.day).n} 已分享 ${myCount(s.day)} 張，${q ? `這次最多還能上傳 ${q} 張` : '今天的額度已用完'}</p>`;
-        const test = cldOnly() ? '<p class="hl-tip">🧪 測試模式：這次只會上傳到備用的 Cloudinary</p>' : '';
+        const test = (cldOnly() ? '<p class="hl-tip">🧪 測試模式：這次只會上傳到備用的 Cloudinary</p>' : '')
+            + (edit && isOffline() ? '<p class="hl-tip">📶 目前偵測不到網路。還是可以先選好照片按上傳，照片會存在手機裡，等有網路自動補傳。</p>' : '');
         const row = (it, i) => {
             const over = edit && i >= q;
             const bk = it.host === 'cld' ? '（備用）' : '';
@@ -546,23 +588,48 @@
                 ${edit ? `<button type="button" data-a="srm" data-x="${i}" class="hl-cx" aria-label="移除">✕</button>`
                     : (it.st === 'fail' && !s.busy ? `<button type="button" data-a="sretry" data-x="${i}" class="hl-btn line sm">重試</button>` : '')}</div>`;
         };
+        const warn = !edit && s.items.some(it => it.big) ? '<p class="hl-tip">⚠️ 有照片無法縮圖，會以原檔上傳，訊號弱時比較容易失敗。</p>' : '';
+        const keep = !edit && !s.busy && s.items.some(it => it.st === 'fail')
+            ? (s.saved ? '<p class="hl-tip">📥 沒傳成功的照片已經存在手機裡，連上網路後會自動補傳，可以放心按「完成」關閉。</p>'
+                : '<p class="hl-tip">⚠️ 這台裝置無法暫存照片（可能是無痕模式），請保持此畫面開啟再重試。</p>')
+            : '';
         $('hl-sbody').innerHTML = edit
             ? `${test}<p class="hl-lb">所屬日期</p><div class="hl-dps">${days}</div>${tip}${s.items.map(row).join('')}`
-            : `${test}<p class="hl-lb">${dayLabel(s.day)}</p>${s.items.map(row).join('')}`;
+            : `${test}<p class="hl-lb">${dayLabel(s.day)}</p>${warn}${keep}${s.items.map(row).join('')}`;
         const go = Math.min(n, q);
         $('hl-sfoot').innerHTML = edit
             ? `<button type="button" data-a="sgo" class="hl-btn pri"${go ? '' : ' disabled'}>${go ? `上傳 ${go} 張` : '沒有可上傳的照片'}</button>`
             : (s.busy ? `<button type="button" class="hl-btn pri" disabled>上傳中，請勿關閉…</button>`
                 : `<div class="hl-two">${s.items.some(it => it.st === 'fail') ? '<button type="button" data-a="sretry" class="hl-btn line">全部重試</button>' : ''}<button type="button" data-a="sdone" class="hl-btn pri">完成</button></div>`);
     }
-    function startUpload() {
+    async function startUpload() {
         const s = S.sheet;
-        if (!s || s.phase !== 'edit' || !guard()) return;
+        if (!s || s.phase !== 'edit') return;
         const q = quota(s.day);
         s.items.splice(q).forEach(it => URL.revokeObjectURL(it.prev));
         if (!s.items.length) return;
         s.items.forEach(it => { it.cap = it.cap.trim().slice(0, CAP); });
         s.phase = 'run';
+        s.busy = true;
+        s.items.forEach(it => { it.st = 'resize'; it.err = ''; it.host = ''; });
+        renderSheet();
+        // 先把縮好的檔案存進手機，之後就算關掉 App 或重開機也不會掉
+        let saved = 0;
+        for (const it of s.items) {
+            if (S.sheet !== s) return;
+            if (!it.blob) it.blob = await toBlob(it.file);
+            it.big = it.blob === it.file && it.file.size > 4e6;
+            it.qid = it.qid || qid();
+            try {
+                await qPut({ id: it.qid, day: s.day, cap: it.cap, blob: it.blob, uid: currentUserUid, name: currentUserName || ADMIN_NAME, ts: Date.now(), tries: 0 });
+                saved++;
+            } catch (e) { it.qid = ''; }
+            it.st = 'wait';
+            renderSheet();
+        }
+        s.saved = saved === s.items.length;
+        s.busy = false;
+        refreshPend();
         runAll(s.items);
     }
     async function runAll(items) {
@@ -586,17 +653,42 @@
         cldCache = { cloud: String(v.cloud).trim(), preset: String(v.preset).trim() };
         return cldCache;
     }
+    const soft = (m) => Object.assign(new Error(m), { soft: true });
     function xhrPost(url, fd, onp) {
         return new Promise((res, rej) => {
             const x = new XMLHttpRequest();
             x.open('POST', url);
             x.timeout = 120000;
             x.upload.onprogress = (e) => { if (e.lengthComputable) onp(Math.round(e.loaded / e.total * 100)); };
-            x.onload = () => { let j = null; try { j = JSON.parse(x.responseText); } catch (e) { } res({ ok: x.status >= 200 && x.status < 300, j }); };
-            x.onerror = () => rej(new Error('網路中斷'));
-            x.ontimeout = () => rej(new Error('上傳逾時'));
+            x.onload = () => {
+                let j = null; try { j = JSON.parse(x.responseText); } catch (e) { }
+                if (x.status === 429 || x.status >= 500) return rej(soft('圖床忙碌中'));
+                res({ ok: x.status >= 200 && x.status < 300, j, status: x.status });
+            };
+            // status 0 = 連線根本沒建立（訊號弱、機艙、電信商阻擋），不是伺服器回錯
+            x.onerror = () => rej(soft('網路太弱，傳不出去'));
+            x.ontimeout = () => rej(soft('上傳逾時'));
             x.send(fd);
         });
+    }
+    // 縮圖：createImageBitmap 失敗時改用 <img> 解碼，兩者都失敗才退回原檔
+    async function toBlob(file) {
+        const b = await resizeImage(file);
+        if (b && b !== file) return b;
+        let url = '';
+        try {
+            url = URL.createObjectURL(file);
+            const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('decode')); i.src = url; });
+            const sc = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+            const c = document.createElement('canvas');
+            c.width = Math.round(img.naturalWidth * sc); c.height = Math.round(img.naturalHeight * sc);
+            const x = c.getContext('2d');
+            x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+            x.drawImage(img, 0, 0, c.width, c.height);
+            const out = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+            if (out) return out;
+        } catch (e) { } finally { if (url) URL.revokeObjectURL(url); }
+        return file;
     }
     async function upImgbb(blob, onp) {
         const fd = new FormData();
@@ -615,33 +707,85 @@
         if (!ok || !j || !j.secure_url) throw new Error((j && j.error && j.error.message) || '上傳失敗');
         return { url: j.secure_url, thumb: j.secure_url.replace('/image/upload/', '/image/upload/c_fill,w_480,h_480,q_auto,f_auto/'), del: '' };
     }
+    async function doUpload(blob, onp, onHost) {
+        let r = null, err1 = '', soft1 = false;
+        if (!cldOnly()) {
+            onHost('ibb');
+            try { r = await upImgbb(blob, onp); } catch (e) { err1 = 'ImgBB：' + e.message; soft1 = !!e.soft; }
+        }
+        if (!r) {
+            onHost('cld');
+            try { r = await upCld(blob, onp); }
+            catch (e) { throw Object.assign(new Error([err1, 'Cloudinary：' + e.message].filter(Boolean).join('；')), { soft: !!e.soft || soft1 }); }
+        }
+        return r;
+    }
+    async function saveRec(day, r, cap, name, uid) {
+        const who = name || ADMIN_NAME;
+        const ref = createDb().ref('highlights/' + day).push();
+        await ref.set({ url: r.url, thumb: r.thumb, caption: cap || '', author: who, uid });
+        if (String(r.del).startsWith('https://ibb.co/')) createDb().ref('img_del/' + ref.key).set({ del: r.del, ...(r.thumb ? { thumb: r.thumb } : {}), author: who, uid, ts: Date.now() }).catch(() => { });
+    }
     async function runOne(s, it) {
         const set = (st, extra = {}) => { Object.assign(it, { st }, extra); renderSheet(); };
         try {
-            if (isOffline()) throw new Error('目前離線中');
+            if (!navigator.onLine) throw soft('目前離線中');
             if (!isEditor && myCount(s.day) >= MAX_HIGHLIGHTS_PER_DAY) throw new Error('已達今天的上限');
-            set('resize');
-            const blob = await resizeImage(it.file);
+            if (!it.blob) { set('resize'); it.blob = await toBlob(it.file); }
             let last = 0;
             const onp = (pct) => { if (pct - last >= 5 || pct === 100) { last = pct; set('up', { pct }); } };
-            let r = null, err1 = '';
-            if (!cldOnly()) {
-                set('up', { pct: 0, host: 'ibb' });
-                try { r = await upImgbb(blob, onp); } catch (e) { err1 = 'ImgBB：' + e.message; }
-            }
-            if (!r) {
-                last = 0;
-                set('up', { pct: 0, host: 'cld' });
-                try { r = await upCld(blob, onp); } catch (e) { throw new Error([err1, 'Cloudinary：' + e.message].filter(Boolean).join('；')); }
-            }
+            const r = await doUpload(it.blob, onp, (h) => { last = 0; set('up', { pct: 0, host: h }); });
             set('save');
-            const ref = createDb().ref('highlights/' + s.day).push();
-            await ref.set({ url: r.url, thumb: r.thumb, caption: it.cap, author: currentUserName || ADMIN_NAME, uid: currentUserUid });
-            if (String(r.del).startsWith('https://ibb.co/')) createDb().ref('img_del/' + ref.key).set({ del: r.del, ...(r.thumb ? { thumb: r.thumb } : {}), author: currentUserName || ADMIN_NAME, uid: currentUserUid, ts: Date.now() }).catch(() => { });
+            await saveRec(s.day, r, it.cap, currentUserName, currentUserUid);
+            if (it.qid) await qSafe(qDel(it.qid));
             set('done');
         } catch (e) {
-            set('fail', { err: e && e.code === 'PERMISSION_DENIED' ? '沒有權限（請確認 Firebase Rules 已更新）' : ((e && e.message) || '上傳失敗') });
+            const denied = e && e.code === 'PERMISSION_DENIED';
+            let m = denied ? '沒有權限（請確認 Firebase Rules 已更新）' : ((e && e.message) || '上傳失敗');
+            if (e && e.soft && it.qid) m += '（已存在手機裡，有網路會自動補傳）';
+            set('fail', { err: m });
         }
+        refreshPend();
+    }
+
+    // ---------- 自動補傳 ----------
+    async function flushQueue(manual) {
+        if (flushing || !signed() || !S.photosLive) return;
+        if (S.sheet && S.sheet.busy) return;
+        if (!manual) {
+            if (!navigator.onLine || Date.now() - flushAt < 20000) return;
+            flushAt = Date.now();
+        }
+        flushing = true;
+        try {
+            const recs = ((await qSafe(qMine(currentUserUid))) || []).filter(r => r && r.blob).sort((a, b) => (a.ts || 0) - (b.ts || 0));
+            pendN = recs.length;
+            const todo = manual ? recs : recs.filter(r => (r.tries || 0) < QMAX);
+            if (!todo.length) return;
+            pendTot = todo.length; pendBusy = 0;
+            for (const rec of todo) {
+                if (!signed() || currentUserUid !== rec.uid) break;
+                pendBusy++; sched();
+                if (!isEditor && myCount(rec.day) >= MAX_HIGHLIGHTS_PER_DAY) continue;
+                try {
+                    const r = await doUpload(rec.blob, () => { }, () => { });
+                    await saveRec(rec.day, r, rec.cap, rec.name, rec.uid);
+                    await qSafe(qDel(rec.id));
+                    pendN = Math.max(0, pendN - 1);
+                } catch (e) {
+                    await qSafe(qPut({ ...rec, tries: (rec.tries || 0) + 1 }));
+                    if (e && e.soft) break; // 網路不通就別硬撐，省電省流量
+                }
+            }
+        } finally {
+            flushing = false; pendBusy = 0; pendTot = 0;
+            await refreshPend();
+        }
+    }
+    async function dropQueue() {
+        const keys = (await qSafe(qKeys(currentUserUid))) || [];
+        for (const k of keys) await qSafe(qDel(k));
+        await refreshPend();
     }
 
     // ---------- 對外 ----------
@@ -653,6 +797,7 @@
             bindPriv();
             seed();
             renderNow();
+            refreshPend().then(() => flushQueue());
             if (!S.jumped && currentTab === 'highlights') {
                 S.jumped = true;
                 const n = tabDay.highlights || todayDayN();
@@ -669,6 +814,7 @@
             bindPriv();
             seed();
             if (S.sheet && S.sheet.phase === 'edit') renderSheet();
+            refreshPend().then(() => flushQueue());
             sched();
         }
     };
