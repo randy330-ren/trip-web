@@ -21,11 +21,15 @@
         full: ['📅', '全勤王', '每天都有分享照片']
     };
 
+    const ORDER = ['topic', 'early', 'helper', 'share', 'welcome'];
+    const NT = { at: ['📌', '有人在貼文中標注你'], myl: ['❤️', '有人對你的貼文按讚'], myc: ['💬', '有人對你的貼文留言'], photo: ['📸', '有人新增了貼文'], cmt: ['💬', '有人對貼文留言'] };
+
     const S = {
-        built: false, active: false, jumped: false,
+        built: false, active: false, live: false, booted: false, jumped: false,
         photos: cacheLoad('highlights') || {}, photosLive: false, emojis: cacheLoad('hl_emojis'), emoLoaded: false, seeding: false,
         tasks: [], gone: new Set(), qerr: '',
-        react: {}, comments: {}, members: {}, ready: {}, pubRefs: [], privRefs: [], privKey: null,
+        react: {}, comments: {}, members: {}, rts: {}, award: {}, ready: {}, pubRefs: [], privRefs: [], privKey: null,
+        seen: null, dis: new Set(), nl: [], settling: new Set(),
         open: new Set(), html: {}, raf: 0, det: null, zoom: false, toBottom: false, sheet: null, pickDay: null, winOpen: false
     };
 
@@ -77,16 +81,22 @@
     const qid = () => 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
     // ---------- 資料 ----------
-    function dayList(k) {
+    function dayList(k, cut) {
         return Object.entries(S.photos[k] || {}).filter(([, p]) => p && p.url)
-            .map(([id, p]) => ({ ...p, id, day: k, ts: keyTs(id) })).sort((a, b) => a.ts - b.ts);
+            .map(([id, p]) => ({ ...p, id, day: k, ts: keyTs(id) })).filter(p => !cut || p.ts < cut).sort((a, b) => a.ts - b.ts);
     }
     const allList = () => dayMeta.flatMap(d => dayList('d' + d.n));
     const listOf = (l) => (l === 'all' ? allList() : dayList(l));
     const reacts = (p) => ((S.react[p.day] || {})[p.id]) || {};
-    const rCount = (p) => Object.keys(reacts(p)).length;
-    const comments = (p) => Object.entries(((S.comments[p.day] || {})[p.id]) || {})
-        .map(([cid, c]) => ({ ...c, cid })).sort((a, b) => (a.ts || 0) - (b.ts || 0));
+    const rtsOf = (p) => ((S.rts[p.day] || {})[p.id]) || {};
+    const rCount = (p, cut) => {
+        const r = Object.keys(reacts(p));
+        if (!cut) return r.length;
+        const t = rtsOf(p);
+        return r.filter(u => !(t[u] >= cut)).length;
+    };
+    const comments = (p, cut) => Object.entries(((S.comments[p.day] || {})[p.id]) || {})
+        .map(([cid, c]) => ({ ...c, cid })).filter(c => !cut || (c.ts || 0) < cut).sort((a, b) => (a.ts || 0) - (b.ts || 0));
     const myCount = (k) => dayList(k).filter(p => p.uid === currentUserUid).length;
     const quota = (k) => (isEditor ? Infinity : Math.max(0, MAX_HIGHLIGHTS_PER_DAY - myCount(k) - taskCount(k)));
     function emoList() {
@@ -117,24 +127,46 @@
         cands.forEach(c => { if (c.n >= c.min && (!best || c.n > best.n || (c.n === best.n && c.t < best.t))) best = c; });
         return best;
     }
-    function dayTitles(k) {
-        const ps = dayList(k).filter(p => !isAdm(p.uid, p.author));
-        const out = {};
-        if (!ps.length) return out;
-        out.early = ps[0].uid;
+    const dayEnd = (k) => { const m = meta(k); return Date.UTC(TRIP_YEAR, m.month - 1, m.day + 1) - 9 * 36e5; };
+    const uniq = (a) => [...new Set(a)];
+    const rank = (cands) => uniq(cands.filter(c => c.n >= c.min).sort((a, b) => b.n - a.n || a.t - b.t).map(c => c.u));
+    function ranks(k, cut) {
+        const all = dayList(k, cut), ps = all.filter(p => !isAdm(p.uid, p.author));
+        const r = { early: uniq(ps.map(p => p.uid)) };
+        if (!ps.length) return r;
         const by = groupBy(ps);
-        const sh = pickMax(Object.entries(by).map(([u, l]) => ({ u, n: l.length, t: l[l.length - 1].ts, min: 2 })));
-        if (sh) out.share = sh.u;
-        if (!signed()) return out;
-        const wl = pickMax(Object.entries(by).map(([u, l]) => ({ u, n: l.reduce((s, p) => s + rCount(p), 0), t: l[0].ts, min: 1 })));
-        if (wl) out.welcome = wl.u;
-        const tp = pickMax(ps.map(p => { const cl = comments(p); return { u: p.uid, n: cl.length, t: cl.length ? (cl[cl.length - 1].ts || 0) : 0, min: 1 }; }));
-        if (tp) out.topic = tp.u;
+        r.share = rank(Object.entries(by).map(([u, l]) => ({ u, n: l.length, t: l[l.length - 1].ts, min: 2 })));
+        if (!signed()) return r;
+        r.welcome = rank(Object.entries(by).map(([u, l]) => ({ u, n: l.reduce((s, p) => s + rCount(p, cut), 0), t: l[0].ts, min: 1 })));
+        r.topic = rank(ps.map(p => { const cl = comments(p, cut); return { u: p.uid, n: cl.length, t: cl.length ? (cl[cl.length - 1].ts || 0) : 0, min: 1 }; }));
         const given = {};
-        dayList(k).forEach(p => Object.keys(reacts(p)).forEach(ru => { if (ru !== p.uid && !isAdm(ru)) given[ru] = (given[ru] || 0) + 1; }));
-        const hp = pickMax(Object.entries(given).map(([u, n]) => ({ u, n, t: 0, min: 1 })).sort((a, b) => nameOf(a.u).localeCompare(nameOf(b.u))));
-        if (hp) out.helper = hp.u;
+        all.forEach(p => {
+            const t = rtsOf(p);
+            Object.keys(reacts(p)).forEach(ru => { if (ru !== p.uid && !isAdm(ru) && !(cut && t[ru] >= cut)) given[ru] = (given[ru] || 0) + 1; });
+        });
+        r.helper = rank(Object.entries(given).map(([u, n]) => ({ u, n, t: 0, min: 1 })).sort((a, b) => nameOf(a.u).localeCompare(nameOf(b.u))));
+        return r;
+    }
+    function assign(r) {
+        const used = new Set(), out = {};
+        ORDER.forEach(id => { const u = (r[id] || []).find(x => !used.has(x)); if (u) { out[id] = u; used.add(u); } });
         return out;
+    }
+    function dayTitles(k) {
+        const f = S.award[k];
+        if (signed() && S.ready.award && f) return Object.fromEntries(ORDER.filter(id => f[id]).map(id => [id, f[id]]));
+        const end = dayEnd(k);
+        return assign(ranks(k, Date.now() >= end ? end : 0));
+    }
+    // 日本時間當天 24:00 過後，第一位開啟花絮的會員把結果寫進資料庫；先寫入者為準，之後不再變動
+    function settle() {
+        if (!signed() || !allReady()) return;
+        dayMeta.forEach(d => {
+            const k = 'd' + d.n, end = dayEnd(k);
+            if (S.award[k] || S.settling.has(k) || Date.now() < end) return;
+            S.settling.add(k);
+            createDb().ref('hl_award/' + k).set({ ...assign(ranks(k, end)), ts: firebase.database.ServerValue.TIMESTAMP }).catch(() => { });
+        });
     }
     function tripTitles() {
         const ps = allList().filter(p => !isAdm(p.uid, p.author));
@@ -155,16 +187,16 @@
     const medalsHtml = (t, order, dark) => order.filter(id => t[id]).map(id => medal(id, t[id], dark && id === 'pop')).join('');
 
     // ---------- 監聽 ----------
-    function on(ref, bag, cb) { const f = ref.on('value', (s) => cb(s.val()), () => { }); bag.push([ref, f]); }
+    function on(ref, bag, cb, onErr) { const f = ref.on('value', (s) => cb(s.val()), onErr || (() => { })); bag.push([ref, f]); }
     function off(bag) { bag.forEach(([r, f]) => r.off('value', f)); bag.length = 0; }
     function bindPub() {
-        if (!S.active || S.pubRefs.length) return;
+        if (!(S.active || S.live) || S.pubRefs.length) return;
         on(db.ref('highlights'), S.pubRefs, (v) => { S.photos = v || {}; S.photosLive = true; cacheSave('highlights', S.photos); sched(); pump(); });
         on(db.ref('settings/hl_emojis'), S.pubRefs, (v) => { S.emojis = v; S.emoLoaded = true; cacheSave('hl_emojis', v); seed(); sched(); });
     }
     function bindPriv() {
         const d = privDb();
-        const key = S.active && d ? (memberUser ? 'm' + memberUser.uid : 'a') : '';
+        const key = S.live && d ? (memberUser ? 'm' + memberUser.uid : 'a') : '';
         if (key === S.privKey) return;
         off(S.privRefs);
         S.privKey = key;
@@ -173,11 +205,16 @@
         S.react = (c && c.r) || {};
         S.comments = (c && c.c) || {};
         S.members = (c && c.m) || {};
-        const save = () => cacheSave('hl_priv_' + key, { r: S.react, c: S.comments, m: S.members });
+        S.rts = (c && c.t) || {};
+        S.award = (c && c.a) || {};
+        S.seen = key ? loadSeen() : null;
+        const save = () => cacheSave('hl_priv_' + key, { r: S.react, c: S.comments, m: S.members, t: S.rts, a: S.award });
         if (key) {
             on(d.ref('hl_react'), S.privRefs, (v) => { S.react = v || {}; S.ready.react = 1; save(); sched(); });
             on(d.ref('hl_comments'), S.privRefs, (v) => { S.comments = v || {}; S.ready.comments = 1; save(); sched(); });
             on(d.ref('members'), S.privRefs, (v) => { S.members = v || {}; S.ready.members = 1; save(); sched(); });
+            on(d.ref('hl_rts'), S.privRefs, (v) => { S.rts = v || {}; S.ready.rts = 1; save(); sched(); }, () => { S.ready.rts = 1; sched(); });
+            on(d.ref('hl_award'), S.privRefs, (v) => { S.award = v || {}; S.ready.award = 1; save(); sched(); }, () => { S.ready.award = 1; sched(); });
         }
         sched();
     }
@@ -210,7 +247,6 @@
             pumpAt = 0; tick(); pump();
         });
         document.addEventListener('visibilitychange', () => { if (!document.hidden) pump(); });
-        setInterval(() => { if (activeTasks().length) pump(); }, 60000);
         const vv = window.visualViewport;
         if (vv) { vv.addEventListener('resize', fitVV); vv.addEventListener('scroll', fitVV); }
         document.addEventListener('keydown', (e) => {
@@ -219,6 +255,26 @@
             else if (e.key === 'ArrowLeft') stepDet(-1);
             else if (e.key === 'ArrowRight') stepDet(1);
         });
+    }
+    // 登入後在任何分頁都會監聽花絮資料，頂部提示才能在每個分頁出現
+    function boot() {
+        if (S.booted) return;
+        S.booted = true;
+        document.addEventListener('visibilitychange', () => { if (document.hidden && S.active) markRead(); });
+        window.addEventListener('pagehide', () => { if (S.active) markRead(); });
+        $('hl-notices').addEventListener('click', (e) => {
+            const b = e.target.closest('[data-i]'), n = b && S.nl[+b.dataset.i];
+            if (!n) return;
+            S.dis.add(n.key);
+            S.jumped = true;
+            if (currentTab !== 'highlights') switchTab('highlights', { skipScrollTop: true });
+            if (!S.built) build();
+            renderNow();
+            if (n.type === 'award') jumpToDay(n.n, { flash: true }); else openDet(n.day, n.day, n.id);
+            renderNotices();
+        });
+        const ub = $('upd-bar');
+        if (ub && window.MutationObserver) new MutationObserver(sched).observe(ub, { attributes: true, attributeFilter: ['class'] });
     }
     function sched() { if (!S.raf) S.raf = requestAnimationFrame(() => { S.raf = 0; renderNow(); }); }
     function put(id, html) { if (S.html[id] === html) return; S.html[id] = html; const el = $(id); if (el) el.innerHTML = html; }
@@ -233,7 +289,7 @@
     }
 
     function renderNow() {
-        if (!S.built) return;
+        if (!S.built) { settle(); renderNotices(); return; }
         const all = allList(), si = signed();
         const real = all.filter(p => !isAdm(p.uid, p.author));
         const nc = si ? all.reduce((n, p) => n + comments(p).length, 0) : 0;
@@ -254,11 +310,13 @@
             <span class="hl-fbg" style="background-image:url('${cssUrl(f.thumb || f.url)}')"></span>
             <img class="hl-fimg" src="${esc(f.url)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
             <span class="hl-fov"><span class="hl-ftag">TRIP HIGHLIGHT · DAY ${meta(f.day).n}</span>
-            <span class="hl-ft">${esc(f.caption || '（無說明）')}</span>
+            ${f.caption ? `<span class="hl-ft">${esc(f.caption)}</span>` : ''}
             <span class="hl-fm">${si ? `<span>${emoText(Object.values(reacts(f)))}</span><span>💬 ${comments(f).length}</span>` : ''}<span>${esc(f.author || '')} 上傳</span></span></span></button>` : '');
         dayMeta.forEach(d => put('hl-day' + d.n, dayHtml('d' + d.n)));
         if (S.det) renderDet();
+        settle();
         checkWins();
+        renderNotices();
     }
     function dayHtml(k) {
         const ps = dayList(k), exp = S.open.has(k), si = signed(), m = meta(k);
@@ -267,7 +325,7 @@
         const sub = [tt ? tt.textContent.trim() : '', m.tag].filter(Boolean).join('｜');
         const tile = (p) => `<button type="button" class="hl-tile" data-a="det" data-l="${k}" data-d="${k}" data-i="${esc(p.id)}">
             <span class="hl-ti"><img src="${esc(p.thumb || p.url)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></span>
-            <span class="hl-tx"><span class="hl-tc">${esc(p.caption || '（無說明）')}</span>
+            <span class="hl-tx"><span class="hl-tc${p.caption ? '' : ' none'}">${esc(p.caption || '（無說明）')}</span>
             <span class="hl-tm"><span class="hl-ta">${esc(p.author || '')}</span>${si ? `<span class="hl-cnt"><span>${emoText(Object.values(reacts(p)))}</span><span>💬 ${comments(p).length}</span></span>` : ''}</span></span></button>`;
         const sum = si && ps.length ? `<span class="hl-dsum">${emoText(ps.flatMap(p => Object.values(reacts(p))))} · 💬 ${ps.reduce((n, p) => n + comments(p).length, 0)} 則留言</span>` : '<span></span>';
         const more = ps.length > SHOW ? `<button type="button" data-a="more" data-d="${k}" class="hl-link">${exp ? '收合 ▲' : `查看全部 ${ps.length} 張 →`}</button>` : '';
@@ -308,14 +366,14 @@
     // ---------- 獲得稱號 ----------
     function checkWins() {
         const me = memberUser && memberUser.uid;
-        if (!me || !S.active || !S.photosLive || S.winOpen || !S.ready.react || !S.ready.comments || !S.ready.members || (S.sheet && S.sheet.busy)) return;
+        if (!me || !S.active || !S.photosLive || S.winOpen || !S.ready.react || !S.ready.comments || !S.ready.members || !S.ready.award || (S.sheet && S.sheet.busy)) return;
         const lsKey = 'hl_won_' + me;
         let seen = {};
         try { seen = JSON.parse(localStorage.getItem(lsKey) || '{}') || {}; } catch (e) { }
         const fresh = [];
         dayMeta.forEach(d => {
-            const k = 'd' + d.n, t = dayTitles(k);
-            Object.entries(t).forEach(([id, u]) => { if (u === me && !seen[k + '_' + id]) fresh.push({ key: k + '_' + id, id, k }); });
+            const k = 'd' + d.n, f = S.award[k];
+            if (f) ORDER.forEach(id => { if (f[id] === me && !seen['a_' + k + '_' + id]) fresh.push({ key: 'a_' + k + '_' + id, id, k }); });
         });
         Object.entries(tripTitles()).forEach(([id, u]) => { if ([].concat(u).includes(me) && !seen['trip_' + id]) fresh.push({ key: 'trip_' + id, id, k: null }); });
         if (!fresh.length) return;
@@ -338,6 +396,60 @@
         document.body.appendChild(ov);
         setTimeout(() => { const c = ov.querySelector('.hl-conf'); if (c) c.remove(); }, 2600);
         ov.querySelector('button').addEventListener('click', () => { ov.remove(); S.winOpen = false; });
+    }
+
+    // ---------- 頂部提示（按讚／留言／新貼文／標注／得獎） ----------
+    const allReady = () => !!(S.photosLive && S.ready.react && S.ready.comments && S.ready.members && S.ready.rts && S.ready.award);
+    const seenKey = () => 'hl_seen_' + currentUserUid;
+    function loadSeen() {
+        try { const v = localStorage.getItem(seenKey()); return v === null ? null : (+v || 0); } catch (e) { return null; }
+    }
+    function saveSeen() { try { localStorage.setItem(seenKey(), String(S.seen)); } catch (e) { } }
+    function latest() {
+        let m = 0;
+        allList().forEach(p => {
+            m = Math.max(m, p.ts);
+            comments(p).forEach(c => { m = Math.max(m, c.ts || 0); });
+            Object.values(rtsOf(p)).forEach(t => { m = Math.max(m, +t || 0); });
+        });
+        Object.values(S.award).forEach(a => { m = Math.max(m, (a && a.ts) || 0); });
+        return m;
+    }
+    function markRead() {
+        if (!currentUserUid || !allReady() || S.seen === null) return;
+        const m = latest();
+        if (m > S.seen) { S.seen = m; saveSeen(); }
+    }
+    function calcNotices() {
+        const me = currentUserUid;
+        if (!me || !S.live || !allReady()) return [];
+        if (S.seen === null) { S.seen = latest(); saveSeen(); return []; }
+        const seen = S.seen, best = {};
+        const add = (type, ts, p) => { if (ts > seen && !(best[type] && best[type].ts >= ts)) best[type] = { type, ts, day: p.day, id: p.id, key: type + ':' + ts }; };
+        allList().forEach(p => {
+            const mine = p.uid === me;
+            if (!mine) add(p.mentions && p.mentions[me] ? 'at' : 'photo', p.ts, p);
+            comments(p).forEach(c => { if (c.uid !== me) add(mine ? 'myc' : 'cmt', c.ts || 0, p); });
+            if (mine) { const rs = reacts(p); Object.entries(rtsOf(p)).forEach(([u, t]) => { if (u !== me && rs[u]) add('myl', +t || 0, p); }); }
+        });
+        const out = Object.values(best);
+        Object.entries(S.award).forEach(([k, f]) => {
+            if (!f || !(f.ts > seen) || !meta(k)) return;
+            const ids = ORDER.filter(id => f[id]);
+            if (!ids.length || ids.some(id => f[id] === me)) return;
+            out.push({ type: 'award', ts: f.ts, n: meta(k).n, key: 'award:' + k, text: `D${meta(k).n} 恭喜 ${ids.map(id => nameOf(f[id]) + '成為' + TITLES[id][1]).join('、')}` });
+        });
+        const ub = $('upd-bar'), slots = ub && ub.classList.contains('show') ? 1 : 2;
+        return out.filter(n => !S.dis.has(n.key)).sort((a, b) => a.ts - b.ts).slice(-slots);
+    }
+    function renderNotices() {
+        const box = $('hl-notices');
+        if (!box) return;
+        S.nl = calcNotices();
+        const h = S.nl.map((n, i) => n.type === 'award'
+            ? `<button type="button" class="hl-nt aw" data-i="${i}"><span>🎉 ${esc(n.text)}</span><u>點擊查看</u></button>`
+            : `<button type="button" class="hl-nt" data-i="${i}"><span>${NT[n.type][0]} ${NT[n.type][1]}</span><u>點擊查看</u></button>`).join('');
+        if (S.html.nt !== h) { S.html.nt = h; box.innerHTML = h; }
     }
 
     // ---------- 照片詳細畫面 ----------
@@ -390,6 +502,11 @@
             el.style.top = vv ? vv.offsetTop + 'px' : '0px';
         });
     }
+    const capHtml = (p) => {
+        let h = esc(p.caption);
+        Object.keys(p.mentions || {}).forEach(u => { const n = S.members[u] && S.members[u].name; if (n) h = h.split(esc('@' + n)).join(`<span class="hl-at">${esc('@' + n)}</span>`); });
+        return h;
+    };
     const curPhoto = () => S.det && dayList(S.det.d).find(p => p.id === S.det.i);
     function openDet(l, d, i) {
         if (!dayList(d).some(p => p.id === i)) return;
@@ -433,7 +550,7 @@
         det.querySelector('.hl-nav.r').classList.toggle('hidden', idx >= ls.length - 1);
         $('hl-dmenu').classList.toggle('hl-inv', !(isEditor || (si && p.uid === currentUserUid)));
         $('hl-dinput').classList.toggle('hidden', !si);
-        let body = `${p.caption ? `<p class="hl-dcap">${esc(p.caption)}</p>` : ''}<p class="hl-dmeta">📷 ${esc(p.author || '')}・${dayLabel(p.day)}・${hm(p.ts)}</p>`;
+        let body = `${p.caption ? `<p class="hl-dcap">${capHtml(p)}</p>` : ''}<p class="hl-dmeta">📷 ${esc(p.author || '')}・${dayLabel(p.day)}・${hm(p.ts)}</p>`;
         if (si) {
             const rs = reacts(p), mine = rs[currentUserUid];
             const cl = comments(p);
@@ -464,8 +581,9 @@
         const p = curPhoto();
         if (!p || !signed() || !guard()) return;
         if (!S.emojis) { alert('表情尚未啟用，請管理員登入後開啟一次花絮頁。'); return; }
-        const ref = createDb().ref(`hl_react/${p.day}/${p.id}/${currentUserUid}`);
-        (reacts(p)[currentUserUid] === k ? ref.remove() : ref.set(k)).catch(fail);
+        const db2 = createDb(), ref = db2.ref(`hl_react/${p.day}/${p.id}/${currentUserUid}`), tref = db2.ref(`hl_rts/${p.day}/${p.id}/${currentUserUid}`);
+        const had = reacts(p)[currentUserUid] === k;
+        (had ? ref.remove() : ref.set(k)).then(() => (had ? tref.remove() : tref.set(firebase.database.ServerValue.TIMESTAMP)).catch(() => { })).catch(fail);
     }
     function sendComment() {
         const p = curPhoto(), inp = $('hl-cin'), t = inp.value.trim();
@@ -490,10 +608,11 @@
             const r = await openInputModal({ title: '編輯說明', fields: [{ key: 'caption', value: p.caption || '', placeholder: `說明文字（${CAP} 字內）`, max: CAP }], submitLabel: '儲存' });
             if (!r) return;
             if ((r.caption || '').length > CAP) { alert(`說明最多 ${CAP} 字，請縮短後再儲存`); return; }
-            manageDb().ref(`highlights/${p.day}/${p.id}`).update({ caption: r.caption || '' })
+            manageDb().ref(`highlights/${p.day}/${p.id}`).update({ caption: r.caption || '', mentions: mentionsOrNull(r.caption || '') })
                 .catch((e) => alert('儲存失敗：' + (e.code === 'PERMISSION_DENIED' ? '沒有權限，或這張是舊照片（請刪除後重新上傳）。' : e.message)));
         } else if (confirm('確定要刪除這張照片嗎？留言和心情也會一起刪除。' + (isCld(p.url) ? '\n\n（這張存在 Cloudinary，原圖需要管理員到 Cloudinary 後台刪除）' : ''))) {
-            manageDb().ref().update({ [`highlights/${p.day}/${p.id}`]: null, [`hl_react/${p.day}/${p.id}`]: null, [`hl_comments/${p.day}/${p.id}`]: null })
+            manageDb().ref(`hl_rts/${p.day}/${p.id}`).remove().catch(() => { })
+                .then(() => manageDb().ref().update({ [`highlights/${p.day}/${p.id}`]: null, [`hl_react/${p.day}/${p.id}`]: null, [`hl_comments/${p.day}/${p.id}`]: null }))
                 .then(() => { if (!isCld(p.url)) markImgDeleted(p.id); }).catch(fail);
         }
     }
@@ -518,6 +637,59 @@
         }
     }
 
+    // ---------- 標注（@會員名字） ----------
+    function mentionsOf(cap) {
+        const byName = {};
+        Object.entries(S.members).forEach(([u, m]) => { if (m && m.name && u !== currentUserUid) (byName[m.name] = byName[m.name] || []).push(u); });
+        const out = {};
+        let t = String(cap || '');
+        Object.keys(byName).sort((a, b) => b.length - a.length).forEach(n => {
+            const tag = '@' + n;
+            if (t.includes(tag)) { byName[n].forEach(u => { out[u] = true; }); t = t.split(tag).join(' '.repeat(tag.length)); }
+        });
+        return out;
+    }
+    const mentionsOrNull = (cap) => { const m = mentionsOf(cap); return Object.keys(m).length ? m : null; };
+    let atEl = null, atInp = null;
+    function atHide() { if (atEl) atEl.classList.add('hidden'); atInp = null; }
+    function atSuggest(inp) {
+        const pos = inp.selectionStart == null ? inp.value.length : inp.selectionStart;
+        const m = /@([^\s@]*)$/.exec(inp.value.slice(0, pos));
+        const q = m ? m[1].toLowerCase() : '';
+        const list = m ? Object.entries(S.members).filter(([u, v]) => v && v.name && u !== currentUserUid && v.name.toLowerCase().includes(q)).slice(0, 8) : [];
+        if (!list.length) { atHide(); return; }
+        if (!atEl) {
+            atEl = document.createElement('div');
+            atEl.className = 'hl-at-list hidden';
+            atEl.addEventListener('mousedown', (e) => e.preventDefault());
+            atEl.addEventListener('click', (e) => {
+                const b = e.target.closest('[data-n]');
+                if (!b || !atInp || !S.sheet) return;
+                const inp = atInp, it = S.sheet.items[+inp.dataset.ix];
+                const cur = inp.selectionStart == null ? inp.value.length : inp.selectionStart;
+                const before = inp.value.slice(0, cur).replace(/@([^\s@]*)$/, '@' + b.dataset.n + ' ');
+                const v = before + inp.value.slice(cur);
+                if (!it) return;
+                if (v.length > CAP) { atEl.innerHTML = `<p>字數不夠，放不下 @${esc(b.dataset.n)}</p>`; return; }
+                inp.value = v; it.cap = v;
+                inp.focus();
+                inp.setSelectionRange(before.length, before.length);
+                const clr = inp.parentNode.querySelector('.hl-clr');
+                if (clr) clr.classList.remove('hl-inv');
+                atHide();
+            });
+            sheetEl.appendChild(atEl);
+        }
+        atInp = inp;
+        atEl.innerHTML = list.map(([u, v]) => `<button type="button" data-n="${esc(v.name)}">@${esc(v.name)}</button>`).join('');
+        atEl.classList.remove('hidden');
+        const r = inp.getBoundingClientRect(), h = atEl.offsetHeight, vv = window.visualViewport;
+        const vh = vv ? vv.offsetTop + vv.height : window.innerHeight;
+        atEl.style.left = r.left + 'px';
+        atEl.style.width = r.width + 'px';
+        atEl.style.top = (r.bottom + h + 8 > vh ? Math.max(4, r.top - h - 4) : r.bottom + 4) + 'px';
+    }
+
     // ---------- 上傳 ----------
     let sheetEl;
     function buildSheet() {
@@ -534,15 +706,23 @@
             if (a === 'scancel' || a === 'sdone') closeSheet();
             else if (a === 'sadd') $('hl-file').click();
             else if (a === 'sday') { S.sheet.day = d; renderSheet(); }
-            else if (a === 'srm') { const it = S.sheet.items.splice(+x, 1)[0]; if (it) URL.revokeObjectURL(it.prev); if (!S.sheet.items.length) closeSheet(); else renderSheet(); }
+            else if (a === 'sclr') {
+                const it = S.sheet.items[+x], inp = b.parentNode.querySelector('input');
+                if (it && inp) { it.cap = ''; inp.value = ''; b.classList.add('hl-inv'); inp.focus(); atHide(); }
+            } else if (a === 'srm') { const it = S.sheet.items.splice(+x, 1)[0]; if (it) URL.revokeObjectURL(it.prev); if (!S.sheet.items.length) closeSheet(); else renderSheet(); }
             else if (a === 'sgo') startUpload();
             else if (a === 'sretry') retryTasks(x);
             else if (a === 'tdel') delTask(x);
         });
         sheetEl.addEventListener('input', (e) => {
             const ix = e.target.dataset.ix;
-            if (ix !== undefined && S.sheet && S.sheet.items[+ix]) S.sheet.items[+ix].cap = e.target.value;
+            if (ix === undefined || !S.sheet || !S.sheet.items[+ix]) return;
+            S.sheet.items[+ix].cap = e.target.value;
+            const clr = e.target.parentNode.querySelector('.hl-clr');
+            if (clr) clr.classList.toggle('hl-inv', !e.target.value);
+            atSuggest(e.target);
         });
+        sheetEl.addEventListener('focusout', () => setTimeout(atHide, 150));
     }
     function share(d) {
         if (!signed()) { openMemberModal(); return; }
@@ -578,6 +758,7 @@
         if (!s || (s.busy && fromPop !== true)) return;
         if (fromPop !== true && history.state && history.state.hls) { history.back(); return; }
         if (s.busy) { try { history.pushState({ hls: 1 }, ''); } catch (e) { } return; }
+        atHide();
         s.items.forEach(it => URL.revokeObjectURL(it.prev));
         S.sheet = null;
         sheetEl.classList.add('hidden');
@@ -615,6 +796,7 @@
     function renderSheet() {
         const s = S.sheet;
         if (!s) return;
+        atHide();
         if (s.phase === 'edit') renderEdit(s); else renderTaskList(s);
     }
     function renderEdit(s) {
@@ -629,9 +811,9 @@
             + (isOffline() ? '<p class="hl-tip">📶 目前偵測不到網路。還是可以先選好照片按上傳，照片會存在手機裡，等有網路自動補傳。</p>' : '');
         const row = (it, i) => {
             const over = i >= q;
-            return `<div class="hl-row${over ? ' over' : ''}"><img src="${it.prev}" alt="">
-                <div class="hl-rb"><input data-ix="${i}" maxlength="${CAP}" placeholder="寫一句說明（選填，${CAP} 字內）" value="${esc(it.cap)}"${s.busy ? ' disabled' : ''}>${over ? '<span class="hl-err">超過今天的上限，不會上傳</span>' : ''}</div>
-                <button type="button" data-a="srm" data-x="${i}" class="hl-cx" aria-label="移除"${s.busy ? ' disabled' : ''}>✕</button></div>`;
+            const dis = s.busy ? ' disabled' : '';
+            return `<div class="hl-row${over ? ' over' : ''}"><span class="hl-pv"><img src="${it.prev}" alt=""><button type="button" data-a="srm" data-x="${i}" class="hl-prm" aria-label="移除這張照片"${dis}>✕</button></span>
+                <div class="hl-rb"><div class="hl-ib"><input data-ix="${i}" maxlength="${CAP}" placeholder="說點什麼吧，可以@標注人員" value="${esc(it.cap)}" autocomplete="off"${dis}><button type="button" data-a="sclr" data-x="${i}" class="hl-clr${it.cap ? '' : ' hl-inv'}" aria-label="清除文字"${dis}>✕</button></div>${over ? '<span class="hl-err">超過今天的上限，不會上傳</span>' : ''}</div></div>`;
         };
         $('hl-sbody').innerHTML = `${test}<p class="hl-lb">所屬日期</p><div class="hl-dps">${days}</div>${tip}${s.items.map(row).join('')}`;
         const go = Math.min(n, q);
@@ -653,7 +835,7 @@
             const acts = (t.st === 'fail' ? `<button type="button" data-a="sretry" data-x="${esc(t.id)}" class="hl-btn line sm">重試</button>` : '')
                 + (t.st === 'fail' || t.st === 'wait' ? `<button type="button" data-a="tdel" data-x="${esc(t.id)}" class="hl-cx" aria-label="刪除">✕</button>` : '');
             return `<div class="hl-row${t.st === 'fail' ? ' bad' : ''}"><img src="${t.prev}" alt="">
-                <div class="hl-rb"><span class="hl-mu">${dayLabel(t.day)}</span><span class="hl-rc">${esc(t.cap || '（無說明）')}</span>${st}</div>
+                <div class="hl-rb"><span class="hl-mu">${dayLabel(t.day)}</span><span class="hl-rc${t.cap ? '' : ' none'}">${esc(t.cap || '（無說明）')}</span>${st}</div>
                 ${acts ? `<div class="hl-ra">${acts}</div>` : ''}</div>`;
         };
         const open = ts.filter(t => t.st !== 'done');
@@ -771,7 +953,8 @@
     async function saveRec(day, r, cap, name, uid) {
         const who = name || ADMIN_NAME;
         const ref = createDb().ref('highlights/' + day).push();
-        await ref.set({ url: r.url, thumb: r.thumb, caption: cap || '', author: who, uid });
+        const m = mentionsOf(cap || '');
+        await ref.set({ url: r.url, thumb: r.thumb, caption: cap || '', author: who, uid, ...(Object.keys(m).length ? { mentions: m } : {}) });
         if (String(r.del).startsWith('https://ibb.co/')) createDb().ref('img_del/' + ref.key).set({ del: r.del, ...(r.thumb ? { thumb: r.thumb } : {}), author: who, uid, ts: Date.now() }).catch(() => { });
     }
     async function runTask(t) {
@@ -840,8 +1023,10 @@
     // ---------- 對外 ----------
     window.HL = {
         open() {
+            boot();
             if (!S.built) build();
             S.active = true;
+            S.live = signed();
             bindPub();
             bindPriv();
             seed();
@@ -854,16 +1039,23 @@
             }
         },
         onTab(page) {
+            const was = S.active;
+            if (was && page !== 'highlights') markRead();
             S.active = page === 'highlights';
-            if (!S.active) off(S.pubRefs); else bindPub();
+            if (!S.active && !S.live) off(S.pubRefs); else bindPub();
             bindPriv();
+            sched();
         },
         onAuth() {
-            if (!S.built) return;
+            boot();
+            S.live = signed();
+            if (S.live || S.active) bindPub(); else off(S.pubRefs);
             bindPriv();
             seed();
-            if (S.sheet && S.sheet.phase === 'edit') renderSheet();
-            loadTasks().then(() => pump());
+            if (S.built) {
+                if (S.sheet && S.sheet.phase === 'edit') renderSheet();
+                loadTasks().then(() => pump());
+            }
             sched();
         }
     };
