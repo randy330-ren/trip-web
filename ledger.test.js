@@ -108,6 +108,16 @@ t('多幣別混合：全部以台幣結算且加總為零', () => {
     assert.strictEqual(sum(u.shares), u.baseAmt);
 });
 
+t('尾數依 seed 輪替，加總仍等於總額', () => {
+    const tail = (seed) => C.allocate(100, [1, 1, 1], seed);
+    assert.deepStrictEqual(tail(0), [34, 33, 33]);
+    assert.deepStrictEqual(tail(1), [33, 34, 33]);
+    assert.deepStrictEqual(tail(2), [33, 33, 34]);
+    assert.deepStrictEqual(tail(3), [34, 33, 33]);
+    const r = C.computeSplit({ amount: 100, dec: 0, mode: 'equal', members: ['a', 'b', 'c'], rate: '1', baseDec: 0, seed: 1 });
+    assert.strictEqual(r.shares.b.b, 34);
+});
+
 t('金額格式化', () => {
     assert.strictEqual(C.formatAmount(1234567, 0), '1,234,567');
     assert.strictEqual(C.formatAmount(5, 2), '0.05');
