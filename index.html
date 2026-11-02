@@ -1761,7 +1761,8 @@
             updateEditorUI();
             bindRoster();
             if (window.LEDGER) LEDGER.onAuth();
-            if (window.HL) HL.onAuth();
+            if (currentUserUid) loadHL().then(() => { if (window.HL) HL.onAuth(); });
+            else if (window.HL) HL.onAuth();
             if (window.tourSync) tourSync();
         }
         auth.onAuthStateChanged((user) => {
@@ -2357,7 +2358,7 @@
             if (!opts.skipScrollTop) window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        const LEDGER_V = '13';
+        const LEDGER_V = '14';
         let ledgerLoading = null;
         const loadScript = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
         function openLedger() {
@@ -2373,9 +2374,9 @@
             }
             ledgerLoading.then(() => { if (window.LEDGER) LEDGER.open(); });
         }
-        const HL_V = '6';
+        const HL_V = '7';
         let hlLoading = null;
-        function openHighlights() {
+        function loadHL() {
             if (!hlLoading) {
                 const css = document.createElement('link');
                 css.rel = 'stylesheet'; css.href = 'hl.css?v=' + HL_V;
@@ -2386,8 +2387,9 @@
                     document.getElementById('hl-root').innerHTML = '<div class="card p-5 text-xs text-red-500 text-center">花絮模組載入失敗，請檢查網路後再點一次「花絮」。</div>';
                 });
             }
-            hlLoading.then(() => { if (window.HL) HL.open(); });
+            return hlLoading;
         }
+        function openHighlights() { loadHL().then(() => { if (window.HL) HL.open(); }); }
         function syncOverlay() {
             const ov = OVERLAYS.includes(currentTab);
             document.body.classList.toggle('ov', ov);

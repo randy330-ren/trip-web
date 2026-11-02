@@ -25,7 +25,7 @@
     const NT = { at: ['📌', '有人在貼文中標注你'], myl: ['❤️', '有人對你的貼文按讚'], myc: ['💬', '有人對你的貼文留言'], photo: ['📸', '有人新增了貼文'], cmt: ['💬', '有人對貼文留言'] };
 
     const S = {
-        built: false, active: false, jumped: false,
+        built: false, active: false, live: false, booted: false, jumped: false,
         photos: cacheLoad('highlights') || {}, photosLive: false, emojis: cacheLoad('hl_emojis'), emoLoaded: false, seeding: false,
         tasks: [], gone: new Set(), qerr: '',
         react: {}, comments: {}, members: {}, rts: {}, award: {}, ready: {}, pubRefs: [], privRefs: [], privKey: null,
@@ -190,13 +190,13 @@
     function on(ref, bag, cb, onErr) { const f = ref.on('value', (s) => cb(s.val()), onErr || (() => { })); bag.push([ref, f]); }
     function off(bag) { bag.forEach(([r, f]) => r.off('value', f)); bag.length = 0; }
     function bindPub() {
-        if (!S.active || S.pubRefs.length) return;
+        if (!(S.active || S.live) || S.pubRefs.length) return;
         on(db.ref('highlights'), S.pubRefs, (v) => { S.photos = v || {}; S.photosLive = true; cacheSave('highlights', S.photos); sched(); pump(); });
         on(db.ref('settings/hl_emojis'), S.pubRefs, (v) => { S.emojis = v; S.emoLoaded = true; cacheSave('hl_emojis', v); seed(); sched(); });
     }
     function bindPriv() {
         const d = privDb();
-        const key = S.active && d ? (memberUser ? 'm' + memberUser.uid : 'a') : '';
+        const key = S.live && d ? (memberUser ? 'm' + memberUser.uid : 'a') : '';
         if (key === S.privKey) return;
         off(S.privRefs);
         S.privKey = key;
@@ -246,18 +246,7 @@
             S.tasks.forEach(t => { if (t.st === 'fail' && t.soft) { t.st = 'wait'; t.tries = 0; } });
             pumpAt = 0; tick(); pump();
         });
-        document.addEventListener('visibilitychange', () => { if (!document.hidden) pump(); else if (S.active) markRead(); });
-        window.addEventListener('pagehide', () => { if (S.active) markRead(); });
-        $('hl-notices').addEventListener('click', (e) => {
-            const b = e.target.closest('[data-i]'), n = b && S.nl[+b.dataset.i];
-            if (!n) return;
-            S.dis.add(n.key);
-            if (n.type === 'award') jumpToDay(n.n, { flash: true }); else openDet(n.day, n.day, n.id);
-            renderNotices();
-        });
-        const ub = $('upd-bar');
-        if (ub && window.MutationObserver) new MutationObserver(sched).observe(ub, { attributes: true, attributeFilter: ['class'] });
-        setInterval(() => { if (activeTasks().length) pump(); }, 60000);
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) pump(); });
         const vv = window.visualViewport;
         if (vv) { vv.addEventListener('resize', fitVV); vv.addEventListener('scroll', fitVV); }
         document.addEventListener('keydown', (e) => {
@@ -266,6 +255,26 @@
             else if (e.key === 'ArrowLeft') stepDet(-1);
             else if (e.key === 'ArrowRight') stepDet(1);
         });
+    }
+    // 登入後在任何分頁都會監聽花絮資料，頂部提示才能在每個分頁出現
+    function boot() {
+        if (S.booted) return;
+        S.booted = true;
+        document.addEventListener('visibilitychange', () => { if (document.hidden && S.active) markRead(); });
+        window.addEventListener('pagehide', () => { if (S.active) markRead(); });
+        $('hl-notices').addEventListener('click', (e) => {
+            const b = e.target.closest('[data-i]'), n = b && S.nl[+b.dataset.i];
+            if (!n) return;
+            S.dis.add(n.key);
+            S.jumped = true;
+            if (currentTab !== 'highlights') switchTab('highlights', { skipScrollTop: true });
+            if (!S.built) build();
+            renderNow();
+            if (n.type === 'award') jumpToDay(n.n, { flash: true }); else openDet(n.day, n.day, n.id);
+            renderNotices();
+        });
+        const ub = $('upd-bar');
+        if (ub && window.MutationObserver) new MutationObserver(sched).observe(ub, { attributes: true, attributeFilter: ['class'] });
     }
     function sched() { if (!S.raf) S.raf = requestAnimationFrame(() => { S.raf = 0; renderNow(); }); }
     function put(id, html) { if (S.html[id] === html) return; S.html[id] = html; const el = $(id); if (el) el.innerHTML = html; }
@@ -280,7 +289,7 @@
     }
 
     function renderNow() {
-        if (!S.built) return;
+        if (!S.built) { settle(); renderNotices(); return; }
         const all = allList(), si = signed();
         const real = all.filter(p => !isAdm(p.uid, p.author));
         const nc = si ? all.reduce((n, p) => n + comments(p).length, 0) : 0;
@@ -413,7 +422,7 @@
     }
     function calcNotices() {
         const me = currentUserUid;
-        if (!me || !S.active || !allReady()) return [];
+        if (!me || !S.live || !allReady()) return [];
         if (S.seen === null) { S.seen = latest(); saveSeen(); return []; }
         const seen = S.seen, best = {};
         const add = (type, ts, p) => { if (ts > seen && !(best[type] && best[type].ts >= ts)) best[type] = { type, ts, day: p.day, id: p.id, key: type + ':' + ts }; };
@@ -1014,8 +1023,10 @@
     // ---------- 對外 ----------
     window.HL = {
         open() {
+            boot();
             if (!S.built) build();
             S.active = true;
+            S.live = signed();
             bindPub();
             bindPriv();
             seed();
@@ -1031,16 +1042,20 @@
             const was = S.active;
             if (was && page !== 'highlights') markRead();
             S.active = page === 'highlights';
-            if (!S.active) off(S.pubRefs); else bindPub();
+            if (!S.active && !S.live) off(S.pubRefs); else bindPub();
             bindPriv();
-            if (S.built) renderNotices();
+            sched();
         },
         onAuth() {
-            if (!S.built) return;
+            boot();
+            S.live = signed();
+            if (S.live || S.active) bindPub(); else off(S.pubRefs);
             bindPriv();
             seed();
-            if (S.sheet && S.sheet.phase === 'edit') renderSheet();
-            loadTasks().then(() => pump());
+            if (S.built) {
+                if (S.sheet && S.sheet.phase === 'edit') renderSheet();
+                loadTasks().then(() => pump());
+            }
             sched();
         }
     };

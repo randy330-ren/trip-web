@@ -167,10 +167,10 @@ textarea.lg-in { resize: vertical; }
 
 .lg-items-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .lg-grp { margin-top: 8px; }
-.lg-grp-h { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 12px; background: #fff; border: 1px solid #ece8df; border-radius: 12px; font-size: 13px; font-weight: 800; color: #1f2937; }
-.lg-grp-h small { font-weight: 500; color: var(--lg-muted); margin-left: 4px; }
-.lg-grp-r { display: flex; align-items: center; gap: 8px; color: var(--green); }
-.lg-grp-r em { font-style: normal; font-size: 11px; color: #a39a8e; }
+.lg-grp-h { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; background: var(--green); border: 1px solid var(--green); border-radius: 12px; font-size: 13px; font-weight: 800; color: #fff; }
+.lg-grp-h small { font-weight: 500; color: rgba(255, 255, 255, .7); margin-left: 4px; }
+.lg-grp-r { display: flex; align-items: center; gap: 8px; color: #fff; }
+.lg-grp-r em { font-style: normal; font-size: 11px; color: rgba(255, 255, 255, .7); }
 
 .lg-items-box { padding: 12px; border-radius: 16px; background: rgba(59, 77, 67, .07); border: 1px solid rgba(59, 77, 67, .1); }
 .lg-fbtn { position: relative; padding-right: 24px !important; text-align: left; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
