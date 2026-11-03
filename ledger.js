@@ -665,7 +665,7 @@
         });
         const ti = trByExp(), allShut = groups.every((g) => S.listShut[g.d]);
         const twdSum = list.reduce((s, [, e]) => s + (e.cur === BASE ? baseOf(e) : 0), 0), jpySum = list.reduce((s, [, e]) => s + jpyOf(e), 0), jpyBase = list.reduce((s, [, e]) => s + (e.cur === 'JPY' ? baseOf(e) : 0), 0);
-        let h = `<div class="lg-items-head"><div class="lg-sum">共 ${list.length} 筆<p>合計　<b>${money(total, BASE)}</b></p><p>其中新台幣支出　<b>${money(twdSum, BASE)}</b></p><p>其中日圓支出　<b>${money(jpySum, 'JPY')}</b>（≈ ${money(jpyBase, BASE)}）</p></div><button type="button" class="lg-btn sm" data-act="fold-all">${allShut ? '全部展開' : '全部收合'}</button></div>`;
+        let h = `<div class="lg-items-head"><div class="lg-sum"><p class="lg-sum-t"><span>共 ${list.length} 筆</span><span>合計　<b>${money(total, BASE)}</b></span></p><p>其中新台幣支出　<b>${money(twdSum, BASE)}</b></p><p>其中日圓支出　<b>${money(jpySum, 'JPY')}</b>（≈ ${money(jpyBase, BASE)}）</p></div><button type="button" class="lg-btn sm" data-act="fold-all">${allShut ? '全部展開' : '全部收合'}</button></div>`;
         h += groups.map((g) => {
             const shut = !!S.listShut[g.d];
             const label = /^\d{4}-\d{2}-\d{2}$/.test(g.d) ? `${+g.d.slice(5, 7)}/${+g.d.slice(8, 10)}` : g.d;

@@ -78,6 +78,9 @@ textarea.lg-in { resize: vertical; }
 .lg-tag.me { background: #e1f5ee; color: #085041; }
 
 .lg-sum { font-size: 12px; color: #4b5563; }
+.lg-items-head { align-items: flex-end; }
+.lg-sum p { white-space: nowrap; }
+.lg-sum-t { display: flex; gap: 14px; }
 .lg-items-head .lg-btn { flex-shrink: 0; white-space: nowrap; }
 .lg-sum b { color: var(--green); }
 .lg-item { padding: 0; overflow: hidden; }
