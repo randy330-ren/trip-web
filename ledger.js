@@ -20,7 +20,7 @@
         rosterOpen: false, open: null, showVoid: false,
         stMode: 'all', stDay: '', stCats: [], stCur: 'TWD', pdata: null, pref: null, pcb: null, fold: { bal: false, sug: false, tr: false },
         listShut: (cacheLoad('ledger_fold') || {}).days || {}, fs: null,
-        stOpen: {}, filter: { scope: 'group', sort: 'desc', cat: '', payer: '', members: [], cur: '', q: '' },
+        stOpen: {}, filter: { scope: 'group', sort: 'desc', date: '', cats: [], payer: '', members: [], cur: '', q: '' },
         fx: cacheLoad('fx'), fxBusy: false, fxErr: ''
     };
 
@@ -268,10 +268,9 @@
     }
     function buildForm() {
         $('lg-form').innerHTML = `
-            <button type="button" id="lg-f-clear" class="lg-btn ghost wide hidden" data-act="clear-form">取消新增</button>
             <div id="lg-f-scope" class="lg-seg sm lg-mt"></div>
             <div id="lg-f-banner" class="lg-banner hidden">✏️ 正在編輯：<b id="lg-f-etitle"></b><button type="button" data-act="cancel-edit">取消編輯</button></div>
-            <label class="lg-lbl" for="lg-f-title">支出名稱</label>
+            <div class="lg-lblrow"><label class="lg-lbl" for="lg-f-title">支出名稱</label><button type="button" id="lg-f-clear" class="lg-clr hidden" data-act="clear-form">取消新增</button></div>
             <input id="lg-f-title" class="lg-in" maxlength="50" placeholder="例：午餐 迴轉壽司">
             <label id="lg-f-amount-l" class="lg-lbl" for="lg-f-amount">金額</label>
             <div class="lg-row"><input id="lg-f-amount" class="lg-in lg-amt" inputmode="none" readonly placeholder="0"><input id="lg-f-cur" class="lg-in lg-cur" data-pick="f-cur" readonly autocomplete="off"></div>
@@ -512,7 +511,7 @@
         if (Object.keys(pu).length) xref(true).update(pu).catch(() => {});
         wdb().ref('ledger').update(up).then(() => {
             if (S.form.cat === name) S.form.cat = r.name;
-            if (S.filter.cat === name) S.filter.cat = r.name;
+            S.filter.cats = S.filter.cats.map((c) => (c === name ? r.name : c));
             refreshForm();
             toast(`已改名，${Object.keys(up).length - 1} 筆支出一併更新`);
         }).catch(fail);
@@ -533,8 +532,8 @@
     }
 
     // ---------- 支出紀錄 ----------
-    const FL_KEYS = ['scope', 'cat', 'payer', 'members', 'cur', 'sort'];
-    const FL_T = { scope: '範圍', cat: '類別', payer: '付款人', members: '分攤成員（可複選）', cur: '幣別', sort: '排序' };
+    const FL_KEYS = ['scope', 'date', 'cat', 'payer', 'members', 'cur', 'sort'];
+    const FL_T = { scope: '範圍', date: '日期', cat: '類別（可複選）', payer: '付款人', members: '分攤成員（可複選）', cur: '幣別', sort: '排序' };
     function buildFilters() {
         $('lg-filters').innerHTML = `
             <input id="lg-q" class="lg-in" placeholder="🔍 搜尋名稱或備註">
@@ -546,7 +545,8 @@
     function flLabel(k) {
         const f = S.filter;
         if (k === 'scope') return f.scope === 'personal' ? '🔒 個人' : '👥 團體';
-        if (k === 'cat') return f.cat || '全部類別';
+        if (k === 'date') return f.date ? mdLabel(f.date) : '全部日期';
+        if (k === 'cat') return f.cats.length ? f.cats.join('、') : '全部類別';
         if (k === 'payer') return f.payer ? pname(f.payer) : '全部付款人';
         if (k === 'members') return f.members.length ? f.members.map(pname).join('、') : '全部分攤成員';
         if (k === 'cur') return f.cur ? curLabel(f.cur) : '全部幣別';
@@ -558,13 +558,14 @@
         FL_KEYS.forEach((k) => {
             const b = $('lg-fl-' + k);
             b.textContent = flLabel(k);
-            b.classList.toggle('on', k === 'members' ? f.members.length > 0 : k !== 'sort' && k !== 'scope' && !!f[k]);
+            b.classList.toggle('on', k === 'members' ? f.members.length > 0 : k === 'cat' ? f.cats.length > 0 : k !== 'sort' && k !== 'scope' && !!f[k]);
             b.classList.toggle('hidden', f.scope === 'personal' && (k === 'payer' || k === 'members'));
         });
     }
     function flOpts(k) {
         if (k === 'scope') return [['group', '👥 團體'], ['personal', '🔒 個人（只有自己看得到）']];
-        if (k === 'cat') return [['', '全部類別'], ...[...new Set([...cats(), ...Object.values(src()).map((e) => e.cat).filter(Boolean)])].map((c) => [c, c])];
+        if (k === 'date') return [['', '全部日期'], ...[...new Set(Object.values(src()).map((e) => e.date).filter(Boolean))].sort().map((d) => [d, mdLabel(d)])];
+        if (k === 'cat') return [...[...new Set([...cats(), ...Object.values(src()).map((e) => e.cat).filter(Boolean)])].map((c) => [c, c])];
         if (k === 'payer') return [['', '全部付款人'], ...order().map((p) => [p, pname(p)])];
         if (k === 'members') return order().map((p) => [p, pname(p)]);
         if (k === 'cur') return [['', '全部幣別'], ...[...new Set([...curs(), ...usedCurs()])].map((c) => [c, curLabel(c)])];
@@ -590,30 +591,31 @@
         return b;
     }
     function flOpen(k) {
-        S.fs = { k, sel: k === 'members' ? S.filter.members.slice() : null };
+        S.fs = { k, sel: k === 'members' ? S.filter.members.slice() : k === 'cat' ? S.filter.cats.slice() : null };
         flBox().classList.remove('hidden');
         $('lg-fl-t').textContent = FL_T[k];
         flDraw();
     }
     function flDraw() {
-        const { k, sel } = S.fs, multi = k === 'members', cur = multi ? null : (S.filter[k] || '');
+        const { k, sel } = S.fs, multi = k === 'members' || k === 'cat', cur = multi ? null : (S.filter[k] || '');
         $('lg-fl-list').innerHTML = flOpts(k).map(([v, l]) => {
             const on = multi ? sel.includes(v) : v === cur;
             return `<button type="button" data-fv="${esc(v)}" class="${on ? 'on' : ''}">${multi ? `<i>${on ? '✓' : ''}</i>` : ''}<span>${esc(l)}</span></button>`;
         }).join('') || '<p class="lg-pick-none">沒有選項</p>';
-        $('lg-fl-foot').innerHTML = multi ? `<div class="lg-row lg-mt"><button type="button" class="lg-btn sm ghost" data-fa="clear">全部</button><button type="button" class="lg-btn sm" style="flex:1" data-fa="ok">套用${sel.length ? `（${sel.length} 人）` : '（全部）'}</button></div>` : '';
+        $('lg-fl-foot').innerHTML = multi ? `<div class="lg-row lg-mt"><button type="button" class="lg-btn sm ghost" data-fa="clear">全部</button><button type="button" class="lg-btn sm" style="flex:1" data-fa="ok">套用${sel.length ? `（${sel.length} ${k === 'cat' ? '項' : '人'}）` : '（全部）'}</button></div>` : '';
     }
     function flPick(v) {
         const s = S.fs;
         if (!s) return;
-        if (s.k === 'members') { const i = s.sel.indexOf(v); if (i >= 0) s.sel.splice(i, 1); else s.sel.push(v); flDraw(); return; }
+        if (s.k === 'members' || s.k === 'cat') { const i = s.sel.indexOf(v); if (i >= 0) s.sel.splice(i, 1); else s.sel.push(v); flDraw(); return; }
         S.filter[s.k] = v;
         flClose();
         flApply();
     }
     function flMulti(a) {
         if (a === 'clear') { S.fs.sel = []; flDraw(); return; }
-        S.filter.members = order().filter((p) => S.fs.sel.includes(p));
+        if (S.fs.k === 'cat') S.filter.cats = S.fs.sel.slice();
+        else S.filter.members = order().filter((p) => S.fs.sel.includes(p));
         flClose();
         flApply();
     }
@@ -623,7 +625,7 @@
     function filtered() {
         const f = S.filter, q = f.q.trim().toLowerCase(), pe = f.scope === 'personal';
         return Object.entries(src())
-            .filter(([, e]) => (!f.cat || e.cat === f.cat) && (pe || ((!f.payer || e.payer === f.payer) && (!f.members.length || f.members.some((p) => e.shares && e.shares[p])))) &&
+            .filter(([, e]) => (!f.cats.length || f.cats.includes(e.cat)) && (!f.date || e.date === f.date) && (pe || ((!f.payer || e.payer === f.payer) && (!f.members.length || f.members.some((p) => e.shares && e.shares[p])))) &&
                 (!f.cur || e.cur === f.cur) && (!q || `${e.title || ''} ${e.note || ''}`.toLowerCase().includes(q)))
             .sort(([ia, a], [ib, b]) => {
                 const d = (a.date || '').localeCompare(b.date || '') || ((a.ts || 0) - (b.ts || 0)) || (ia < ib ? -1 : 1);
@@ -1287,7 +1289,7 @@
             else if (act === 'exp-edit') startEdit(id);
             else if (act === 'exp-del') delExpense(id);
             else if (act === 'export') exportCsv();
-            else if (act === 'fl-clear') { S.filter = { scope: 'group', sort: S.filter.sort, cat: '', payer: '', members: [], cur: '', q: '' }; $('lg-q').value = ''; renderFilterOpts(); renderItems(); }
+            else if (act === 'fl-clear') { S.filter = { scope: 'group', sort: S.filter.sort, date: '', cats: [], payer: '', members: [], cur: '', q: '' }; $('lg-q').value = ''; renderFilterOpts(); renderItems(); }
             else if (act === 'st-pay') markPaid(b.dataset.from, b.dataset.to, +b.dataset.amt);
             else if (act === 'tr-done') setTransfer(id, 'done');
             else if (act === 'tr-void') setTransfer(id, 'void');
