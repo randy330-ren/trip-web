@@ -18,9 +18,9 @@
         tab: 'add', sub: 'list', data: null, err: null, ref: null, cb: null, key: '', built: false,
         form: null, editId: null, editOrig: null, editSig: '', partsSig: null, rateSig: null, saving: false,
         rosterOpen: false, open: null, showVoid: false,
-        stMode: 'all', stDay: '', stCur: 'TWD', fold: { bal: false, sug: false, tr: false },
+        stMode: 'all', stDays: [], stCats: [], stCur: 'TWD', pdata: null, pref: null, pcb: null, fold: { bal: false, sug: false, tr: false },
         listShut: (cacheLoad('ledger_fold') || {}).days || {}, fs: null,
-        stOpen: {}, filter: { sort: 'desc', cat: '', payer: '', members: [], cur: '', q: '' },
+        stOpen: {}, filter: { scope: 'group', sort: 'desc', dates: [], cats: [], payer: '', members: [], cur: '', q: '' },
         fx: cacheLoad('fx'), fxBusy: false, fxErr: ''
     };
 
@@ -34,16 +34,20 @@
     const D = () => S.data || {};
     const P = () => D().people || {};
     const E = () => D().expenses || {};
+    const PE = () => S.pdata || {};
+    const isP = (id) => !E()[id] && !!PE()[id];
+    const XE = (id) => E()[id] || PE()[id];
+    const xref = (personal) => wdb().ref(personal ? 'ledger_personal/' + currentUserUid + '/expenses' : 'ledger/expenses');
     const T = () => D().transfers || {};
     const R = () => D().rates || {};
     const order = () => Object.keys(P()).sort();
     const activeIds = () => order().filter((id) => P()[id].active !== false);
-    const pname = (id) => (P()[id] && P()[id].name) || '（已刪除）';
+    const pname = (id) => id === 'me' ? '自己' : (P()[id] && P()[id].name) || '（已刪除）';
     const curs = () => [BASE, ...Object.keys(R()).filter((c) => c !== BASE).sort()];
     const customCats = () => Object.entries(D().cats || {}).filter(([, c]) => c && c.name).sort(([a, x], [b, y]) => ((x.ts || 0) - (y.ts || 0)) || (a < b ? -1 : 1));
     const cats = () => [...new Set([...CATS, ...customCats().map(([, c]) => c.name)])];
     const catEntry = (name) => customCats().find(([, c]) => c.name === name);
-    const catUses = (name) => Object.values(E()).filter((e) => e.cat === name).length;
+    const catUses = (name) => Object.values(E()).concat(Object.values(PE())).filter((e) => e.cat === name).length;
     const canDelCat = (name) => !!catEntry(name) && signed() && !catUses(name);
     function decOf(cur) {
         if (cur === BASE) return BASE_DEC;
@@ -62,7 +66,7 @@
         Object.values(T()).forEach((t) => { u.add(t.from); u.add(t.to); });
         return u;
     }
-    const usedCurs = () => new Set(Object.values(E()).map((e) => e.cur));
+    const usedCurs = () => new Set(Object.values(E()).concat(Object.values(PE())).map((e) => e.cur));
     const boundToMe = (pid) => !!memberUser && !!P()[pid] && P()[pid].uid === memberUser.uid;
     const canAct = (pid) => isEditor || boundToMe(pid);
     const actDb = (pid) => (boundToMe(pid) ? db : adminDb);
@@ -82,9 +86,17 @@
         const key = memberUser ? 'm' + memberUser.uid : (adminUser ? 'a' : '');
         if (key === S.key) return;
         if (S.ref) S.ref.off('value', S.cb);
-        S.ref = null; S.key = key; S.err = null;
+        if (S.pref) S.pref.off('value', S.pcb);
+        S.ref = S.pref = null; S.key = key; S.err = null;
         S.data = key ? cacheLoad('ledger_' + key) : null;
+        S.pdata = key ? cacheLoad('ledgerp_' + key) : null;
         if (!key) return;
+        S.pref = (memberUser ? db : adminDb).ref('ledger_personal/' + currentUserUid + '/expenses');
+        S.pcb = S.pref.on('value', (snap) => {
+            S.pdata = snap.val() || {};
+            cacheSave('ledgerp_' + key, S.pdata);
+            render();
+        }, (e) => console.warn('個人記帳讀取失敗（請確認 Firebase Rules 已加入 ledger_personal）', e));
         S.ref = (memberUser ? db : adminDb).ref('ledger');
         S.cb = S.ref.on('value', (snap) => {
             S.data = snap.val() || {};
@@ -251,33 +263,35 @@
         return {
             title: '', amount: '', note: '', parts: {}, rate: null,
             cur: k.cur || (curs().includes('JPY') ? 'JPY' : BASE), date: k.date || today(),
-            payer: k.payer || '', members: k.members ? k.members.slice() : [], mode: k.mode || 'equal', cat: k.cat || '餐飲'
+            scope: k.scope || 'group', payer: k.payer || '', members: k.members ? k.members.slice() : [], mode: k.mode || 'equal', cat: k.cat || '餐飲'
         };
     }
     function buildForm() {
         $('lg-form').innerHTML = `
+            <div id="lg-f-scope" class="lg-seg sm lg-mt"></div>
             <div id="lg-f-banner" class="lg-banner hidden">✏️ 正在編輯：<b id="lg-f-etitle"></b><button type="button" data-act="cancel-edit">取消編輯</button></div>
-            <label class="lg-lbl" for="lg-f-title">支出名稱</label>
+            <div class="lg-lblrow"><label class="lg-lbl" for="lg-f-title">支出名稱</label><button type="button" id="lg-f-clear" class="lg-clr hidden" data-act="clear-form">取消新增</button></div>
             <input id="lg-f-title" class="lg-in" maxlength="50" placeholder="例：午餐 迴轉壽司">
             <label id="lg-f-amount-l" class="lg-lbl" for="lg-f-amount">金額</label>
             <div class="lg-row"><input id="lg-f-amount" class="lg-in lg-amt" inputmode="none" readonly placeholder="0"><input id="lg-f-cur" class="lg-in lg-cur" data-pick="f-cur" readonly autocomplete="off"></div>
             <label class="lg-lbl" for="lg-f-date">日期</label>
             <input id="lg-f-date" type="date" class="lg-in">
+            <div id="lg-f-grp">
             <label class="lg-lbl" for="lg-f-payer">付款人</label>
             <select id="lg-f-payer" class="lg-in"></select>
-            <label class="lg-lbl">分攤成員（可多選）</label>
-            <div id="lg-f-members" class="lg-chips"></div>
             <label class="lg-lbl">分帳方式</label>
             <div id="lg-f-mode" class="lg-seg sm"></div>
+            <label class="lg-lbl">分攤成員（可多選）</label>
+            <div id="lg-f-members" class="lg-chips"></div>
             <div id="lg-f-parts"></div>
+            </div>
             <label class="lg-lbl">類別</label>
             <div id="lg-f-cats" class="lg-chips"></div>
             <label class="lg-lbl" for="lg-f-note">備註</label>
             <textarea id="lg-f-note" class="lg-in" maxlength="200" rows="2" placeholder="選填"></textarea>
             <div id="lg-f-rate"></div>
             <div id="lg-f-preview" class="lg-preview"></div>
-            <button type="button" id="lg-f-save" class="lg-btn wide" data-act="save">儲存支出</button>
-            <button type="button" id="lg-f-clear" class="lg-btn ghost wide hidden" data-act="clear-form">取消新增</button>`;
+            <button type="button" id="lg-f-save" class="lg-btn wide" data-act="save">儲存支出</button>`;
     }
     function writeForm() {
         const f = S.form;
@@ -292,7 +306,10 @@
         if (!S.form) { S.form = blankForm(); writeForm(); return; }
         const f = S.form;
         $('lg-f-banner').classList.toggle('hidden', !S.editId);
-        if (S.editId) $('lg-f-etitle').textContent = f.title || (E()[S.editId] || {}).title || '';
+        if (S.editId) $('lg-f-etitle').textContent = f.title || (XE(S.editId) || {}).title || '';
+        $('lg-f-scope').classList.toggle('hidden', !!S.editId);
+        $('lg-f-scope').innerHTML = [['group', '團體記帳'], ['personal', '個人記帳']].map(([k, l]) => `<button type="button" data-act="scope" data-v="${k}" class="${f.scope === k ? 'on' : ''}">${l}</button>`).join('');
+        $('lg-f-grp').classList.toggle('hidden', f.scope === 'personal');
         pickSet($('lg-f-cur'), f.cur);
         $('lg-f-amount-l').textContent = f.mode === 'each' ? '每人金額' : '金額';
         const pay = activeIds();
@@ -352,39 +369,40 @@
             : `<p class="lg-err-p">匯率表沒有 ${esc(f.cur)}，請管理員先到「匯率」頁新增。</p>`;
     }
     function computeForm() {
-        const f = S.form, errs = [], dec = decOf(f.cur);
+        const f = S.form, errs = [], dec = decOf(f.cur), pe = f.scope === 'personal';
+        const members = pe ? ['me'] : f.members, mode = pe ? 'equal' : f.mode;
         if (!f.title.trim()) errs.push('請輸入支出名稱');
-        const each = f.mode === 'each';
+        const each = mode === 'each';
         const amt = C.parseAmount(f.amount, dec);
         if (!amt.ok) errs.push((each ? '每人金額：' : '金額：') + amt.err);
         else if (amt.v <= 0) errs.push(each ? '每人金額必須大於零' : '支出金額必須大於零');
-        if (each && amt.ok) amt.v *= f.members.length;
+        if (each && amt.ok) amt.v *= members.length;
         const ri = rateInfo(), r = C.parseRate(ri.rate);
         if (!ri.rate) errs.push(`匯率表沒有 ${f.cur}，請管理員先新增`);
         else if (!r.ok) errs.push('匯率' + r.err);
-        if (!f.payer || !P()[f.payer]) errs.push('請選擇付款人');
+        if (!pe && (!f.payer || !P()[f.payer])) errs.push('請選擇付款人');
         if (!/^\d{4}-\d{2}-\d{2}$/.test(f.date)) errs.push('請選擇日期');
-        const seed = S.editId ? ((S.editOrig && S.editOrig.seed) | 0) : Object.keys(E()).length;
-        const tb = C.tailBias(E(), S.editId || undefined);
+        const seed = pe ? 0 : S.editId ? ((S.editOrig && S.editOrig.seed) | 0) : Object.keys(E()).length;
+        const tb = pe ? {} : C.tailBias(E(), S.editId || undefined);
         let sp = null;
         if (amt.ok && amt.v > 0 && r.ok) {
-            sp = C.computeSplit({ amount: amt.v, dec, mode: each ? 'amount' : f.mode, members: f.members, parts: each ? Object.fromEntries(f.members.map((p) => [p, f.amount])) : f.parts, rate: r.s, baseDec: BASE_DEC, seed, bias: f.members.map((p) => tb[p] || 0) });
+            sp = C.computeSplit({ amount: amt.v, dec, mode: each ? 'amount' : mode, members, parts: each ? Object.fromEntries(members.map((p) => [p, f.amount])) : f.parts, rate: r.s, baseDec: BASE_DEC, seed, bias: members.map((p) => tb[p] || 0) });
             errs.push(...sp.errors);
-        } else if (!f.members.length) errs.push('請至少選擇一位分攤成員');
-        return { errs, amt, dec, rate: r.ok ? r.s : '', sp, seed };
+        } else if (!members.length) errs.push('請至少選擇一位分攤成員');
+        return { errs, amt, dec, rate: r.ok ? r.s : '', sp, seed, members, pe };
     }
     function renderPreview() {
         const f = S.form, c = computeForm();
         const btn = $('lg-f-save');
         btn.disabled = !!c.errs.length || S.saving;
-        btn.textContent = S.saving ? '儲存中...' : (S.editId ? '儲存修改' : '儲存支出');
+        btn.textContent = S.saving ? '儲存中...' : (S.editId ? '儲存修改' : c.pe ? '儲存個人支出' : '儲存支出');
         $('lg-f-clear').classList.toggle('hidden', !!S.editId || !(f.title || f.amount || f.note || f.members.length || Object.keys(f.parts).length));
         let h = '';
         if (c.sp && c.sp.ok) {
             const fx = f.cur !== BASE;
-            h += `<p class="lg-pv-h">分攤預覽</p><div class="lg-pv-row b"><span>總額</span><span>${money(c.amt.v, f.cur)}${fx ? `<small>≈ ${money(c.sp.baseAmt, BASE)}</small>` : ''}</span></div>`;
+            h += `<p class="lg-pv-h">${c.pe ? '個人支出預覽（只有你看得到）' : '分攤預覽'}</p><div class="lg-pv-row b"><span>總額</span><span>${money(c.amt.v, f.cur)}${fx ? `<small>≈ ${money(c.sp.baseAmt, BASE)}</small>` : ''}</span></div>`;
             if (fx) h += `<p class="lg-muted">使用匯率：1 ${esc(f.cur)} = ${esc(c.rate)} ${BASE}</p>`;
-            h += f.members.map((p) => {
+            h += c.members.map((p) => {
                 const s = c.sp.shares[p];
                 return `<div class="lg-pv-row"><span>${esc(pname(p))}</span><span>${fx ? `${money(s.o, f.cur)}<small>≈ ${money(s.b, BASE)}</small>` : money(s.b, BASE)}</span></div>`;
             }).join('');
@@ -397,41 +415,41 @@
         const c = computeForm();
         if (c.errs.length) return;
         const f = S.form, m = me(), t = R()[f.cur], o = S.editOrig;
-        if (S.editId && !E()[S.editId]) { alert('這筆支出已經被刪除了。'); cancelEdit(); return; }
+        if (S.editId && !XE(S.editId)) { alert('這筆支出已經被刪除了。'); cancelEdit(); return; }
         const rateRef = f.cur === BASE ? 'base'
             : (o && o.cur === f.cur && o.rate === c.rate) ? (o.rateRef || 'manual')
             : (t && t.rate === c.rate) ? `table:${f.cur}@${t.ts || 0}` : 'manual';
         const rec = {
             title: f.title.trim(), amount: c.amt.v, cur: f.cur, dec: c.dec, rate: c.rate, rateRef,
-            base: BASE, baseAmt: c.sp.baseAmt, date: f.date, payer: f.payer, mode: f.mode,
-            unit: f.mode === 'each' ? f.amount.trim() : null,
-            parts: f.mode === 'equal' || f.mode === 'each' ? null : Object.fromEntries(f.members.map((p) => [p, String(f.parts[p] || '0').trim()])),
+            base: BASE, baseAmt: c.sp.baseAmt, date: f.date, payer: c.pe ? 'me' : f.payer, mode: c.pe ? 'equal' : f.mode,
+            unit: !c.pe && f.mode === 'each' ? f.amount.trim() : null,
+            parts: c.pe || f.mode === 'equal' || f.mode === 'each' ? null : Object.fromEntries(f.members.map((p) => [p, String(f.parts[p] || '0').trim()])),
             shares: c.sp.shares, seed: c.seed, cat: f.cat, note: f.note.trim(), updBy: m.uid, updName: m.name, uts: TS()
         };
         S.saving = true;
         renderPreview();
         const editing = S.editId;
         const job = editing
-            ? wdb().ref('ledger/expenses/' + editing).update(rec)
-            : wdb().ref('ledger/expenses').push({ ...rec, by: m.uid, byName: m.name, ts: TS() });
+            ? xref(c.pe).child(editing).update(rec)
+            : xref(c.pe).push({ ...rec, by: m.uid, byName: m.name, ts: TS() });
         try {
             await job;
-            toast(editing ? '已儲存修改' : '已新增支出');
-            if (editing) { cancelEdit(); setTab('list'); setSub('list'); S.open = editing; renderItems(); }
+            toast(editing ? '已儲存修改' : c.pe ? '已新增個人支出' : '已新增支出');
+            if (editing) { cancelEdit(); S.filter.scope = c.pe ? 'personal' : 'group'; renderFilterOpts(); setTab('list'); setSub('list'); S.open = editing; renderItems(); }
             else { S.form = blankForm(f); writeForm(); }
         } catch (e) { fail(e); }
         S.saving = false;
         renderPreview();
     }
     function startEdit(id) {
-        const e = E()[id];
+        const e = XE(id), pe = isP(id);
         if (!e) return;
         if (editDirty() && !confirm('目前編輯中的支出有尚未儲存的修改，確定要放棄並改編輯這一筆嗎？')) return;
         S.editId = id;
         S.editOrig = e;
         S.form = {
             title: e.title || '', amount: e.mode === 'each' && e.unit ? e.unit : C.toPlain(e.amount, Number.isInteger(e.dec) ? e.dec : decOf(e.cur)), cur: e.cur, date: e.date || today(),
-            payer: e.payer, members: order().filter((p) => e.shares && e.shares[p]), mode: e.mode || 'equal',
+            scope: pe ? 'personal' : 'group', payer: pe ? '' : e.payer, members: pe ? [] : order().filter((p) => e.shares && e.shares[p]), mode: e.mode || 'equal',
             parts: { ...(e.parts || {}) }, cat: e.cat || '其他', note: e.note || '', rate: e.cur === BASE ? null : e.rate
         };
         writeForm();
@@ -448,7 +466,7 @@
     function cancelEdit() {
         const f = S.form;
         S.editId = S.editOrig = null;
-        S.form = blankForm({ date: f.date, payer: f.payer, cur: f.cur });
+        S.form = blankForm({ date: f.date, payer: f.payer, cur: f.cur, scope: f.scope });
         writeForm();
     }
     function fillParts() {
@@ -488,9 +506,12 @@
         if (cats().includes(r.name)) return alert('已經有這個類別');
         const up = { [`cats/${c[0]}/name`]: r.name };
         Object.entries(E()).forEach(([id, e]) => { if (e.cat === name) up[`expenses/${id}/cat`] = r.name; });
+        const pu = {};
+        Object.entries(PE()).forEach(([id, e]) => { if (e.cat === name) pu[`${id}/cat`] = r.name; });
+        if (Object.keys(pu).length) xref(true).update(pu).catch(() => {});
         wdb().ref('ledger').update(up).then(() => {
             if (S.form.cat === name) S.form.cat = r.name;
-            if (S.filter.cat === name) S.filter.cat = r.name;
+            S.filter.cats = S.filter.cats.map((c) => (c === name ? r.name : c));
             refreshForm();
             toast(`已改名，${Object.keys(up).length - 1} 筆支出一併更新`);
         }).catch(fail);
@@ -511,8 +532,8 @@
     }
 
     // ---------- 支出紀錄 ----------
-    const FL_KEYS = ['cat', 'payer', 'members', 'cur', 'sort'];
-    const FL_T = { cat: '類別', payer: '付款人', members: '分攤成員（可複選）', cur: '幣別', sort: '排序' };
+    const FL_KEYS = ['scope', 'date', 'cat', 'payer', 'members', 'cur', 'sort'];
+    const FL_T = { scope: '範圍', date: '日期（可複選）', stdate: '日期（可複選）', cat: '類別（可複選）', payer: '付款人', members: '分攤成員（可複選）', cur: '幣別', sort: '排序' };
     function buildFilters() {
         $('lg-filters').innerHTML = `
             <input id="lg-q" class="lg-in" placeholder="🔍 搜尋名稱或備註">
@@ -523,7 +544,9 @@
     }
     function flLabel(k) {
         const f = S.filter;
-        if (k === 'cat') return f.cat || '全部類別';
+        if (k === 'scope') return f.scope === 'personal' ? '🔒 個人' : '👥 團體';
+        if (k === 'date') return f.dates.length ? f.dates.map(mdLabel).join('、') : '全部日期';
+        if (k === 'cat') return f.cats.length ? f.cats.join('、') : '全部類別';
         if (k === 'payer') return f.payer ? pname(f.payer) : '全部付款人';
         if (k === 'members') return f.members.length ? f.members.map(pname).join('、') : '全部分攤成員';
         if (k === 'cur') return f.cur ? curLabel(f.cur) : '全部幣別';
@@ -535,11 +558,15 @@
         FL_KEYS.forEach((k) => {
             const b = $('lg-fl-' + k);
             b.textContent = flLabel(k);
-            b.classList.toggle('on', k === 'members' ? f.members.length > 0 : k !== 'sort' && !!f[k]);
+            b.classList.toggle('on', k === 'members' ? f.members.length > 0 : k === 'cat' ? f.cats.length > 0 : k === 'date' ? f.dates.length > 0 : k !== 'sort' && k !== 'scope' && !!f[k]);
+            b.classList.toggle('hidden', f.scope === 'personal' && (k === 'payer' || k === 'members'));
         });
     }
     function flOpts(k) {
-        if (k === 'cat') return [['', '全部類別'], ...[...new Set([...cats(), ...Object.values(E()).map((e) => e.cat).filter(Boolean)])].map((c) => [c, c])];
+        if (k === 'scope') return [['group', '👥 團體'], ['personal', '🔒 個人（只有自己看得到）']];
+        if (k === 'date') return [...new Set(Object.values(src()).map((e) => e.date).filter(Boolean))].sort().map((d) => [d, mdLabel(d)]);
+        if (k === 'stdate') return stDates().map((d) => [d, mdLabel(d)]);
+        if (k === 'cat') return [...[...new Set([...cats(), ...Object.values(src()).map((e) => e.cat).filter(Boolean)])].map((c) => [c, c])];
         if (k === 'payer') return [['', '全部付款人'], ...order().map((p) => [p, pname(p)])];
         if (k === 'members') return order().map((p) => [p, pname(p)]);
         if (k === 'cur') return [['', '全部幣別'], ...[...new Set([...curs(), ...usedCurs()])].map((c) => [c, curLabel(c)])];
@@ -565,39 +592,44 @@
         return b;
     }
     function flOpen(k) {
-        S.fs = { k, sel: k === 'members' ? S.filter.members.slice() : null };
+        S.fs = { k, sel: k === 'members' ? S.filter.members.slice() : k === 'cat' ? S.filter.cats.slice() : k === 'date' ? S.filter.dates.slice() : k === 'stdate' ? S.stDays.slice() : null };
         flBox().classList.remove('hidden');
         $('lg-fl-t').textContent = FL_T[k];
         flDraw();
     }
     function flDraw() {
-        const { k, sel } = S.fs, multi = k === 'members', cur = multi ? null : (S.filter[k] || '');
+        const { k, sel } = S.fs, multi = !!sel, cur = multi ? null : (S.filter[k] || '');
         $('lg-fl-list').innerHTML = flOpts(k).map(([v, l]) => {
             const on = multi ? sel.includes(v) : v === cur;
             return `<button type="button" data-fv="${esc(v)}" class="${on ? 'on' : ''}">${multi ? `<i>${on ? '✓' : ''}</i>` : ''}<span>${esc(l)}</span></button>`;
         }).join('') || '<p class="lg-pick-none">沒有選項</p>';
-        $('lg-fl-foot').innerHTML = multi ? `<div class="lg-row lg-mt"><button type="button" class="lg-btn sm ghost" data-fa="clear">全部</button><button type="button" class="lg-btn sm" style="flex:1" data-fa="ok">套用${sel.length ? `（${sel.length} 人）` : '（全部）'}</button></div>` : '';
+        $('lg-fl-foot').innerHTML = multi ? `<div class="lg-row lg-mt"><button type="button" class="lg-btn sm ghost" data-fa="clear">全部</button><button type="button" class="lg-btn sm" style="flex:1" data-fa="ok">套用${sel.length ? `（${sel.length} ${k === 'members' ? '人' : '項'}）` : '（全部）'}</button></div>` : '';
     }
     function flPick(v) {
         const s = S.fs;
         if (!s) return;
-        if (s.k === 'members') { const i = s.sel.indexOf(v); if (i >= 0) s.sel.splice(i, 1); else s.sel.push(v); flDraw(); return; }
+        if (s.sel) { const i = s.sel.indexOf(v); if (i >= 0) s.sel.splice(i, 1); else s.sel.push(v); flDraw(); return; }
         S.filter[s.k] = v;
         flClose();
         flApply();
     }
     function flMulti(a) {
         if (a === 'clear') { S.fs.sel = []; flDraw(); return; }
-        S.filter.members = order().filter((p) => S.fs.sel.includes(p));
+        const k = S.fs.k, sel = S.fs.sel.slice();
+        if (k === 'cat') S.filter.cats = sel;
+        else if (k === 'date') S.filter.dates = sel.sort();
+        else if (k === 'stdate') S.stDays = sel.sort();
+        else S.filter.members = order().filter((p) => sel.includes(p));
         flClose();
-        flApply();
+        if (k === 'stdate') renderSettle(); else flApply();
     }
     function flClose() { S.fs = null; const b = $('lg-fl'); if (b) b.classList.add('hidden'); }
     function flApply() { renderFilterOpts(); renderItems(); }
+    const src = () => (S.filter.scope === 'personal' ? PE() : E());
     function filtered() {
-        const f = S.filter, q = f.q.trim().toLowerCase();
-        return Object.entries(E())
-            .filter(([, e]) => (!f.cat || e.cat === f.cat) && (!f.payer || e.payer === f.payer) && (!f.members.length || f.members.some((p) => e.shares && e.shares[p])) &&
+        const f = S.filter, q = f.q.trim().toLowerCase(), pe = f.scope === 'personal';
+        return Object.entries(src())
+            .filter(([, e]) => (!f.cats.length || f.cats.includes(e.cat)) && (!f.dates.length || f.dates.includes(e.date)) && (pe || ((!f.payer || e.payer === f.payer) && (!f.members.length || f.members.some((p) => e.shares && e.shares[p])))) &&
                 (!f.cur || e.cur === f.cur) && (!q || `${e.title || ''} ${e.note || ''}`.toLowerCase().includes(q)))
             .sort(([ia, a], [ib, b]) => {
                 const d = (a.date || '').localeCompare(b.date || '') || ((a.ts || 0) - (b.ts || 0)) || (ia < ib ? -1 : 1);
@@ -606,8 +638,8 @@
     }
     function saveFold() { cacheSave('ledger_fold', { days: S.listShut }); }
     function renderItems() {
-        const box = $('lg-items'), all = Object.keys(E()).length, list = filtered();
-        if (!all) { box.innerHTML = '<div class="card lg-card lg-center"><p class="lg-muted">還沒有支出紀錄，到「記帳」新增第一筆吧。</p></div>'; return; }
+        const box = $('lg-items'), all = Object.keys(src()).length, list = filtered();
+        if (!all) { box.innerHTML = '<div class="card lg-card lg-center"><p class="lg-muted">還沒有' + (S.filter.scope === 'personal' ? '個人' : '') + '支出紀錄，到「記帳」新增第一筆吧。</p></div>'; return; }
         const total = list.reduce((s, [, e]) => s + (Number.isInteger(e.baseAmt) ? e.baseAmt : 0), 0);
         const exportBtn = `<button type="button" class="lg-btn sm ghost lg-export" data-act="export">⬇️ 匯出目前列表（CSV，可用 Excel／Google 試算表開啟）</button>`;
         if (!list.length) { box.innerHTML = `<p class="lg-sum">共 0 筆</p><div class="card lg-card lg-center"><p class="lg-muted">沒有符合篩選條件的支出。</p></div>`; return; }
@@ -641,20 +673,20 @@
         return canAct(p) ? `<button type="button" class="lg-pt-b" data-act="exp-pay" data-id="${id}" data-p="${p}">先轉帳</button>` : '';
     }
     function itemHtml(id, e, ti = {}) {
-        const fx = e.cur !== BASE, n = Object.keys(e.shares || {}).length, open = S.open === id;
+        const fx = e.cur !== BASE, n = Object.keys(e.shares || {}).length, open = S.open === id, pe = isP(id);
         let h = `<div class="card lg-item ${open ? 'open' : ''}">
             <button type="button" class="lg-item-h" data-act="exp-open" data-id="${id}">
-                <span class="lg-item-l"><b>${esc(e.title || '')}</b><small>${esc(e.date || '')}・${esc(pname(e.payer))} 付款・${n} 人分攤${e.cat ? '・' + esc(e.cat) : ''}</small></span>
+                <span class="lg-item-l"><b>${esc(e.title || '')}</b><small>${esc(e.date || '')}・${pe ? '🔒 個人' : `${esc(pname(e.payer))} 付款・${n} 人分攤`}${e.cat ? '・' + esc(e.cat) : ''}</small></span>
                 <span class="lg-item-r"><b>${money(e.amount, e.cur)}</b>${fx ? `<small>≈ ${money(e.baseAmt, BASE)}</small>` : ''}</span>
             </button>`;
         if (open) {
             const modeL = (MODES.find(([k]) => k === e.mode) || [, ''])[1];
             h += `<div class="lg-detail">
-                ${order().filter((p) => e.shares && e.shares[p]).map((p) => {
+                ${pe ? '' : order().filter((p) => e.shares && e.shares[p]).map((p) => {
                     const s = e.shares[p];
                     return `<div class="lg-pv-row"><span>${esc(pname(p))}${payTag(id, e, p, ti)}</span><span>${fx ? `${money(s.o, e.cur)}<small>≈ ${money(s.b, BASE)}</small>` : money(s.b, BASE)}</span></div>`;
                 }).join('')}
-                <p class="lg-muted lg-mt">分帳方式：${esc(modeL)}${fx ? `・匯率 1 ${esc(e.cur)} = ${esc(e.rate)} ${BASE}（${String(e.rateRef || '').startsWith('table:') ? '當時匯率表' : '自訂'}）` : ''}</p>
+                <p class="lg-muted lg-mt">${pe ? '' : `分帳方式：${esc(modeL)}`}${fx ? `・匯率 1 ${esc(e.cur)} = ${esc(e.rate)} ${BASE}（${String(e.rateRef || '').startsWith('table:') ? '當時匯率表' : '自訂'}）` : ''}</p>
                 ${e.note ? `<p class="lg-note">${esc(e.note)}</p>` : ''}
                 <p class="lg-muted">建立：${esc(e.byName || '')} ${when(e.ts)}${e.updName && e.uts !== e.ts ? `・最後修改：${esc(e.updName)} ${when(e.uts)}` : ''}</p>
                 <div class="lg-actions"><button type="button" class="lg-btn sm" data-act="exp-edit" data-id="${id}">✏️ 編輯</button><button type="button" class="lg-btn sm danger" data-act="exp-del" data-id="${id}">🗑️ 刪除</button></div>
@@ -681,7 +713,7 @@
         const head = ['日期', '名稱', '類別', '付款人', '幣別', '原始金額', `匯率（1 外幣 = ? ${BASE}）`, `${BASE} 金額`, '分帳方式',
             ...ppl.map((p) => `${pname(p)} 分攤（${BASE}）`), '備註', '建立者', '最後修改者'];
         const rows = list.map(([, e]) => [e.date, e.title, e.cat || '', pname(e.payer), e.cur,
-            C.toPlain(e.amount, Number.isInteger(e.dec) ? e.dec : decOf(e.cur)), e.rate, C.toPlain(e.baseAmt || 0, BASE_DEC), modeL(e.mode),
+            C.toPlain(e.amount, Number.isInteger(e.dec) ? e.dec : decOf(e.cur)), e.rate, C.toPlain(e.baseAmt || 0, BASE_DEC), S.filter.scope === 'personal' ? '個人' : modeL(e.mode),
             ...ppl.map((p) => { const b = shareOf(e, p); return b === null ? '' : C.toPlain(b, BASE_DEC); }),
             e.note || '', e.byName || '', e.updName || '']);
         rows.push(['', '合計', '', '', '', '', '', C.toPlain(list.reduce((s, [, e]) => s + (e.baseAmt || 0), 0), BASE_DEC), '',
@@ -696,13 +728,14 @@
         toast(`已匯出 ${list.length} 筆`);
     }
     function delExpense(id) {
-        const e = E()[id];
+        const e = XE(id), pe = isP(id);
         if (!e || !guard()) return;
-        if (!confirm(`確定要刪除「${e.title}」嗎？\n刪除後結算會自動重新計算，已記錄的轉帳不會被刪除。`)) return;
-        wdb().ref('ledger/expenses/' + id).remove().then(() => { toast('已刪除'); if (S.editId === id) cancelEdit(); }).catch(fail);
+        if (!confirm(pe ? `確定要刪除個人支出「${e.title}」嗎？` : `確定要刪除「${e.title}」嗎？\n刪除後結算會自動重新計算，已記錄的轉帳不會被刪除。`)) return;
+        xref(pe).child(id).remove().then(() => { toast('已刪除'); if (S.editId === id) cancelEdit(); }).catch(fail);
     }
 
     // ---------- 自動結算 ----------
+    const stCats = () => [...new Set(Object.values(E()).map((e) => e.cat || '其他'))];
     const stDates = () => [...new Set(Object.values(E()).map((e) => e.date).filter(Boolean))].sort();
     const mdLabel = (d) => { const [, m, dd] = d.split('-'); return `${+m}/${+dd}`; };
     function foldCard(k, title, body) {
@@ -710,10 +743,13 @@
         return `<div class="card lg-card"><button type="button" class="lg-fold" data-act="fold" data-v="${k}">${title}<span>${shut ? '展開 ▼' : '收合 ▲'}</span></button>${shut ? '' : `<div class="lg-mt">${body}</div>`}</div>`;
     }
     function renderSettle() {
-        const ids = order(), dates = stDates(), day = S.stMode === 'day';
-        if (day && !dates.includes(S.stDay)) S.stDay = dates.includes(today()) ? today() : (dates[dates.length - 1] || '');
-        const exps = day ? Object.fromEntries(Object.entries(E()).filter(([, e]) => e.date === S.stDay)) : E();
-        const trs = day ? Object.fromEntries(Object.entries(T()).filter(([, t]) => t.eid && E()[t.eid] && E()[t.eid].date === S.stDay)) : T();
+        const ids = order(), dates = stDates(), day = S.stMode === 'day', allCats = stCats();
+        S.stDays = S.stDays.filter((d) => dates.includes(d));
+        S.stCats = S.stCats.filter((c) => allCats.includes(c));
+        const hit = (e) => e && (!S.stDays.length || S.stDays.includes(e.date)) && (!S.stCats.length || S.stCats.includes(e.cat || '其他'));
+        const exps = day ? Object.fromEntries(Object.entries(E()).filter(([, e]) => hit(e))) : E();
+        const trs = day ? Object.fromEntries(Object.entries(T()).filter(([, t]) => t.eid && hit(E()[t.eid]))) : T();
+        const flt = S.stDays.length || S.stCats.length ? [S.stDays.map(mdLabel).join('、'), S.stCats.join('、')].filter(Boolean).join('・') : '全部';
         const B = C.balances(ids, exps, trs), sug = C.settle(ids, B);
         const curList = curs();
         if (!curList.includes(S.stCur)) S.stCur = BASE;
@@ -741,23 +777,24 @@
         const trLine = ([, t], btns) => `<div class="lg-tr"><p><b>${esc(pname(t.from))}</b> → <b>${esc(pname(t.to))}</b><span>${amt(t.amt)}</span></p>${trE(t)}${btns}</div>`;
 
         let h = `<div class="card lg-card">
-            <div class="lg-seg sm">${[['all', '總和'], ['day', '依日期']].map(([k, l]) => `<button type="button" data-act="st-mode" data-v="${k}" class="${S.stMode === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-            <div class="lg-row lg-mt">${day ? `<select id="lg-st-day" class="lg-in">${dates.length ? selOpts(dates.map((d) => [d, mdLabel(d)]), S.stDay) : '<option value="">沒有支出</option>'}</select>` : ''}
+            <div class="lg-seg sm">${[['all', '總和'], ['day', '依日期類別']].map(([k, l]) => `<button type="button" data-act="st-mode" data-v="${k}" class="${S.stMode === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+            <div class="lg-row lg-mt">${day ? `<button type="button" class="lg-in lg-fbtn ${S.stDays.length ? 'on' : ''}" data-act="fl-open" data-v="stdate">${esc(S.stDays.length ? S.stDays.map(mdLabel).join('、') : '全部日期')}</button>` : ''}
                 <input id="lg-st-cur" class="lg-in lg-cur" data-pick="st-cur" data-val="${esc(dc)}" value="${esc(curLabel(dc))}" readonly autocomplete="off"></div>
+            ${day ? `<div class="lg-chips lg-mt">${allCats.map((c) => `<button type="button" data-act="st-cat" data-v="${esc(c)}" class="lg-chip ${S.stCats.includes(c) ? 'on' : ''}">${esc(c)}</button>`).join('')}${S.stCats.length ? '<button type="button" data-act="st-cat" data-v="" class="lg-chip ghost">全部類別</button>' : ''}</div>` : ''}
             ${rate ? `<p class="lg-muted lg-mt">以目前匯率 1 ${esc(dc)} = ${esc(rate)} ${BASE} 換算，僅供參考；實際以 ${BASE} 結算與記錄轉帳。</p>` : ''}
-            ${day ? '<p class="lg-muted lg-mt">依日期只計算當天的支出，以及指定當天支出的先轉帳，僅供查看；標記轉帳請切回「總和」。</p>' : ''}
+            ${day ? '<p class="lg-muted lg-mt">依所選日期與類別（都可複選，不選＝全部）計算支出，以及指定這些支出的先轉帳，僅供查看；標記轉帳請切回「總和」。</p>' : ''}
         </div>`;
         if (day && !dates.length) { $('lg-s-settle').innerHTML = h + '<div class="card lg-card lg-center"><p class="lg-muted">還沒有支出紀錄。</p></div>'; return; }
 
-        h += foldCard('bal', `📊 每人帳務 <small>（${esc(dc)}${day ? `・${mdLabel(S.stDay)}` : ''}）</small>`,
+        h += foldCard('bal', `📊 每人帳務 <small>（${esc(dc)}${day ? `・${esc(flt)}` : ''}）</small>`,
             (rows.length ? `<div class="lg-bal"><div class="lg-bal-r h"><span>成員</span><span>已付</span><span>應負擔</span><span>淨額</span></div>
             ${rows.map((p) => {
                 const x = B[p];
                 const k = 'b:' + p, op = !!S.stOpen[k];
                 return `<div class="lg-bal-r lg-tap" data-act="st-open" data-k="${esc(k)}"><span>${esc(pname(p))}<i class="lg-chev">${op ? '▲' : '▼'}</i>${x.sent || x.recv ? `<small>轉出 ${num(x.sent)}・收到 ${num(x.recv)}</small>` : ''}</span><span>${num(x.paid)}</span><span>${num(x.owe)}</span><span>${netCell(x.net)}</span></div>${op ? bd(p) : ''}`;
             }).join('')}</div>` : '<p class="lg-muted">還沒有團員。</p>') +
-            `<p class="lg-sum lg-mt">${day ? '當天未平衡' : '尚未結清'}：<b>${amt(open)}</b></p>
-            <p class="lg-muted">淨額 ＝ 已付 − 應負擔 ＋ 已轉出 − 已收到；已標記轉帳的金額會立即計入${day ? '（只算指定當天支出的先轉帳）' : ''}。</p>`);
+            `<p class="lg-sum lg-mt">${day ? '篩選範圍未平衡' : '尚未結清'}：<b>${amt(open)}</b></p>
+            <p class="lg-muted">淨額 ＝ 已付 − 應負擔 ＋ 已轉出 − 已收到；已標記轉帳的金額會立即計入${day ? '（只算指定這些支出的先轉帳）' : ''}。</p>`);
 
         h += foldCard('sug', '💸 清帳建議', sug.length ? sug.map((s) => {
             const k = `s:${s.from}>${s.to}`, op = !!S.stOpen[k];
@@ -767,7 +804,7 @@
                 ? `<button type="button" class="lg-btn sm" data-act="st-pay" data-from="${s.from}" data-to="${s.to}" data-amt="${s.amt}">標記已轉帳</button>`
                 : `<small>由 ${esc(pname(s.from))} 本人或管理員標記</small>`}`}</div></div>`;
         }).join('')
-            : `<p class="lg-muted">🎉 ${day ? '這天' : ''}帳務已平衡，沒有需要轉帳的項目。</p>`);
+            : `<p class="lg-muted">🎉 ${day ? '這個範圍的' : ''}帳務已平衡，沒有需要轉帳的項目。</p>`);
 
         if (!day) {
             const tr = Object.entries(T()).sort(([a], [b]) => (a < b ? 1 : -1));
@@ -1228,11 +1265,13 @@
                 f.parts = {};
                 refreshForm();
             } else if (act === 'mode') { if (f.mode !== v) { f.mode = v; f.parts = {}; refreshForm(); } }
+            else if (act === 'scope') { if (f.scope !== v) { f.scope = v; refreshForm(); } }
             else if (act === 'cat') { f.cat = v; refreshForm(); }
             else if (act === 'cat-add') addCat();
             else if (act === 'cat-del') delCat(f.cat);
             else if (act === 'cat-edit') editCats();
             else if (act === 'calc-swap' || act === 'calc-del') calcAct(act, +b.dataset.i);
+            else if (act === 'st-cat') { S.stCats = !v ? [] : S.stCats.includes(v) ? S.stCats.filter((c) => c !== v) : [...S.stCats, v]; renderSettle(); }
             else if (act === 'st-mode') { S.stMode = v; renderSettle(); }
             else if (act === 'fold') { S.fold[v] = !S.fold[v]; renderSettle(); }
             else if (act === 'st-open') { S.stOpen[b.dataset.k] = !S.stOpen[b.dataset.k]; renderSettle(); }
@@ -1240,7 +1279,7 @@
             else if (act === 'rate-table') { f.rate = null; renderRate(); renderPreview(); }
             else if (act === 'rate-custom') { const t = R()[f.cur]; f.rate = t ? t.rate : ''; renderRate(); renderPreview(); }
             else if (act === 'save') saveExpense();
-            else if (act === 'clear-form') { if (confirm('確定要清空目前輸入的內容嗎？')) { S.form = blankForm({ date: f.date, cur: f.cur }); writeForm(); } }
+            else if (act === 'clear-form') { if (confirm('確定要清空目前輸入的內容嗎？')) { S.form = blankForm({ date: f.date, cur: f.cur, scope: f.scope }); writeForm(); } }
             else if (act === 'cancel-edit') { if (!editDirty() || confirm('這筆支出有尚未儲存的修改，確定要放棄嗎？')) cancelEdit(); }
             else if (act === 'exp-open') { S.open = S.open === id ? null : id; renderItems(); }
             else if (act === 'fold-all') {
@@ -1254,7 +1293,7 @@
             else if (act === 'exp-edit') startEdit(id);
             else if (act === 'exp-del') delExpense(id);
             else if (act === 'export') exportCsv();
-            else if (act === 'fl-clear') { S.filter = { sort: S.filter.sort, cat: '', payer: '', members: [], cur: '', q: '' }; $('lg-q').value = ''; renderFilterOpts(); renderItems(); }
+            else if (act === 'fl-clear') { S.filter = { scope: 'group', sort: S.filter.sort, dates: [], cats: [], payer: '', members: [], cur: '', q: '' }; $('lg-q').value = ''; renderFilterOpts(); renderItems(); }
             else if (act === 'st-pay') markPaid(b.dataset.from, b.dataset.to, +b.dataset.amt);
             else if (act === 'tr-done') setTransfer(id, 'done');
             else if (act === 'tr-void') setTransfer(id, 'void');
@@ -1279,7 +1318,6 @@
             if (el.id === 'lg-f-payer' && f) { f.payer = el.value; renderPreview(); }
             else if (el.id === 'lg-f-date' && f) { f.date = el.value; renderPreview(); }
             else if (el.dataset.f) { S.filter[el.dataset.f] = el.value; renderItems(); }
-            else if (el.id === 'lg-st-day') { S.stDay = el.value; renderSettle(); }
         });
         const panels = $('lg-panels');
         let sx = 0, sy = 0, ok = false;
