@@ -118,6 +118,28 @@ t('尾數依 seed 輪替，加總仍等於總額', () => {
     assert.strictEqual(r.shares.b.b, 34);
 });
 
+t('累計尾數平衡：連續奇數金額兩人輪流多拿，差距最多 1 元', () => {
+    const mk = (amount, ts) => ({ mode: 'equal', amount, dec: 0, rate: '1', baseAmt: amount, ts, seed: 0, shares: { a: { o: Math.ceil(amount / 2), b: Math.ceil(amount / 2) }, b: { o: Math.floor(amount / 2), b: Math.floor(amount / 2) } } });
+    const ex = { e1: mk(6355, 1), e2: mk(1338, 2), e3: mk(495, 3), e4: mk(145 * 2, 4) };
+    const r = C.rebalanceTails(ex, ['a', 'b'], 0);
+    assert.strictEqual(r.ok, true);
+    const fin = Object.fromEntries(Object.entries(ex).map(([k, e]) => [k, r.changes[k] ? { ...e, shares: r.changes[k].shares } : e]));
+    const tot = (p) => Object.values(fin).reduce((s, e) => s + e.shares[p].b, 0);
+    assert.strictEqual(tot('a') + tot('b'), 6355 + 1338 + 495 + 290);
+    assert.ok(Math.abs(tot('a') - tot('b')) <= 1);
+    assert.ok(!r.changes.e2 && !r.changes.e4);
+    assert.deepStrictEqual(C.rebalanceTails(fin, ['a', 'b'], 0).changes, {});
+    const bias = C.tailBias(fin);
+    const nx = C.computeSplit({ amount: 101, dec: 0, mode: 'equal', members: ['a', 'b'], rate: '1', baseDec: 0, seed: 0, bias: ['a', 'b'].map((p) => bias[p] || 0) });
+    assert.strictEqual(nx.shares.a.b + nx.shares.b.b, 101);
+    assert.ok(Math.abs(tot('a') + nx.shares.a.b - tot('b') - nx.shares.b.b) <= 1);
+});
+
+t('累計尾數平衡：差異超過 ±1 時整批中止', () => {
+    const bad = { e1: { mode: 'equal', amount: 100, dec: 0, rate: '1', baseAmt: 100, ts: 1, seed: 0, shares: { a: { o: 70, b: 70 }, b: { o: 30, b: 30 } } } };
+    assert.strictEqual(C.rebalanceTails(bad, ['a', 'b'], 0).ok, false);
+});
+
 t('金額格式化', () => {
     assert.strictEqual(C.formatAmount(1234567, 0), '1,234,567');
     assert.strictEqual(C.formatAmount(5, 2), '0.05');

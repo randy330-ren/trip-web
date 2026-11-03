@@ -91,11 +91,24 @@
             S.err = null;
             cacheSave('ledger_' + key, S.data);
             render();
+            migrateTails();
         }, (e) => {
             S.err = e && e.code === 'PERMISSION_DENIED' ? '沒有讀取權限，請確認 Firebase Rules 已更新。' : ((e && e.message) || '讀取失敗');
             S.key = '';
             render();
         });
+    }
+
+    // 一次性：舊支出的平均分攤尾數依建立順序重算（旗標與資料同一筆寫入，舊值備份在 sharesBak）
+    function migrateTails() {
+        const d = D();
+        if (S.migrated || !signed() || !d.expenses || (d.migr && d.migr.tails1)) return;
+        S.migrated = true;
+        const r = C.rebalanceTails(d.expenses, order(), BASE_DEC);
+        if (!r.ok) return console.warn('尾數重算中止', r.err);
+        const m = me(), up = { 'migr/tails1': { n: Object.keys(r.changes).length, by: m.uid, ts: TS() } };
+        Object.entries(r.changes).forEach(([id, c]) => { up[`expenses/${id}/shares`] = c.shares; up[`expenses/${id}/sharesBak`] = c.old; });
+        wdb().ref('ledger').update(up).catch((e) => console.warn('尾數重算失敗', e));
     }
 
     // ---------- 外框 ----------
@@ -352,9 +365,10 @@
         if (!f.payer || !P()[f.payer]) errs.push('請選擇付款人');
         if (!/^\d{4}-\d{2}-\d{2}$/.test(f.date)) errs.push('請選擇日期');
         const seed = S.editId ? ((S.editOrig && S.editOrig.seed) | 0) : Object.keys(E()).length;
+        const tb = C.tailBias(E(), S.editId || undefined);
         let sp = null;
         if (amt.ok && amt.v > 0 && r.ok) {
-            sp = C.computeSplit({ amount: amt.v, dec, mode: each ? 'amount' : f.mode, members: f.members, parts: each ? Object.fromEntries(f.members.map((p) => [p, f.amount])) : f.parts, rate: r.s, baseDec: BASE_DEC, seed });
+            sp = C.computeSplit({ amount: amt.v, dec, mode: each ? 'amount' : f.mode, members: f.members, parts: each ? Object.fromEntries(f.members.map((p) => [p, f.amount])) : f.parts, rate: r.s, baseDec: BASE_DEC, seed, bias: f.members.map((p) => tb[p] || 0) });
             errs.push(...sp.errors);
         } else if (!f.members.length) errs.push('請至少選擇一位分攤成員');
         return { errs, amt, dec, rate: r.ok ? r.s : '', sp, seed };
