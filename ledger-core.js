@@ -65,21 +65,22 @@
     }
 
     // 最大餘數法：依權重把整數 total 拆開，加總必等於 total；餘數相同時依順序優先（seed 讓優先起點輪替，尾數不固定落在前面的人）
-    function allocate(total, weights, seed = 0) {
+    // bias（選填）：餘數相同時，累計多拿尾數較少的人優先
+    function allocate(total, weights, seed = 0, bias = null) {
         const n = weights.length, rot = (i) => (((i - seed) % n) + n) % n;
         const W = weights.reduce((s, w) => s + BigInt(w), 0n);
         if (W <= 0n) return weights.map(() => 0);
         const T = BigInt(total);
         const rows = weights.map((w, i) => { const p = T * BigInt(w); return { i, q: p / W, r: p % W }; });
         let left = T - rows.reduce((s, x) => s + x.q, 0n);
-        [...rows].sort((a, b) => (b.r > a.r ? 1 : b.r < a.r ? -1 : rot(a.i) - rot(b.i))).forEach((x) => {
+        [...rows].sort((a, b) => (b.r > a.r ? 1 : b.r < a.r ? -1 : (bias ? (bias[a.i] || 0) - (bias[b.i] || 0) : 0) || rot(a.i) - rot(b.i))).forEach((x) => {
             if (left > 0n) { x.q += 1n; left -= 1n; }
         });
         return rows.map((x) => Number(x.q));
     }
 
     // 先依原幣別分攤，再把基準幣別總額依原幣別份額分配，確保兩邊加總都正確
-    function computeSplit({ amount, dec, mode, members, parts = {}, rate, baseDec, seed = 0 }) {
+    function computeSplit({ amount, dec, mode, members, parts = {}, rate, baseDec, seed = 0, bias = null }) {
         const errors = [];
         if (!(Number.isInteger(amount) && amount > 0)) errors.push('支出金額必須大於零');
         if (!members || !members.length) errors.push('請至少選擇一位分攤成員');
@@ -87,9 +88,10 @@
         if (!r.ok) errors.push('匯率' + r.err);
         if (errors.length) return { ok: false, errors };
 
+        const bs = mode === 'equal' ? bias : null;
         let orig;
         if (mode === 'equal') {
-            orig = allocate(amount, members.map(() => 1), seed);
+            orig = allocate(amount, members.map(() => 1), seed, bs);
         } else if (mode === 'amount') {
             const vals = members.map((p) => parseAmount(String(parts[p] ?? '').trim() || '0', dec));
             const bad = vals.findIndex((v) => !v.ok);
@@ -110,10 +112,42 @@
         }
 
         const baseAmt = convert(amount, dec, r.s, baseDec);
-        const base = allocate(baseAmt, orig, seed);
+        const base = allocate(baseAmt, orig, seed, bs);
         const shares = {};
         members.forEach((p, i) => { shares[p] = { o: orig[i], b: base[i] }; });
         return { ok: true, errors: [], baseAmt, shares, rate: r.s };
+    }
+
+    // 平均分攤的累計尾數：每人在各筆多拿（正）或少拿（負）的金額，放大 2520 倍以保持整數；只累計 upto 之前（建立順序）的支出
+    const TAIL_K = 2520;
+    const chrono = (expenses) => Object.entries(expenses || {}).filter(([, e]) => e).sort(([a, x], [b, y]) => ((x.ts || 0) - (y.ts || 0)) || (a < b ? -1 : a > b ? 1 : 0));
+    function tailDelta(bias, e, shares) {
+        const ps = Object.keys(shares), n = ps.length;
+        if (!n || !Number.isInteger(e.baseAmt)) return;
+        ps.forEach((p) => { bias[p] = (bias[p] || 0) + Math.round((n * shares[p].b - e.baseAmt) * TAIL_K / n); });
+    }
+    function tailBias(expenses, upto) {
+        const bias = {};
+        for (const [id, e] of chrono(expenses)) {
+            if (id === upto) break;
+            if (e.mode === 'equal' && e.shares) tailDelta(bias, e, e.shares);
+        }
+        return bias;
+    }
+
+    // 依建立順序重算所有「平均分攤」的尾數，讓長期兩邊差距最多 1 元；總額與已付不動，每人每筆只允許 ±1，否則整批中止
+    function rebalanceTails(expenses, order, baseDec) {
+        const bias = {}, changes = {};
+        for (const [id, e] of chrono(expenses)) {
+            if (e.mode !== 'equal' || !e.shares || !Number.isInteger(e.amount) || !Number.isInteger(e.dec)) continue;
+            const ids = Object.keys(e.shares), members = [...(order || []).filter((p) => e.shares[p]), ...ids.filter((p) => !(order || []).includes(p))];
+            const sp = computeSplit({ amount: e.amount, dec: e.dec, mode: 'equal', members, rate: e.rate, baseDec, seed: e.seed | 0, bias: members.map((p) => bias[p] || 0) });
+            if (!sp.ok || sp.baseAmt !== e.baseAmt) return { ok: false, err: `無法重算：${id}` };
+            if (members.some((p) => Math.abs(sp.shares[p].b - e.shares[p].b) > 1 || Math.abs(sp.shares[p].o - e.shares[p].o) > 1)) return { ok: false, err: `尾數差異過大：${id}` };
+            tailDelta(bias, e, sp.shares);
+            if (members.some((p) => sp.shares[p].b !== e.shares[p].b || sp.shares[p].o !== e.shares[p].o)) changes[id] = { shares: sp.shares, old: e.shares };
+        }
+        return { ok: true, changes };
     }
 
     // 淨額 = 已付 − 應負擔 + 已轉出 − 已收到（已轉帳、已完成的轉帳都計入）
@@ -184,5 +218,5 @@
         return { ok: true, v };
     }
 
-    return { RATE_DP, parseAmount, formatAmount, toPlain, parseRate, convert, convertBack, convertCross, allocate, computeSplit, balances, settle, evalCalc };
+    return { RATE_DP, parseAmount, formatAmount, toPlain, parseRate, convert, convertBack, convertCross, allocate, computeSplit, tailBias, rebalanceTails, balances, settle, evalCalc };
 });
