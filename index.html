@@ -380,7 +380,7 @@
         body.ov #ov-bar { display: block; }
         #top-notices { position: fixed; left: 50%; transform: translateX(-50%); top: calc(8px + env(safe-area-inset-top)); z-index: 60; width: calc(100vw - 2rem); max-width: 26rem; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
         #top-notices > * { pointer-events: auto; }
-        #upd-bar { display: none; flex-wrap: wrap; justify-content: center; align-items: center; max-width: 100%; padding: 4px 6px 4px 18px; border-radius: 22px; background: rgba(59,77,67,.97); color: #fff; font-size: 15px; font-weight: 700; box-shadow: 0 4px 14px rgba(0,0,0,.28); }
+        #upd-bar { display: none; flex-wrap: wrap; justify-content: center; align-items: center; max-width: 100%; padding: 4px 6px 4px 18px; border-radius: 22px; background: rgba(217,119,6,.97); color: #fff; font-size: 15px; font-weight: 700; box-shadow: 0 4px 14px rgba(0,0,0,.28); }
         #upd-bar.show { display: flex; }
         #upd-bar button { color: inherit; font: inherit; white-space: nowrap; }
         #upd-bar .upd-go { padding: 11px 6px; }
@@ -2374,7 +2374,7 @@
             }
             ledgerLoading.then(() => { if (window.LEDGER) LEDGER.open(); });
         }
-        const HL_V = '7';
+        const HL_V = '8';
         let hlLoading = null;
         function loadHL() {
             if (!hlLoading) {
@@ -5366,14 +5366,30 @@
             const updBar = document.getElementById('upd-bar');
             let swReg = null, updReady = false;
             window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').then(r => { swReg = r; }).catch(() => { }));
+            const busy = () => {
+                if (isEditor) return true;
+                const pad = document.getElementById('lg-pad');
+                if (pad && !pad.classList.contains('hidden')) return true;
+                return [...document.querySelectorAll('input,textarea,select')].some(el => {
+                    if (!el.offsetParent || el.readOnly || el.disabled) return false;
+                    if (el === document.activeElement) return true;
+                    return /^(text|search|number|tel|email|url|password)?$/.test(el.type) && el.value.trim() !== '' || el.tagName === 'TEXTAREA' && el.value.trim() !== '';
+                });
+            };
+            const tryAuto = () => {
+                if (!updReady) return;
+                if (busy()) { updBar.classList.add('show'); return; }
+                location.reload();
+            };
             navigator.serviceWorker.addEventListener('controllerchange', () => {
                 if (!hadController) return;
                 updReady = true;
-                updBar.classList.add('show');
+                tryAuto();
+                setInterval(tryAuto, 10000);
             });
             document.addEventListener('visibilitychange', () => {
                 if (document.hidden) return;
-                if (updReady) updBar.classList.add('show');
+                if (updReady) tryAuto();
                 else if (swReg) swReg.update().catch(() => { });
             });
             window.dismissUpdate = () => updBar.classList.remove('show');
