@@ -532,19 +532,19 @@
     }
 
     // ---------- 支出紀錄 ----------
-    const FL_KEYS = ['scope', 'date', 'cat', 'payer', 'members', 'cur', 'sort'];
-    const FL_T = { scope: '範圍', date: '日期（可複選）', stdate: '日期（可複選）', cat: '類別（可複選）', payer: '付款人', members: '分攤成員（可複選）', cur: '幣別', sort: '排序' };
+    const FL_KEYS = ['date', 'cat', 'payer', 'members', 'cur', 'sort'];
+    const FL_T = { date: '日期（可複選）', stdate: '日期（可複選）', cat: '類別（可複選）', payer: '付款人', members: '分攤成員（可複選）', cur: '幣別', sort: '排序' };
     function buildFilters() {
         $('lg-filters').innerHTML = `
             <input id="lg-q" class="lg-in" placeholder="🔍 搜尋名稱或備註">
             <div class="lg-grid2 lg-mt">
+                <div id="lg-fl-scope" class="lg-seg sm">${[['group', '👥 團體'], ['personal', '🔒 個人']].map(([k, l]) => `<button type="button" data-act="fl-scope" data-v="${k}">${l}</button>`).join('')}</div>
                 ${FL_KEYS.map((k) => `<button type="button" id="lg-fl-${k}" class="lg-in lg-fbtn" data-act="fl-open" data-v="${k}"></button>`).join('')}
                 <button type="button" class="lg-btn sm ghost" data-act="fl-clear">清除篩選</button>
             </div>`;
     }
     function flLabel(k) {
         const f = S.filter;
-        if (k === 'scope') return f.scope === 'personal' ? '🔒 個人' : '👥 團體';
         if (k === 'date') return f.dates.length ? f.dates.map(mdLabel).join('、') : '全部日期';
         if (k === 'cat') return f.cats.length ? f.cats.join('、') : '全部類別';
         if (k === 'payer') return f.payer ? pname(f.payer) : '全部付款人';
@@ -555,15 +555,15 @@
     function renderFilterOpts() {
         const f = S.filter;
         f.members = f.members.filter((p) => P()[p]);
+        document.querySelectorAll('#lg-fl-scope [data-v]').forEach((b) => b.classList.toggle('on', b.dataset.v === f.scope));
         FL_KEYS.forEach((k) => {
             const b = $('lg-fl-' + k);
             b.textContent = flLabel(k);
-            b.classList.toggle('on', k === 'members' ? f.members.length > 0 : k === 'cat' ? f.cats.length > 0 : k === 'date' ? f.dates.length > 0 : k !== 'sort' && k !== 'scope' && !!f[k]);
+            b.classList.toggle('on', k === 'members' ? f.members.length > 0 : k === 'cat' ? f.cats.length > 0 : k === 'date' ? f.dates.length > 0 : k !== 'sort' && !!f[k]);
             b.classList.toggle('hidden', f.scope === 'personal' && (k === 'payer' || k === 'members'));
         });
     }
     function flOpts(k) {
-        if (k === 'scope') return [['group', '👥 團體'], ['personal', '🔒 個人（只有自己看得到）']];
         if (k === 'date') return [...new Set(Object.values(src()).map((e) => e.date).filter(Boolean))].sort().map((d) => [d, mdLabel(d)]);
         if (k === 'stdate') return stDates().map((d) => [d, mdLabel(d)]);
         if (k === 'cat') return [...[...new Set([...cats(), ...Object.values(src()).map((e) => e.cat).filter(Boolean)])].map((c) => [c, c])];
@@ -594,6 +594,7 @@
     function flOpen(k) {
         S.fs = { k, sel: k === 'members' ? S.filter.members.slice() : k === 'cat' ? S.filter.cats.slice() : k === 'date' ? S.filter.dates.slice() : k === 'stdate' ? S.stDays.slice() : null };
         flBox().classList.remove('hidden');
+        lgLock();
         $('lg-fl-t').textContent = FL_T[k];
         flDraw();
     }
@@ -623,7 +624,15 @@
         flClose();
         if (k === 'stdate') renderSettle(); else flApply();
     }
-    function flClose() { S.fs = null; const b = $('lg-fl'); if (b) b.classList.add('hidden'); }
+    function flClose() { S.fs = null; const b = $('lg-fl'); if (b) b.classList.add('hidden'); lgLock(); }
+    const lgBlock = (e) => {
+        const l = e.target.closest && e.target.closest('.lg-sheet-list,.lg-pick-list');
+        if (!l || l.scrollHeight <= l.clientHeight) e.preventDefault();
+    };
+    function lgLock() {
+        const open = document.querySelector('#lg-fl:not(.hidden),#lg-pick:not(.hidden),#lg-pad:not(.hidden)');
+        document[open ? 'addEventListener' : 'removeEventListener']('touchmove', lgBlock, { passive: false });
+    }
     function flApply() { renderFilterOpts(); renderItems(); }
     const src = () => (S.filter.scope === 'personal' ? PE() : E());
     function filtered() {
@@ -1121,6 +1130,7 @@
         q.value = '';
         pickList();
         b.classList.remove('hidden');
+        lgLock();
         setTimeout(() => q.focus(), 30);
     }
     function pickClose() {
@@ -1128,6 +1138,7 @@
         PK.el = null; PK.q = '';
         const b = document.getElementById('lg-pick');
         if (b) b.classList.add('hidden');
+        lgLock();
         if (el && el.isConnected) { if (!(el.dataset.pick === 'iso' && !el.dataset.val)) el.value = pickLabel(el.dataset.pick, el.dataset.val); el.blur(); }
     }
     function pickChoose(v) {
@@ -1182,12 +1193,14 @@
         const v = String(el.value || '').replace(/[,\s]/g, '');
         PAD.expr = /^[\d.]+$/.test(v) ? v : '';
         padBox().classList.remove('hidden');
+        lgLock();
         padDraw();
     }
     function padClose() {
         PAD.el = null;
         const b = document.getElementById('lg-pad');
         if (b) b.classList.add('hidden');
+        lgLock();
     }
     function padKey(k) {
         if (!PAD.el) return;
@@ -1289,6 +1302,7 @@
             }
             else if (act === 'grp') { const d = b.dataset.d; if (S.listShut[d]) delete S.listShut[d]; else S.listShut[d] = true; saveFold(); renderItems(); }
             else if (act === 'fl-open') flOpen(v);
+            else if (act === 'fl-scope') { if (S.filter.scope !== v) { S.filter.scope = v; flApply(); } }
             else if (act === 'exp-pay') { const e = E()[id], p = b.dataset.p; if (e && e.shares && e.shares[p]) markPaid(p, e.payer, e.shares[p].b, id); }
             else if (act === 'exp-edit') startEdit(id);
             else if (act === 'exp-del') delExpense(id);
