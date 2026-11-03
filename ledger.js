@@ -664,7 +664,7 @@
             g.jpy += jpyOf(e);
         });
         const ti = trByExp(), allShut = groups.every((g) => S.listShut[g.d]);
-        let h = `<div class="lg-items-head"><p class="lg-sum">共 ${list.length} 筆・合計 ${pair(total, list.reduce((s, [, e]) => s + jpyOf(e), 0)).filter(Boolean).map((x) => `<b>${x}</b>`).join('・')}</p><button type="button" class="lg-btn sm" data-act="fold-all">${allShut ? '全部展開' : '全部收合'}</button></div>`;
+        let h = `<div class="lg-items-head"><p class="lg-sum">共 ${list.length} 筆・合計 ${(([x, y]) => jf ? `<b>${x}</b>・≈ <b>${y}</b>` : `<b>${x}</b>${y ? `・其中日幣支出 <b>${y}</b>` : ''}`)(pair(total, list.reduce((s, [, e]) => s + jpyOf(e), 0)))}</p><button type="button" class="lg-btn sm" data-act="fold-all">${allShut ? '全部展開' : '全部收合'}</button></div>`;
         h += groups.map((g) => {
             const shut = !!S.listShut[g.d];
             const label = /^\d{4}-\d{2}-\d{2}$/.test(g.d) ? `${+g.d.slice(5, 7)}/${+g.d.slice(8, 10)}` : g.d;
