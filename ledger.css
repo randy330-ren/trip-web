@@ -150,7 +150,7 @@ textarea.lg-in { resize: vertical; }
 .lg-pick-g { padding: 10px 10px 4px; font-size: 11px; font-weight: 800; color: var(--gold); position: sticky; top: 0; background: #fff; }
 .lg-pick-none { padding: 16px 10px; font-size: 13px; color: #8f8576; text-align: center; }
 
-.lg-pad { position: fixed; inset: 0; z-index: 96; display: flex; flex-direction: column; justify-content: flex-end; }
+.lg-pad { touch-action: manipulation; position: fixed; inset: 0; z-index: 96; display: flex; flex-direction: column; justify-content: flex-end; }
 .lg-pad.hidden { display: none; }
 .lg-pad-back { position: absolute; inset: 0; background: rgba(0, 0, 0, .35); }
 .lg-pad-sheet { position: relative; background: #fff; border-radius: 18px 18px 0 0; box-shadow: 0 -8px 28px rgba(0, 0, 0, .25); padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
