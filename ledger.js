@@ -650,8 +650,8 @@
         const box = $('lg-items'), all = Object.keys(src()).length, list = filtered();
         if (!all) { box.innerHTML = '<div class="card lg-card lg-center"><p class="lg-muted">還沒有' + (S.filter.scope === 'personal' ? '個人' : '') + '支出紀錄，到「記帳」新增第一筆吧。</p></div>'; return; }
         const total = list.reduce((s, [, e]) => s + (Number.isInteger(e.baseAmt) ? e.baseAmt : 0), 0);
-        const jpyOf = (e) => (e.cur === 'JPY' && Number.isInteger(e.amount) ? e.amount : 0), jf = S.filter.cur === 'JPY';
-        const pair = (t, j) => { const a = money(t, BASE), b = j > 0 || jf ? money(j, 'JPY') : ''; return jf ? [b, a] : [a, b]; };
+        const jpyOf = (e) => (e.cur === 'JPY' && Number.isInteger(e.amount) ? e.amount : 0), baseOf = (e) => (Number.isInteger(e.baseAmt) ? e.baseAmt : 0);
+        const pair = (t, j) => [money(t, BASE), j > 0 ? money(j, 'JPY') : ''];
         const exportBtn = `<button type="button" class="lg-btn sm ghost lg-export" data-act="export">⬇️ 匯出目前列表（CSV，可用 Excel／Google 試算表開啟）</button>`;
         if (!list.length) { box.innerHTML = `<p class="lg-sum">共 0 筆</p><div class="card lg-card lg-center"><p class="lg-muted">沒有符合篩選條件的支出。</p></div>`; return; }
         const groups = [], idx = {};
@@ -664,7 +664,8 @@
             g.jpy += jpyOf(e);
         });
         const ti = trByExp(), allShut = groups.every((g) => S.listShut[g.d]);
-        let h = `<div class="lg-items-head"><p class="lg-sum">共 ${list.length} 筆・合計 ${(([x, y]) => jf ? `<b>${x}</b>・≈ <b>${y}</b>` : `<b>${x}</b>${y ? `・其中日幣支出 <b>${y}</b>` : ''}`)(pair(total, list.reduce((s, [, e]) => s + jpyOf(e), 0)))}</p><button type="button" class="lg-btn sm" data-act="fold-all">${allShut ? '全部展開' : '全部收合'}</button></div>`;
+        const twdSum = list.reduce((s, [, e]) => s + (e.cur === BASE ? baseOf(e) : 0), 0), jpySum = list.reduce((s, [, e]) => s + jpyOf(e), 0), jpyBase = list.reduce((s, [, e]) => s + (e.cur === 'JPY' ? baseOf(e) : 0), 0);
+        let h = `<div class="lg-items-head"><div class="lg-sum">共 ${list.length} 筆<p>合計　<b>${money(total, BASE)}</b></p><p>其中新台幣支出　<b>${money(twdSum, BASE)}</b></p><p>其中日圓支出　<b>${money(jpySum, 'JPY')}</b>（≈ ${money(jpyBase, BASE)}）</p></div><button type="button" class="lg-btn sm" data-act="fold-all">${allShut ? '全部展開' : '全部收合'}</button></div>`;
         h += groups.map((g) => {
             const shut = !!S.listShut[g.d];
             const label = /^\d{4}-\d{2}-\d{2}$/.test(g.d) ? `${+g.d.slice(5, 7)}/${+g.d.slice(8, 10)}` : g.d;
