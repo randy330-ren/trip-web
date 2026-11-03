@@ -2358,7 +2358,7 @@
             if (!opts.skipScrollTop) window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        const LEDGER_V = '19';
+        const LEDGER_V = '24';
         let ledgerLoading = null;
         const loadScript = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
         function openLedger() {
@@ -5347,6 +5347,7 @@
         };
         window.showUpdateLog = (viewOnly) => {
             const box = document.getElementById('upd-log'), list = document.getElementById('upd-log-list');
+            if (box.style.display !== 'flex') lockScroll();
             box.style.display = 'flex';
             document.getElementById('upd-log-head').textContent = viewOnly ? '版本更新日誌' : '本次更新';
             document.getElementById('upd-log-go').style.display = viewOnly ? 'none' : '';
@@ -5359,7 +5360,7 @@
                 (d.items || []).forEach(t => { const li = document.createElement('li'); li.textContent = t; list.appendChild(li); });
             }).catch(() => { list.innerHTML = '<li>目前無法載入更新內容，請稍後再試。</li>'; });
         };
-        window.closeUpdateLog = () => { document.getElementById('upd-log').style.display = 'none'; };
+        window.closeUpdateLog = () => { const b = document.getElementById('upd-log'); if (b.style.display === 'flex') unlockScroll(); b.style.display = 'none'; };
         fetch('changelog.json', { cache: 'no-store' }).then(r => r.json()).then(d => { document.getElementById('ver-label').textContent = d.version || ''; }).catch(() => { });
         if ('serviceWorker' in navigator) {
             const hadController = !!navigator.serviceWorker.controller;

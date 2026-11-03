@@ -532,19 +532,19 @@
     }
 
     // ---------- 支出紀錄 ----------
-    const FL_KEYS = ['scope', 'date', 'cat', 'payer', 'members', 'cur', 'sort'];
-    const FL_T = { scope: '範圍', date: '日期（可複選）', stdate: '日期（可複選）', cat: '類別（可複選）', payer: '付款人', members: '分攤成員（可複選）', cur: '幣別', sort: '排序' };
+    const FL_KEYS = ['date', 'cat', 'payer', 'members', 'cur', 'sort'];
+    const FL_T = { date: '日期（可複選）', stdate: '日期（可複選）', cat: '類別（可複選）', payer: '付款人', members: '分攤成員（可複選）', cur: '幣別', sort: '排序' };
     function buildFilters() {
         $('lg-filters').innerHTML = `
             <input id="lg-q" class="lg-in" placeholder="🔍 搜尋名稱或備註">
             <div class="lg-grid2 lg-mt">
+                <div id="lg-fl-scope" class="lg-seg sm">${[['group', '👥 團體'], ['personal', '🔒 個人']].map(([k, l]) => `<button type="button" data-act="fl-scope" data-v="${k}">${l}</button>`).join('')}</div>
                 ${FL_KEYS.map((k) => `<button type="button" id="lg-fl-${k}" class="lg-in lg-fbtn" data-act="fl-open" data-v="${k}"></button>`).join('')}
                 <button type="button" class="lg-btn sm ghost" data-act="fl-clear">清除篩選</button>
             </div>`;
     }
     function flLabel(k) {
         const f = S.filter;
-        if (k === 'scope') return f.scope === 'personal' ? '🔒 個人' : '👥 團體';
         if (k === 'date') return f.dates.length ? f.dates.map(mdLabel).join('、') : '全部日期';
         if (k === 'cat') return f.cats.length ? f.cats.join('、') : '全部類別';
         if (k === 'payer') return f.payer ? pname(f.payer) : '全部付款人';
@@ -555,15 +555,15 @@
     function renderFilterOpts() {
         const f = S.filter;
         f.members = f.members.filter((p) => P()[p]);
+        document.querySelectorAll('#lg-fl-scope [data-v]').forEach((b) => b.classList.toggle('on', b.dataset.v === f.scope));
         FL_KEYS.forEach((k) => {
             const b = $('lg-fl-' + k);
             b.textContent = flLabel(k);
-            b.classList.toggle('on', k === 'members' ? f.members.length > 0 : k === 'cat' ? f.cats.length > 0 : k === 'date' ? f.dates.length > 0 : k !== 'sort' && k !== 'scope' && !!f[k]);
+            b.classList.toggle('on', k === 'members' ? f.members.length > 0 : k === 'cat' ? f.cats.length > 0 : k === 'date' ? f.dates.length > 0 : k !== 'sort' && !!f[k]);
             b.classList.toggle('hidden', f.scope === 'personal' && (k === 'payer' || k === 'members'));
         });
     }
     function flOpts(k) {
-        if (k === 'scope') return [['group', '👥 團體'], ['personal', '🔒 個人（只有自己看得到）']];
         if (k === 'date') return [...new Set(Object.values(src()).map((e) => e.date).filter(Boolean))].sort().map((d) => [d, mdLabel(d)]);
         if (k === 'stdate') return stDates().map((d) => [d, mdLabel(d)]);
         if (k === 'cat') return [...[...new Set([...cats(), ...Object.values(src()).map((e) => e.cat).filter(Boolean)])].map((c) => [c, c])];
@@ -594,6 +594,7 @@
     function flOpen(k) {
         S.fs = { k, sel: k === 'members' ? S.filter.members.slice() : k === 'cat' ? S.filter.cats.slice() : k === 'date' ? S.filter.dates.slice() : k === 'stdate' ? S.stDays.slice() : null };
         flBox().classList.remove('hidden');
+        lgLock();
         $('lg-fl-t').textContent = FL_T[k];
         flDraw();
     }
@@ -623,7 +624,15 @@
         flClose();
         if (k === 'stdate') renderSettle(); else flApply();
     }
-    function flClose() { S.fs = null; const b = $('lg-fl'); if (b) b.classList.add('hidden'); }
+    function flClose() { S.fs = null; const b = $('lg-fl'); if (b) b.classList.add('hidden'); lgLock(); }
+    const lgBlock = (e) => {
+        const l = e.target.closest && e.target.closest('.lg-sheet-list,.lg-pick-list');
+        if (!l || l.scrollHeight <= l.clientHeight) e.preventDefault();
+    };
+    function lgLock() {
+        const open = document.querySelector('#lg-fl:not(.hidden),#lg-pick:not(.hidden),#lg-pad:not(.hidden)');
+        document[open ? 'addEventListener' : 'removeEventListener']('touchmove', lgBlock, { passive: false });
+    }
     function flApply() { renderFilterOpts(); renderItems(); }
     const src = () => (S.filter.scope === 'personal' ? PE() : E());
     function filtered() {
@@ -641,22 +650,26 @@
         const box = $('lg-items'), all = Object.keys(src()).length, list = filtered();
         if (!all) { box.innerHTML = '<div class="card lg-card lg-center"><p class="lg-muted">還沒有' + (S.filter.scope === 'personal' ? '個人' : '') + '支出紀錄，到「記帳」新增第一筆吧。</p></div>'; return; }
         const total = list.reduce((s, [, e]) => s + (Number.isInteger(e.baseAmt) ? e.baseAmt : 0), 0);
+        const jpyOf = (e) => (e.cur === 'JPY' && Number.isInteger(e.amount) ? e.amount : 0), baseOf = (e) => (Number.isInteger(e.baseAmt) ? e.baseAmt : 0);
+        const pair = (t, j) => [money(t, BASE), j > 0 ? money(j, 'JPY') : ''];
         const exportBtn = `<button type="button" class="lg-btn sm ghost lg-export" data-act="export">⬇️ 匯出目前列表（CSV，可用 Excel／Google 試算表開啟）</button>`;
         if (!list.length) { box.innerHTML = `<p class="lg-sum">共 0 筆</p><div class="card lg-card lg-center"><p class="lg-muted">沒有符合篩選條件的支出。</p></div>`; return; }
         const groups = [], idx = {};
         list.forEach(([id, e]) => {
             const d = e.date || '（無日期）';
-            if (idx[d] == null) { idx[d] = groups.length; groups.push({ d, items: [], sum: 0 }); }
+            if (idx[d] == null) { idx[d] = groups.length; groups.push({ d, items: [], sum: 0, jpy: 0 }); }
             const g = groups[idx[d]];
             g.items.push([id, e]);
             g.sum += Number.isInteger(e.baseAmt) ? e.baseAmt : 0;
+            g.jpy += jpyOf(e);
         });
         const ti = trByExp(), allShut = groups.every((g) => S.listShut[g.d]);
-        let h = `<div class="lg-items-head"><p class="lg-sum">共 ${list.length} 筆・合計 <b>${money(total, BASE)}</b></p><button type="button" class="lg-btn sm" data-act="fold-all">${allShut ? '全部展開' : '全部收合'}</button></div>`;
+        const twdSum = list.reduce((s, [, e]) => s + (e.cur === BASE ? baseOf(e) : 0), 0), jpySum = list.reduce((s, [, e]) => s + jpyOf(e), 0), jpyBase = list.reduce((s, [, e]) => s + (e.cur === 'JPY' ? baseOf(e) : 0), 0);
+        let h = `<div class="lg-items-head"><div class="lg-sum"><p class="lg-sum-t"><span>共 ${list.length} 筆</span><span>合計　<b>${money(total, BASE)}</b></span></p><p>其中新台幣支出　<b>${money(twdSum, BASE)}</b></p><p>其中日圓支出　<b>${money(jpySum, 'JPY')}</b>（≈ ${money(jpyBase, BASE)}）</p></div><button type="button" class="lg-btn sm" data-act="fold-all">${allShut ? '全部展開' : '全部收合'}</button></div>`;
         h += groups.map((g) => {
             const shut = !!S.listShut[g.d];
             const label = /^\d{4}-\d{2}-\d{2}$/.test(g.d) ? `${+g.d.slice(5, 7)}/${+g.d.slice(8, 10)}` : g.d;
-            return `<div class="lg-grp"><button type="button" class="lg-grp-h" data-act="grp" data-d="${esc(g.d)}"><span>${esc(label)}<small>${g.items.length} 筆</small></span><span class="lg-grp-r">${money(g.sum, BASE)}<em>${shut ? '▼' : '▲'}</em></span></button>${shut ? '' : `<div class="lg-stack sm lg-mt">${g.items.map(([id, e]) => itemHtml(id, e, ti)).join('')}</div>`}</div>`;
+            return `<div class="lg-grp"><button type="button" class="lg-grp-h" data-act="grp" data-d="${esc(g.d)}"><span>${esc(label)}<small>${g.items.length} 筆</small></span><span class="lg-grp-r"><span class="lg-grp-v">${pair(g.sum, g.jpy).filter(Boolean).map((x) => `<span>${x}</span>`).join('')}</span><em>${shut ? '▼' : '▲'}</em></span></button>${shut ? '' : `<div class="lg-stack sm lg-mt">${g.items.map(([id, e]) => itemHtml(id, e, ti)).join('')}</div>`}</div>`;
         }).join('');
         box.innerHTML = `<div class="lg-items-box">${h}</div>` + exportBtn;
     }
@@ -1121,6 +1134,7 @@
         q.value = '';
         pickList();
         b.classList.remove('hidden');
+        lgLock();
         setTimeout(() => q.focus(), 30);
     }
     function pickClose() {
@@ -1128,6 +1142,7 @@
         PK.el = null; PK.q = '';
         const b = document.getElementById('lg-pick');
         if (b) b.classList.add('hidden');
+        lgLock();
         if (el && el.isConnected) { if (!(el.dataset.pick === 'iso' && !el.dataset.val)) el.value = pickLabel(el.dataset.pick, el.dataset.val); el.blur(); }
     }
     function pickChoose(v) {
@@ -1182,12 +1197,14 @@
         const v = String(el.value || '').replace(/[,\s]/g, '');
         PAD.expr = /^[\d.]+$/.test(v) ? v : '';
         padBox().classList.remove('hidden');
+        lgLock();
         padDraw();
     }
     function padClose() {
         PAD.el = null;
         const b = document.getElementById('lg-pad');
         if (b) b.classList.add('hidden');
+        lgLock();
     }
     function padKey(k) {
         if (!PAD.el) return;
@@ -1289,6 +1306,7 @@
             }
             else if (act === 'grp') { const d = b.dataset.d; if (S.listShut[d]) delete S.listShut[d]; else S.listShut[d] = true; saveFold(); renderItems(); }
             else if (act === 'fl-open') flOpen(v);
+            else if (act === 'fl-scope') { if (S.filter.scope !== v) { S.filter.scope = v; flApply(); } }
             else if (act === 'exp-pay') { const e = E()[id], p = b.dataset.p; if (e && e.shares && e.shares[p]) markPaid(p, e.payer, e.shares[p].b, id); }
             else if (act === 'exp-edit') startEdit(id);
             else if (act === 'exp-del') delExpense(id);
