@@ -1,7 +1,7 @@
 (function () {
     'use strict';
     const C = window.LedgerCore;
-    const VER = '14';
+    const VER = '15';
     const BASE = 'TWD', BASE_DEC = 0;
     const CATS = ['餐飲', '交通', '住宿', '門票', '購物', '其他'];
     const DEC_FIX = { TWD: 0, JPY: 0, KRW: 0 };
@@ -663,6 +663,22 @@
             });
     }
     function saveFold() { cacheSave('ledger_fold', { days: S.listShut }); }
+    // 選了「分攤成員」時，列出每位成員在目前篩選範圍內的應負擔與已付合計
+    function memberSumHtml(list) {
+        const ids = order().filter((p) => S.filter.members.includes(p));
+        if (S.filter.scope === 'personal' || !ids.length) return '';
+        const fmt = (b, j) => `${money(b, BASE)}${j > 0 ? `<small>日圓支出 ${money(j, 'JPY')}</small>` : ''}`;
+        const rows = ids.map((p) => {
+            let owe = 0, oweJ = 0, paid = 0, paidJ = 0;
+            list.forEach(([, e]) => {
+                const sh = e.shares && e.shares[p], jpy = e.cur === 'JPY';
+                if (sh && Number.isInteger(sh.b)) { owe += sh.b; if (jpy && Number.isInteger(sh.o)) oweJ += sh.o; }
+                if (e.payer === p && Number.isInteger(e.baseAmt)) { paid += e.baseAmt; if (jpy && Number.isInteger(e.amount)) paidJ += e.amount; }
+            });
+            return `<div class="lg-mem-r"><b>${esc(pname(p))}</b><div><span>應負擔　${fmt(owe, oweJ)}</span><span>已付　${fmt(paid, paidJ)}</span></div></div>`;
+        }).join('');
+        return `<div class="lg-mem-sum"><p class="lg-mem-h">成員合計（目前篩選範圍）</p>${rows}</div>`;
+    }
     function renderItems() {
         const box = $('lg-items'), all = Object.keys(src()).length, list = filtered();
         if (!all) { box.innerHTML = '<div class="card lg-card lg-center"><p class="lg-muted">還沒有' + (S.filter.scope === 'personal' ? '個人' : '') + '支出紀錄，到「記帳」新增第一筆吧。</p></div>'; return; }
@@ -683,6 +699,7 @@
         const ti = trByExp(), allShut = groups.every((g) => S.listShut[g.d]);
         const twdSum = list.reduce((s, [, e]) => s + (e.cur === BASE ? baseOf(e) : 0), 0), jpySum = list.reduce((s, [, e]) => s + jpyOf(e), 0), jpyBase = list.reduce((s, [, e]) => s + (e.cur === 'JPY' ? baseOf(e) : 0), 0);
         let h = `<div class="lg-items-head"><div class="lg-sum"><p class="lg-sum-t"><span>共 ${list.length} 筆</span><span>合計　<b>${money(total, BASE)}</b></span></p><p>其中新台幣支出　<b>${money(twdSum, BASE)}</b></p><p>其中日圓支出　<b>${money(jpySum, 'JPY')}</b>（≈ ${money(jpyBase, BASE)}）</p></div><button type="button" class="lg-btn sm" data-act="fold-all">${allShut ? '全部展開' : '全部收合'}</button></div>`;
+        h += memberSumHtml(list);
         h += groups.map((g) => {
             const shut = !!S.listShut[g.d];
             const label = /^\d{4}-\d{2}-\d{2}$/.test(g.d) ? `${+g.d.slice(5, 7)}/${+g.d.slice(8, 10)}` : g.d;
