@@ -5387,12 +5387,19 @@
             }).catch(() => { list.innerHTML = '<li>目前無法載入更新內容，請稍後再試。</li>'; });
         };
         window.closeUpdateLog = () => { const b = document.getElementById('upd-log'); if (b.style.display === 'flex') unlockScroll(); b.style.display = 'none'; };
-        fetch('changelog.json', { cache: 'no-store' }).then(r => r.json()).then(d => { document.getElementById('ver-label').textContent = d.version || ''; }).catch(() => { });
+        const setVer = (v) => { if (v) document.getElementById('ver-label').textContent = v; };
+        const loadVerFallback = () => fetch('changelog.json', { cache: 'no-store' }).then(r => r.json()).then(d => setVer(d.version)).catch(() => { });
+        if (!('serviceWorker' in navigator)) loadVerFallback();
         if ('serviceWorker' in navigator) {
             const hadController = !!navigator.serviceWorker.controller;
             const updBar = document.getElementById('upd-bar');
             let swReg = null, updReady = false;
-            window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').then(r => { swReg = r; }).catch(() => { }));
+            const askVer = () => { const c = navigator.serviceWorker.controller; if (c) c.postMessage('getVersion'); else loadVerFallback(); };
+            const checkUpd = () => { if (!document.hidden && swReg) swReg.update().catch(() => { }); };
+            navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.swVersion) setVer(e.data.swVersion); });
+            window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').then(r => { swReg = r; askVer(); }).catch(loadVerFallback));
+            setInterval(checkUpd, 300000);
+            window.addEventListener('online', checkUpd);
             const busy = () => {
                 if (isEditor) return true;
                 const pad = document.getElementById('lg-pad');
@@ -5411,13 +5418,14 @@
             navigator.serviceWorker.addEventListener('controllerchange', () => {
                 if (!hadController) return;
                 updReady = true;
+                askVer();
                 tryAuto();
                 setInterval(tryAuto, 10000);
             });
             document.addEventListener('visibilitychange', () => {
                 if (document.hidden) return;
                 if (updReady) tryAuto();
-                else if (swReg) swReg.update().catch(() => { });
+                else checkUpd();
             });
             window.dismissUpdate = () => updBar.classList.remove('show');
             window.applyUpdate = () => {

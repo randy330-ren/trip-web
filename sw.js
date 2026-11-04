@@ -1,4 +1,4 @@
-const V = 'sanin-v51';
+const V = 'sanin-v52';
 const CORE = ['index.html', 'output.css', 'bg-day.svg', 'manifest.json', 'icon-192.png', 'icon-512.png'];
 const CDN = [
     'https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js',
@@ -37,11 +37,22 @@ async function cacheFirst(req) {
     return r;
 }
 
+self.addEventListener('message', (e) => {
+    if (e.data === 'getVersion' && e.source) e.source.postMessage({ swVersion: V.replace('sanin-', '') });
+});
+
+async function networkOnly(req, key) {
+    const c = await caches.open(V);
+    try { const r = await fetch(req); if (r.ok) c.put(key, r.clone()); return r; }
+    catch (err) { const hit = await c.match(key); if (hit) return hit; throw err; }
+}
+
 self.addEventListener('fetch', (e) => {
     const req = e.request;
     if (req.method !== 'GET') return;
     const url = new URL(req.url);
     if (req.mode === 'navigate') return e.respondWith(networkFirst(req, 'index.html'));
+    if (url.origin === location.origin && /^\/changelog.*\.json$/.test(url.pathname)) return e.respondWith(networkOnly(req, url.pathname.slice(1)));
     if (url.origin === location.origin) return e.respondWith(networkFirst(req, url.pathname.slice(1) || 'index.html'));
     if (CDN.includes(url.href) || LAZY.includes(url.href)) return e.respondWith(cacheFirst(req));
 });
