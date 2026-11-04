@@ -1,7 +1,7 @@
 (function () {
     'use strict';
     const C = window.LedgerCore;
-    const VER = '17';
+    const VER = '18';
     const BASE = 'TWD', BASE_DEC = 0;
     const CATS = ['餐飲', '交通', '住宿', '門票', '購物', '其他'];
     const DEC_FIX = { TWD: 0, JPY: 0, KRW: 0 };
@@ -59,6 +59,14 @@
     // 清帳以日圓為單位（有日圓匯率時）；沒有就退回以基準幣別（台幣）
     const unitOpts = () => { const r = R().JPY, p = r && C.parseRate(r.rate); return p && p.ok ? { cur: 'JPY', dec: decOf('JPY'), rate: p.s, baseDec: BASE_DEC } : null; };
     const unitCur = () => (unitOpts() ? 'JPY' : BASE);
+    // 清帳方案鎖定中（還沒全部轉完）：團體支出不能新增、修改、刪除、還原，也不能先轉帳
+    let lockMemo = { d: null, v: false };
+    const LOCK_MSG = '清帳方案已鎖定，需管理員解除鎖定後才能新增或修改團體支出。';
+    function planLocked() {
+        if (lockMemo.d !== S.data) { const ps = C.planState(order(), E(), T(), D().plan, unitOpts()); lockMemo = { d: S.data, v: !!ps && !ps.done }; }
+        return lockMemo.v;
+    }
+    const myPid = () => (myUid() ? order().find((p) => P()[p].uid === myUid()) : undefined);
     const today = () => { const t = getToday(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
     const when = (ts) => { if (!ts) return ''; const d = new Date(ts); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
     const srcLabel = (s) => (!s ? '' : s === 'manual' ? '手動' : String(s).startsWith('api:') ? `API（${String(s).slice(4)}）` : s);
@@ -274,6 +282,7 @@
     function buildForm() {
         $('lg-form').innerHTML = `
             <div id="lg-f-scope" class="lg-seg sm lg-mt"></div>
+            <div id="lg-f-lock" class="lg-warn hidden"></div>
             <div id="lg-f-banner" class="lg-banner hidden">✏️ 正在編輯：<b id="lg-f-etitle"></b><button type="button" data-act="cancel-edit">取消編輯</button></div>
             <div class="lg-lblrow"><label class="lg-lbl" for="lg-f-title">支出名稱</label><button type="button" id="lg-f-clear" class="lg-clr hidden" data-act="clear-form">取消新增</button></div>
             <input id="lg-f-title" class="lg-in" maxlength="50" placeholder="例：午餐 迴轉壽司">
@@ -310,6 +319,9 @@
     function refreshForm() {
         if (!S.form) { S.form = blankForm(); writeForm(); return; }
         const f = S.form;
+        const lk = planLocked() && f.scope !== 'personal', lb = $('lg-f-lock');
+        lb.classList.toggle('hidden', !lk);
+        lb.innerHTML = lk ? `🔒 ${LOCK_MSG}${isEditor ? '<button type="button" class="lg-link" data-act="plan-unlock">解除鎖定</button>' : ''}` : '';
         $('lg-f-banner').classList.toggle('hidden', !S.editId);
         if (S.editId) $('lg-f-etitle').textContent = f.title || (XE(S.editId) || {}).title || '';
         $('lg-f-scope').classList.toggle('hidden', !!S.editId);
@@ -378,6 +390,7 @@
     function computeForm() {
         const f = S.form, errs = [], dec = decOf(f.cur), pe = f.scope === 'personal';
         const members = pe ? ['me'] : f.members, mode = pe ? 'equal' : f.mode;
+        if (!pe && planLocked()) errs.push('清帳方案已鎖定，暫時不能儲存團體支出');
         if (!f.title.trim()) errs.push('請輸入支出名稱');
         const each = mode === 'each';
         let amt;
@@ -464,6 +477,7 @@
     function startEdit(id) {
         const e = XE(id), pe = isP(id);
         if (!e) return;
+        if (!pe && planLocked()) return alert(LOCK_MSG);
         if (editDirty() && !confirm('目前編輯中的支出有尚未儲存的修改，確定要放棄並改編輯這一筆嗎？')) return;
         S.editId = id;
         S.editOrig = e;
@@ -553,7 +567,7 @@
 
     // ---------- 支出紀錄 ----------
     const FL_KEYS = ['date', 'cat', 'payer', 'members', 'cur', 'sort'];
-    const FL_T = { date: '日期（可複選）', stdate: '日期（可複選）', cat: '類別（可複選）', payer: '付款人', members: '分攤成員（可複選）', cur: '幣別', sort: '排序' };
+    const FL_T = { imp: '匯入我的分攤（可複選）', date: '日期（可複選）', stdate: '日期（可複選）', cat: '類別（可複選）', payer: '付款人', members: '分攤成員（可複選）', cur: '幣別', sort: '排序' };
     function buildFilters() {
         $('lg-filters').innerHTML = `
             <input id="lg-q" class="lg-in" placeholder="🔍 搜尋名稱或備註">
@@ -589,6 +603,7 @@
         if (k === 'cat') return [...[...new Set([...cats(), ...Object.values(src()).map((e) => e.cat).filter(Boolean)])].map((c) => [c, c])];
         if (k === 'payer') return [['', '全部付款人'], ...order().map((p) => [p, pname(p)])];
         if (k === 'members') return order().map((p) => [p, pname(p)]);
+        if (k === 'imp') { const pid = myPid(); return impCands().map(([id, e]) => [id, `${e.date ? mdLabel(e.date) : ''}｜${e.title || ''}｜${money(e.shares[pid].o, e.cur)}`]); }
         if (k === 'cur') return [['', '全部幣別'], ...[...new Set([...curs(), ...usedCurs()])].map((c) => [c, curLabel(c)])];
         return [['desc', '日期：新 → 舊'], ['asc', '日期：舊 → 新']];
     }
@@ -612,7 +627,7 @@
         return b;
     }
     function flOpen(k) {
-        S.fs = { k, sel: k === 'members' ? S.filter.members.slice() : k === 'cat' ? S.filter.cats.slice() : k === 'date' ? S.filter.dates.slice() : k === 'stdate' ? S.stDays.slice() : null };
+        S.fs = { k, sel: k === 'imp' ? [] : k === 'members' ? S.filter.members.slice() : k === 'cat' ? S.filter.cats.slice() : k === 'date' ? S.filter.dates.slice() : k === 'stdate' ? S.stDays.slice() : null };
         flBox().classList.remove('hidden');
         lgLock();
         $('lg-fl-t').textContent = FL_T[k];
@@ -624,7 +639,7 @@
             const on = multi ? sel.includes(v) : v === cur;
             return `<button type="button" data-fv="${esc(v)}" class="${on ? 'on' : ''}">${multi ? `<i>${on ? '✓' : ''}</i>` : ''}<span>${esc(l)}</span></button>`;
         }).join('') || '<p class="lg-pick-none">沒有選項</p>';
-        $('lg-fl-foot').innerHTML = multi ? `<div class="lg-row lg-mt"><button type="button" class="lg-btn sm ghost" data-fa="clear">全部</button><button type="button" class="lg-btn sm" style="flex:1" data-fa="ok">套用${sel.length ? `（${sel.length} ${k === 'members' ? '人' : '項'}）` : '（全部）'}</button></div>` : '';
+        $('lg-fl-foot').innerHTML = k === 'imp' ? `<div class="lg-row lg-mt"><button type="button" class="lg-btn sm ghost" data-fa="all">全選</button><button type="button" class="lg-btn sm" style="flex:1" data-fa="ok" ${sel.length ? '' : 'disabled'}>匯入${sel.length ? `（${sel.length} 筆）` : ''}</button></div>` : multi ? `<div class="lg-row lg-mt"><button type="button" class="lg-btn sm ghost" data-fa="clear">全部</button><button type="button" class="lg-btn sm" style="flex:1" data-fa="ok">套用${sel.length ? `（${sel.length} ${k === 'members' ? '人' : '項'}）` : '（全部）'}</button></div>` : '';
     }
     function flPick(v) {
         const s = S.fs;
@@ -636,7 +651,9 @@
     }
     function flMulti(a) {
         if (a === 'clear') { S.fs.sel = []; flDraw(); return; }
+        if (a === 'all') { S.fs.sel = flOpts('imp').map(([v]) => v); flDraw(); return; }
         const k = S.fs.k, sel = S.fs.sel.slice();
+        if (k === 'imp') { flClose(); importFromGroup(sel); return; }
         if (k === 'cat') S.filter.cats = sel;
         else if (k === 'date') S.filter.dates = sel.sort();
         else if (k === 'stdate') S.stDays = sel.sort();
@@ -652,6 +669,39 @@
     function lgLock() {
         const open = document.querySelector('#lg-fl:not(.hidden),#lg-pick:not(.hidden),#lg-pad:not(.hidden)');
         document[open ? 'addEventListener' : 'removeEventListener']('touchmove', lgBlock, { passive: false });
+    }
+    // 團體支出裡「我」有分攤、而且還沒匯入過的
+    function impCands() {
+        const pid = myPid();
+        if (!pid) return [];
+        const done = new Set(Object.values(PE()).map((e) => e && e.src).filter(Boolean));
+        return Object.entries(E()).filter(([id, e]) => {
+            const sh = e && e.shares && e.shares[pid];
+            return !done.has(id) && sh && Number.isInteger(sh.o) && Number.isInteger(sh.b) && sh.b > 0;
+        }).sort(([, a], [, b]) => (b.date || '').localeCompare(a.date || '') || (b.ts || 0) - (a.ts || 0));
+    }
+    function openImport() {
+        if (!guard()) return;
+        if (!myPid()) return alert('要先綁定自己的帳號才能匯入：到「記帳」分頁的團員名單，按自己名字旁的「綁定我」。');
+        if (!impCands().length) return toast('沒有可匯入的支出（都已匯入過，或你沒有分攤）');
+        flOpen('imp');
+    }
+    function importFromGroup(ids) {
+        const pid = myPid();
+        if (!pid || !ids.length || !guard()) return;
+        const ref = xref(true), m = me(), up = {};
+        ids.forEach((id) => {
+            const e = E()[id], sh = e && e.shares && e.shares[pid];
+            if (!sh || !(sh.o > 0 || sh.b > 0)) return;
+            up[ref.push().key] = {
+                title: e.title || '', amount: sh.o, cur: e.cur, dec: Number.isInteger(e.dec) ? e.dec : decOf(e.cur), rate: e.rate, rateRef: e.rateRef || 'manual',
+                base: BASE, baseAmt: sh.b, date: e.date, payer: 'me', mode: 'equal', shares: { me: { o: sh.o, b: sh.b } }, seed: 0, cat: e.cat || '其他', note: '',
+                src: id, by: m.uid, byName: m.name, ts: TS(), updBy: m.uid, updName: m.name, uts: TS()
+            };
+        });
+        const n = Object.keys(up).length;
+        if (!n) return;
+        ref.update(up).then(() => toast(`已匯入 ${n} 筆`)).catch(fail);
     }
     function flApply() { renderFilterOpts(); renderItems(); renderDeleted(); }
     const src = () => (S.filter.scope === 'personal' ? PE() : E());
@@ -688,12 +738,13 @@
     }
     function renderItems() {
         const box = $('lg-items'), all = Object.keys(src()).length, list = filtered();
-        if (!all) { box.innerHTML = '<div class="card lg-card lg-center"><p class="lg-muted">還沒有' + (S.filter.scope === 'personal' ? '個人' : '') + '支出紀錄，到「記帳」新增第一筆吧。</p></div>'; return; }
+        const impBtn = S.filter.scope === 'personal' ? '<button type="button" class="lg-btn sm lg-import" data-act="imp-open">⬇️ 從團體匯入我的分攤</button>' : '';
+        if (!all) { box.innerHTML = impBtn + '<div class="card lg-card lg-center"><p class="lg-muted">還沒有' + (S.filter.scope === 'personal' ? '個人' : '') + '支出紀錄，到「記帳」新增第一筆吧。</p></div>'; return; }
         const total = list.reduce((s, [, e]) => s + (Number.isInteger(e.baseAmt) ? e.baseAmt : 0), 0);
         const jpyOf = (e) => (e.cur === 'JPY' && Number.isInteger(e.amount) ? e.amount : 0), baseOf = (e) => (Number.isInteger(e.baseAmt) ? e.baseAmt : 0);
         const pair = (t, j) => [money(t, BASE), j > 0 ? money(j, 'JPY') : ''];
         const exportBtn = `<button type="button" class="lg-btn sm ghost lg-export" data-act="export">⬇️ 匯出目前列表（CSV，可用 Excel／Google 試算表開啟）</button>`;
-        if (!list.length) { box.innerHTML = `<p class="lg-sum">共 0 筆</p><div class="card lg-card lg-center"><p class="lg-muted">沒有符合篩選條件的支出。</p></div>`; return; }
+        if (!list.length) { box.innerHTML = `${impBtn}<p class="lg-sum">共 0 筆</p><div class="card lg-card lg-center"><p class="lg-muted">沒有符合篩選條件的支出。</p></div>`; return; }
         const groups = [], idx = {};
         list.forEach(([id, e]) => {
             const d = e.date || '（無日期）';
@@ -712,7 +763,7 @@
             const label = /^\d{4}-\d{2}-\d{2}$/.test(g.d) ? `${+g.d.slice(5, 7)}/${+g.d.slice(8, 10)}` : g.d;
             return `<div class="lg-grp"><button type="button" class="lg-grp-h" data-act="grp" data-d="${esc(g.d)}"><span>${esc(label)}<small>${g.items.length} 筆</small></span><span class="lg-grp-r"><span class="lg-grp-v">${pair(g.sum, g.jpy).filter(Boolean).map((x) => `<span>${x}</span>`).join('')}</span><em>${shut ? '▼' : '▲'}</em></span></button>${shut ? '' : `<div class="lg-stack sm lg-mt">${g.items.map(([id, e]) => itemHtml(id, e, ti)).join('')}</div>`}</div>`;
         }).join('');
-        box.innerHTML = `<div class="lg-items-box">${h}</div>` + exportBtn;
+        box.innerHTML = impBtn + `<div class="lg-items-box">${h}</div>` + exportBtn;
     }
     function trByExp() {
         const m = {};
@@ -724,13 +775,13 @@
         if (p === e.payer || !s || !(s.b > 0)) return '';
         const tr = (ti[id] || {})[p];
         if (tr) { const U = unitOpts(), ta = C.transferAmount(tr, U); return `<em class="lg-pt ${tr.status === 'done' ? 'ok' : ''}">${tr.status === 'done' ? '✅ 已先轉帳' : '已先轉帳・待確認'}${ta !== C.unitView(e, U).sh[p] ? `・${money(ta, unitCur())}` : ''}</em>`; }
-        return canAct(p) ? `<button type="button" class="lg-pt-b" data-act="exp-pay" data-id="${id}" data-p="${p}">先轉帳</button>` : '';
+        return !planLocked() && canAct(p) ? `<button type="button" class="lg-pt-b" data-act="exp-pay" data-id="${id}" data-p="${p}">先轉帳</button>` : '';
     }
     function itemHtml(id, e, ti = {}) {
         const fx = e.cur !== BASE, n = Object.keys(e.shares || {}).length, open = S.open === id, pe = isP(id);
         let h = `<div class="card lg-item ${open ? 'open' : ''}">
             <button type="button" class="lg-item-h" data-act="exp-open" data-id="${id}">
-                <span class="lg-item-l"><b>${esc(e.title || '')}</b><small>${esc(e.date || '')}・${pe ? '🔒 個人' : `${esc(pname(e.payer))} 付款・${n} 人分攤`}${e.cat ? '・' + esc(e.cat) : ''}</small></span>
+                <span class="lg-item-l"><b>${esc(e.title || '')}</b><small>${esc(e.date || '')}・${pe ? `🔒 個人${e.src ? '・來自團體' : ''}` : `${esc(pname(e.payer))} 付款・${n} 人分攤`}${e.cat ? '・' + esc(e.cat) : ''}</small></span>
                 <span class="lg-item-r"><b>${money(e.amount, e.cur)}</b>${fx ? `<small>≈ ${money(e.baseAmt, BASE)}</small>` : ''}</span>
             </button>`;
         if (open) {
@@ -743,7 +794,7 @@
                 <p class="lg-muted lg-mt">${pe ? '' : `分帳方式：${esc(modeL)}`}${fx ? `・匯率 1 ${esc(e.cur)} = ${esc(e.rate)} ${BASE}（${String(e.rateRef || '').startsWith('table:') ? '當時匯率表' : '自訂'}）` : ''}</p>
                 ${e.note ? `<p class="lg-note">${esc(e.note)}</p>` : ''}
                 <p class="lg-muted">建立：${esc(e.byName || '')} ${when(e.ts)}${e.updName && e.uts !== e.ts ? `・最後修改：${esc(e.updName)} ${when(e.uts)}` : ''}</p>
-                <div class="lg-actions"><button type="button" class="lg-btn sm" data-act="exp-edit" data-id="${id}">✏️ 編輯</button><button type="button" class="lg-btn sm danger" data-act="exp-del" data-id="${id}">🗑️ 刪除</button></div>
+                ${!pe && planLocked() ? '<p class="lg-muted lg-mt">🔒 清帳方案已鎖定，需管理員解除鎖定後才能修改。</p>' : `<div class="lg-actions"><button type="button" class="lg-btn sm" data-act="exp-edit" data-id="${id}">✏️ 編輯</button><button type="button" class="lg-btn sm danger" data-act="exp-del" data-id="${id}">🗑️ 刪除</button></div>`}
             </div>`;
         }
         return h + '</div>';
@@ -788,6 +839,7 @@
             if (!confirm(`確定要刪除個人支出「${e.title}」嗎？`)) return;
             return xref(true).child(id).remove().then(() => { toast('已刪除'); if (S.editId === id) cancelEdit(); }).catch(fail);
         }
+        if (planLocked()) return alert(LOCK_MSG);
         const im = C.deleteImpact(order(), E(), T(), id, unitOpts()), UC = unitCur();
         const net = (v) => (v > 0 ? `應收 ${money(v, UC)}` : v < 0 ? `應付 ${money(-v, UC)}` : '平衡');
         const warn = im.warn ? `\n\n⚠️ 已有轉帳紀錄，刪除後清帳會失衡：\n未結清 ${money(im.open0, UC)} → ${money(im.open1, UC)}\n${im.changes.slice(0, 8).map((c) => `${pname(c.p)}：${net(c.from)} → ${net(c.to)}`).join('\n')}${im.eidTr ? '\n（已有人依這筆支出先轉帳）' : ''}\n已記錄的轉帳不會被刪除，需要另外補轉或退回。` : '';
@@ -799,6 +851,7 @@
     function restoreExpense(id) {
         const e = (D().deleted || {})[id];
         if (!e || !guard()) return;
+        if (planLocked()) return alert(LOCK_MSG);
         if (E()[id]) return toast('這筆已經存在');
         if (!confirm(`還原「${e.title}」？\n會重新列入結算。`)) return;
         const { delBy, delName, delTs, ...rec } = e;
@@ -811,7 +864,7 @@
         if (S.filter.scope === 'personal' || !list.length) { box.innerHTML = ''; return; }
         let h = `<button type="button" class="lg-link" data-act="del-toggle">${S.showDel ? '隱藏' : '顯示'}已刪除紀錄（${list.length}）</button>`;
         if (S.showDel) {
-            h += `<div class="card lg-card lg-mt">${list.map(([id, e]) => `<div class="lg-del-r"><div><b>${esc(e.title || '')}</b><small>${esc(e.date || '')}・${esc(pname(e.payer))} 付款・${Object.keys(e.shares || {}).length} 人分攤</small><small>${esc(e.delName || '')} 於 ${when(e.delTs)} 刪除</small></div><div class="lg-del-v"><b>${money(e.amount, e.cur)}</b>${e.cur !== BASE ? `<small>≈ ${money(e.baseAmt, BASE)}</small>` : ''}<button type="button" class="lg-btn sm" data-act="exp-restore" data-id="${id}">還原</button></div></div>`).join('')}</div>`;
+            h += `<div class="card lg-card lg-mt">${list.map(([id, e]) => `<div class="lg-del-r"><div><b>${esc(e.title || '')}</b><small>${esc(e.date || '')}・${esc(pname(e.payer))} 付款・${Object.keys(e.shares || {}).length} 人分攤</small><small>${esc(e.delName || '')} 於 ${when(e.delTs)} 刪除</small></div><div class="lg-del-v"><b>${money(e.amount, e.cur)}</b>${e.cur !== BASE ? `<small>≈ ${money(e.baseAmt, BASE)}</small>` : ''}${planLocked() ? '<span class="lg-muted">🔒 已鎖定</span>' : `<button type="button" class="lg-btn sm" data-act="exp-restore" data-id="${id}">還原</button>`}</div></div>`).join('')}</div>`;
         }
         box.innerHTML = h;
     }
@@ -932,6 +985,7 @@
     }
     function markPaid(from, to, amt, eid, pk) {
         if (!guard() || !canAct(from) || !(amt > 0)) return;
+        if (!pk && planLocked()) return alert('清帳方案已鎖定，請依方案裡的項目標記轉帳。');
         if (pk) {
             const ps = C.planState(order(), E(), T(), D().plan, unitOpts()), it = ps && !ps.done && ps.items.find((x) => x.key === pk);
             if (!it || it.status !== 'todo' || it.from !== from || it.to !== to || it.amt !== amt) return toast('這份清帳方案已變動，請重新整理');
@@ -1428,6 +1482,7 @@
             else if (act === 'exp-edit') startEdit(id);
             else if (act === 'exp-del') delExpense(id);
             else if (act === 'exp-restore') restoreExpense(id);
+            else if (act === 'imp-open') openImport();
             else if (act === 'del-toggle') { S.showDel = !S.showDel; renderDeleted(); }
             else if (act === 'export') exportCsv();
             else if (act === 'fl-clear') { S.filter = { scope: 'group', sort: S.filter.sort, dates: [], cats: [], payer: '', members: [], cur: '', q: '' }; $('lg-q').value = ''; renderFilterOpts(); renderItems(); }
