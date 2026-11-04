@@ -181,6 +181,20 @@
         return { warn: changes.length > 0 && (eidTr || trs.some((t) => t.status === 'paid' || t.status === 'done')), changes, open0: open(B0), open1: open(B1), eidTr };
     }
 
+    // 鎖定的清帳方案：每一筆的轉帳狀態（todo／paid／done），並檢查鎖定後帳務有沒有變動（stale）
+    function planState(order, expenses, transfers, plan) {
+        if (!plan || !plan.items) return null;
+        const B = balances(order, expenses, transfers), trs = Object.entries(transfers || {}).filter(([, t]) => t && t.status !== 'void');
+        const items = Object.entries(plan.items).filter(([, it]) => it).sort(([a], [b]) => parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10)).map(([key, it]) => {
+            const hit = trs.find(([, t]) => t.plan === plan.id && t.pk === key);
+            return { key, from: it.from, to: it.to, amt: it.amt, tid: hit ? hit[0] : null, status: hit ? hit[1].status : 'todo' };
+        });
+        const adj = {};
+        items.filter((i) => i.status === 'todo').forEach((i) => { adj[i.from] = (adj[i.from] || 0) + i.amt; adj[i.to] = (adj[i.to] || 0) - i.amt; });
+        const stale = new Set([...Object.keys(B), ...Object.keys(adj)]);
+        return { items, stale: [...stale].some((p) => ((B[p] || { net: 0 }).net + (adj[p] || 0)) !== 0), done: items.length > 0 && items.every((i) => i.status === 'done') };
+    }
+
     // 每次讓「欠最多的人」付給「應收最多的人」，n 人最多 n−1 筆
     function settle(order, B) {
         const rank = (p) => { const i = (order || []).indexOf(p); return i < 0 ? 1e9 : i; };
@@ -230,5 +244,5 @@
         return { ok: true, v };
     }
 
-    return { RATE_DP, parseAmount, formatAmount, toPlain, parseRate, convert, convertBack, convertCross, allocate, computeSplit, tailBias, rebalanceTails, balances, deleteImpact, settle, evalCalc };
+    return { RATE_DP, parseAmount, formatAmount, toPlain, parseRate, convert, convertBack, convertCross, allocate, computeSplit, tailBias, rebalanceTails, balances, deleteImpact, planState, settle, evalCalc };
 });

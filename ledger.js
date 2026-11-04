@@ -1,7 +1,7 @@
 (function () {
     'use strict';
     const C = window.LedgerCore;
-    const VER = '13';
+    const VER = '14';
     const BASE = 'TWD', BASE_DEC = 0;
     const CATS = ['餐飲', '交通', '住宿', '門票', '購物', '其他'];
     const DEC_FIX = { TWD: 0, JPY: 0, KRW: 0 };
@@ -809,6 +809,7 @@
         const trs = day ? Object.fromEntries(Object.entries(T()).filter(([, t]) => t.eid && hit(E()[t.eid]))) : T();
         const flt = S.stDays.length || S.stCats.length ? [S.stDays.map(mdLabel).join('、'), S.stCats.join('、')].filter(Boolean).join('・') : '全部';
         const B = C.balances(ids, exps, trs), sug = C.settle(ids, B);
+        const ps = day ? null : C.planState(ids, E(), T(), D().plan), planOn = !!ps && !ps.done;
         const curList = curs();
         const dc = curList.includes(S.stCur) ? S.stCur : BASE, rate = dc === BASE ? null : R()[dc].rate, ddec = decOf(dc);
         const conv = (v) => (rate ? C.convertBack(v, BASE_DEC, rate, ddec) : v);
@@ -860,7 +861,22 @@
             `<p class="lg-sum lg-mt">${day ? '篩選範圍未平衡' : '尚未結清'}：<b>${amt(open)}</b></p>
             <p class="lg-muted">淨額 ＝ 已付 − 應負擔 ＋ 已轉出 − 已收到；已標記轉帳的金額會立即計入${day ? '（只算指定這些支出的先轉帳）' : ''}。</p>`);
 
-        h += foldCard('sug', '💸 清帳建議', sug.length ? sug.map((s) => {
+        const planBody = () => {
+            const pl = D().plan, fin = ps.items.filter((x) => x.status === 'done').length;
+            let b = `<p class="lg-muted">${esc(pl.byName || '管理員')} 於 ${when(pl.ts)} 鎖定・已完成 ${fin} / ${ps.items.length} 筆</p>`;
+            if (ps.stale) b += '<p class="lg-warn">⚠️ 鎖定後帳務有變動（可能新增、修改或刪除了支出），這份方案已過期，暫時不能標記轉帳，請管理員重新鎖定。</p>';
+            b += ps.items.map((x) => {
+                const st = x.status === 'done' ? '<em class="ok">✅ 已完成</em>'
+                    : x.status === 'paid' ? `<em>付款：已轉帳</em><em class="wait">收款：待 ${esc(pname(x.to))} 確認</em>${canAct(x.to) ? `<button type="button" class="lg-btn sm" data-act="tr-done" data-id="${x.tid}">確認收款</button><button type="button" class="lg-btn sm ghost" data-act="tr-void" data-id="${x.tid}">退回</button>` : canAct(x.from) ? `<button type="button" class="lg-btn sm ghost" data-act="tr-void" data-id="${x.tid}">取消</button>` : ''}`
+                        : `<em>付款：未轉帳</em><em>收款：未確認</em>${ps.stale ? '<small>方案已過期</small>' : canAct(x.from)
+                            ? `<button type="button" class="lg-btn sm" data-act="st-pay" data-from="${x.from}" data-to="${x.to}" data-amt="${x.amt}" data-pk="${x.key}">標記已轉帳</button>`
+                            : `<small>由 ${esc(pname(x.from))} 本人或管理員標記</small>`}`;
+                return `<div class="lg-tr"><p><b>${esc(pname(x.from))}</b> → <b>${esc(pname(x.to))}</b><span>${amt(x.amt)}</span></p><div class="lg-st">${st}</div></div>`;
+            }).join('');
+            if (isEditor) b += `<div class="lg-actions lg-mt">${ps.stale ? '<button type="button" class="lg-btn sm" data-act="plan-lock">重新鎖定</button>' : ''}<button type="button" class="lg-btn sm ghost" data-act="plan-unlock">解除鎖定</button></div>`;
+            return b;
+        };
+        const sugBody = () => (sug.length ? sug.map((s) => {
             const k = `s:${s.from}>${s.to}`, op = !!S.stOpen[k];
             return `<div class="lg-tr"><p class="lg-tap" data-act="st-open" data-k="${esc(k)}"><b>${esc(pname(s.from))}</b> → <b>${esc(pname(s.to))}</b><i class="lg-chev">${op ? '▲' : '▼'}</i><span>${amt(s.amt)}</span></p>
             ${op ? `<p class="lg-muted">依淨額配對：由欠最多的人付給應收最多的人。${esc(pname(s.from))} 應付 ${tt(-B[s.from].net)}、${esc(pname(s.to))} 應收 ${tt(B[s.to].net)}，本筆 ${tt(s.amt)}。</p>${bd(s.from)}${bd(s.to)}` : ''}
@@ -868,7 +884,8 @@
                 ? `<button type="button" class="lg-btn sm" data-act="st-pay" data-from="${s.from}" data-to="${s.to}" data-amt="${s.amt}">標記已轉帳</button>`
                 : `<small>由 ${esc(pname(s.from))} 本人或管理員標記</small>`}`}</div></div>`;
         }).join('')
-            : `<p class="lg-muted">🎉 ${day ? '這個範圍的' : ''}帳務已平衡，沒有需要轉帳的項目。</p>`);
+            : `<p class="lg-muted">🎉 ${day ? '這個範圍的' : ''}帳務已平衡，沒有需要轉帳的項目。</p>`) + (!day && isEditor && sug.length ? '<div class="lg-actions lg-mt"><button type="button" class="lg-btn sm" data-act="plan-lock">🔒 鎖定目前建議</button></div><p class="lg-muted">鎖定後方案固定，不會因為誰先轉帳而改變。</p>' : '');
+        h += foldCard('sug', planOn ? '🔒 清帳方案（已鎖定）' : '💸 清帳建議', planOn ? planBody() : sugBody());
 
         if (!day) {
             const tr = Object.entries(T()).sort(([a], [b]) => (a < b ? 1 : -1));
@@ -886,8 +903,13 @@
         }
         $('lg-s-settle').innerHTML = h;
     }
-    function markPaid(from, to, amt, eid) {
+    function markPaid(from, to, amt, eid, pk) {
         if (!guard() || !canAct(from) || !(amt > 0)) return;
+        if (pk) {
+            const ps = C.planState(order(), E(), T(), D().plan), it = ps && !ps.done && ps.items.find((x) => x.key === pk);
+            if (!it || it.status !== 'todo' || it.from !== from || it.to !== to || it.amt !== amt) return toast('這份清帳方案已變動，請重新整理');
+            if (ps.stale) return toast('帳務在鎖定後有變動，請管理員重新鎖定方案');
+        }
         const e = eid ? E()[eid] : null;
         if (eid && !e) return;
         if (eid && Object.values(T()).some((t) => t.eid === eid && t.from === from && t.status !== 'void')) return toast('這筆已經先轉帳過了');
@@ -895,8 +917,22 @@
         const shown = rt ? `${money(C.convertBack(amt, BASE_DEC, rt, decOf(dc)), dc)}（≈ ${money(amt, BASE)}）` : money(amt, BASE);
         if (!confirm(`確認 ${pname(from)} 已轉帳 ${shown} 給 ${pname(to)}？${e ? `\n（依「${e.title}」的分攤先轉帳）` : ''}\n\n會先計入餘額，等待 ${pname(to)} 確認收款。`)) return;
         const m = me();
-        actDb(from).ref('ledger/transfers').push({ from, to, amt, cur: BASE, status: 'paid', ...(eid ? { eid } : {}), paidBy: m.uid, paidName: m.name, paidTs: TS() })
+        actDb(from).ref('ledger/transfers').push({ from, to, amt, cur: BASE, status: 'paid', ...(eid ? { eid } : {}), ...(pk ? { plan: D().plan.id, pk } : {}), paidBy: m.uid, paidName: m.name, paidTs: TS() })
             .then(() => toast('已標記轉帳')).catch(fail);
+    }
+    function lockPlan() {
+        if (!isEditor || !guard()) return;
+        const sug = C.settle(order(), C.balances(order(), E(), T()));
+        if (!sug.length) return toast('目前沒有需要轉帳的項目');
+        const cur = D().plan ? C.planState(order(), E(), T(), D().plan) : null, re = !!cur && !cur.done;
+        if (!confirm(`${re ? '重新鎖定' : '鎖定'}目前的清帳建議（共 ${sug.length} 筆）？\n鎖定後方案固定，不會因為誰先轉帳而改變；之後帳務有變動時需要重新鎖定。${re ? '\n舊方案會被取代，已完成的轉帳照常計入。' : ''}`)) return;
+        const m = me();
+        adminDb.ref('ledger/plan').set({ id: Date.now().toString(36), ts: TS(), by: m.uid, byName: m.name, items: Object.fromEntries(sug.map((x, i) => ['i' + i, { from: x.from, to: x.to, amt: x.amt }])) })
+            .then(() => toast('已鎖定清帳方案')).catch(fail);
+    }
+    function unlockPlan() {
+        if (!isEditor || !guard() || !confirm('解除鎖定清帳方案？\n已記錄的轉帳不會被刪除，清帳建議會恢復成依目前帳務自動計算。')) return;
+        adminDb.ref('ledger/plan').remove().then(() => toast('已解除鎖定')).catch(fail);
     }
     function setTransfer(id, status) {
         const t = T()[id];
@@ -1368,7 +1404,9 @@
             else if (act === 'del-toggle') { S.showDel = !S.showDel; renderDeleted(); }
             else if (act === 'export') exportCsv();
             else if (act === 'fl-clear') { S.filter = { scope: 'group', sort: S.filter.sort, dates: [], cats: [], payer: '', members: [], cur: '', q: '' }; $('lg-q').value = ''; renderFilterOpts(); renderItems(); }
-            else if (act === 'st-pay') markPaid(b.dataset.from, b.dataset.to, +b.dataset.amt);
+            else if (act === 'st-pay') markPaid(b.dataset.from, b.dataset.to, +b.dataset.amt, null, b.dataset.pk);
+            else if (act === 'plan-lock') lockPlan();
+            else if (act === 'plan-unlock') unlockPlan();
             else if (act === 'tr-done') setTransfer(id, 'done');
             else if (act === 'tr-void') setTransfer(id, 'void');
             else if (act === 'void-toggle') { S.showVoid = !S.showVoid; renderSettle(); }

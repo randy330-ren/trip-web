@@ -160,4 +160,24 @@ t('刪除影響：已有轉帳且刪除會改變淨額才警告', () => {
     assert.strictEqual(C.deleteImpact(ord, ex, { t1: { ...tr.t1, status: 'void' } }, 'e2').warn, false);
 });
 
+t('鎖定方案：狀態、過期偵測、完成後不再擋', () => {
+    const ord = ['a', 'b', 'c'];
+    let ex = { e1: { payer: 'a', baseAmt: 300, shares: { a: { b: 100 }, b: { b: 100 }, c: { b: 100 } } } };
+    const plan = { id: 'p1', items: { i0: { from: 'b', to: 'a', amt: 100 }, i1: { from: 'c', to: 'a', amt: 100 } } };
+    let r = C.planState(ord, ex, {}, plan);
+    assert.deepStrictEqual(r.items.map((i) => i.status), ['todo', 'todo']);
+    assert.strictEqual(r.stale, false);
+    const tr = { t1: { from: 'b', to: 'a', amt: 100, status: 'paid', plan: 'p1', pk: 'i0' } };
+    r = C.planState(ord, ex, tr, plan);
+    assert.deepStrictEqual(r.items.map((i) => i.status), ['paid', 'todo']);
+    assert.strictEqual(r.stale, false);
+    ex = { ...ex, e2: { payer: 'b', baseAmt: 90, shares: { a: { b: 30 }, b: { b: 30 }, c: { b: 30 } } } };
+    assert.strictEqual(C.planState(ord, ex, tr, plan).stale, true);          // 鎖定後新增支出
+    const all = { t1: { ...tr.t1, status: 'done' }, t2: { from: 'c', to: 'a', amt: 100, status: 'done', plan: 'p1', pk: 'i1' } };
+    r = C.planState(ord, { e1: ex.e1 }, all, plan);
+    assert.strictEqual(r.done, true);
+    assert.strictEqual(C.planState(ord, { e1: ex.e1 }, { t1: { ...tr.t1, status: 'void' } }, plan).items[0].status, 'todo');
+    assert.strictEqual(C.planState(ord, ex, {}, null), null);
+});
+
 console.log(`\n全部通過：${pass} 項`);
