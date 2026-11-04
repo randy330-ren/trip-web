@@ -1,7 +1,7 @@
 (function () {
     'use strict';
     const C = window.LedgerCore;
-    const VER = '15';
+    const VER = '16';
     const BASE = 'TWD', BASE_DEC = 0;
     const CATS = ['餐飲', '交通', '住宿', '門票', '購物', '其他'];
     const DEC_FIX = { TWD: 0, JPY: 0, KRW: 0 };
@@ -652,10 +652,10 @@
     }
     function flApply() { renderFilterOpts(); renderItems(); renderDeleted(); }
     const src = () => (S.filter.scope === 'personal' ? PE() : E());
-    function filtered() {
+    function filtered(anyMember) {
         const f = S.filter, q = f.q.trim().toLowerCase(), pe = f.scope === 'personal';
         return Object.entries(src())
-            .filter(([, e]) => (!f.cats.length || f.cats.includes(e.cat)) && (!f.dates.length || f.dates.includes(e.date)) && (pe || ((!f.payer || e.payer === f.payer) && (!f.members.length || f.members.some((p) => e.shares && e.shares[p])))) &&
+            .filter(([, e]) => (!f.cats.length || f.cats.includes(e.cat)) && (!f.dates.length || f.dates.includes(e.date)) && (pe || ((!f.payer || e.payer === f.payer) && (anyMember || !f.members.length || f.members.some((p) => e.shares && e.shares[p])))) &&
                 (!f.cur || e.cur === f.cur) && (!q || `${e.title || ''} ${e.note || ''}`.toLowerCase().includes(q)))
             .sort(([ia, a], [ib, b]) => {
                 const d = (a.date || '').localeCompare(b.date || '') || ((a.ts || 0) - (b.ts || 0)) || (ia < ib ? -1 : 1);
@@ -667,17 +667,21 @@
     function memberSumHtml(list) {
         const ids = order().filter((p) => S.filter.members.includes(p));
         if (S.filter.scope === 'personal' || !ids.length) return '';
-        const fmt = (b, j) => `${money(b, BASE)}${j > 0 ? `<small>日圓支出 ${money(j, 'JPY')}</small>` : ''}`;
+        const jl = S.filter.cur === 'JPY' ? '' : '其中日圓 ';
+        const fmt = (b, j) => `${money(b, BASE)}${j > 0 ? `<small>（${jl}${money(j, 'JPY')}）</small>` : ''}`;
+        const all = filtered(true);
         const rows = ids.map((p) => {
             let owe = 0, oweJ = 0, paid = 0, paidJ = 0;
             list.forEach(([, e]) => {
-                const sh = e.shares && e.shares[p], jpy = e.cur === 'JPY';
-                if (sh && Number.isInteger(sh.b)) { owe += sh.b; if (jpy && Number.isInteger(sh.o)) oweJ += sh.o; }
-                if (e.payer === p && Number.isInteger(e.baseAmt)) { paid += e.baseAmt; if (jpy && Number.isInteger(e.amount)) paidJ += e.amount; }
+                const sh = e.shares && e.shares[p];
+                if (sh && Number.isInteger(sh.b)) { owe += sh.b; if (e.cur === 'JPY' && Number.isInteger(sh.o)) oweJ += sh.o; }
             });
-            return `<div class="lg-mem-r"><b>${esc(pname(p))}</b><div><span>應負擔　${fmt(owe, oweJ)}</span><span>已付　${fmt(paid, paidJ)}</span></div></div>`;
+            all.forEach(([, e]) => {
+                if (e.payer === p && Number.isInteger(e.baseAmt)) { paid += e.baseAmt; if (e.cur === 'JPY' && Number.isInteger(e.amount)) paidJ += e.amount; }
+            });
+            return `<div class="lg-mem-r"><b>${esc(pname(p))}</b><div><span>應負擔　${fmt(owe, oweJ)}</span><span>墊付　${fmt(paid, paidJ)}</span></div></div>`;
         }).join('');
-        return `<div class="lg-mem-sum"><p class="lg-mem-h">成員合計（目前篩選範圍）</p>${rows}</div>`;
+        return `<div class="lg-mem-sum"><p class="lg-mem-h">成員合計（目前篩選範圍）</p>${rows}<p class="lg-mem-n">墊付 ＝ 替大家付款的帳單。轉帳不在這裡，實際還要轉多少請看「自動結算」。</p></div>`;
     }
     function renderItems() {
         const box = $('lg-items'), all = Object.keys(src()).length, list = filtered();
