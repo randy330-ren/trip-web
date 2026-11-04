@@ -1,4 +1,4 @@
-const V = 'sanin-v44';
+const V = 'sanin-v45';
 const CORE = ['index.html', 'output.css', 'bg-day.svg', 'manifest.json', 'icon-192.png', 'icon-512.png'];
 const CDN = [
     'https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js',

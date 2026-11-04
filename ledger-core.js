@@ -169,6 +169,18 @@
         return B;
     }
 
+    // 刪除某筆支出前評估：已有轉帳紀錄時，刪除會讓哪些人的淨額改變
+    function deleteImpact(order, expenses, transfers, id) {
+        const rest = { ...(expenses || {}) };
+        delete rest[id];
+        const B0 = balances(order, expenses, transfers), B1 = balances(order, rest, transfers);
+        const trs = Object.values(transfers || {}).filter((t) => t && t.status !== 'void');
+        const eidTr = trs.some((t) => t.eid === id);
+        const changes = Object.keys(B0).map((p) => ({ p, from: B0[p].net, to: (B1[p] || { net: 0 }).net })).filter((c) => c.from !== c.to);
+        const open = (B) => Object.values(B).reduce((s, x) => s + Math.max(0, x.net), 0);
+        return { warn: changes.length > 0 && (eidTr || trs.some((t) => t.status === 'paid' || t.status === 'done')), changes, open0: open(B0), open1: open(B1), eidTr };
+    }
+
     // 每次讓「欠最多的人」付給「應收最多的人」，n 人最多 n−1 筆
     function settle(order, B) {
         const rank = (p) => { const i = (order || []).indexOf(p); return i < 0 ? 1e9 : i; };
@@ -218,5 +230,5 @@
         return { ok: true, v };
     }
 
-    return { RATE_DP, parseAmount, formatAmount, toPlain, parseRate, convert, convertBack, convertCross, allocate, computeSplit, tailBias, rebalanceTails, balances, settle, evalCalc };
+    return { RATE_DP, parseAmount, formatAmount, toPlain, parseRate, convert, convertBack, convertCross, allocate, computeSplit, tailBias, rebalanceTails, balances, deleteImpact, settle, evalCalc };
 });

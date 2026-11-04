@@ -147,4 +147,17 @@ t('金額格式化', () => {
     assert.strictEqual(C.toPlain(3334, 2), '33.34');
 });
 
+t('刪除影響：已有轉帳且刪除會改變淨額才警告', () => {
+    const ex = { e1: { payer: 'a', baseAmt: 200, shares: { a: { b: 100 }, b: { b: 100 } } }, e2: { payer: 'b', baseAmt: 60, shares: { a: { b: 30 }, b: { b: 30 } } } };
+    const ord = ['a', 'b'];
+    assert.strictEqual(C.deleteImpact(ord, ex, {}, 'e2').warn, false);   // 沒有轉帳：正常刪除
+    const tr = { t1: { from: 'b', to: 'a', amt: 70, status: 'done' } };
+    const r = C.deleteImpact(ord, ex, tr, 'e2');
+    assert.strictEqual(r.warn, true);
+    assert.strictEqual(r.open0, 0);
+    assert.strictEqual(r.open1, 30);
+    assert.deepStrictEqual(r.changes.map((c) => c.p), ['a', 'b']);
+    assert.strictEqual(C.deleteImpact(ord, ex, { t1: { ...tr.t1, status: 'void' } }, 'e2').warn, false);
+});
+
 console.log(`\n全部通過：${pass} 項`);
