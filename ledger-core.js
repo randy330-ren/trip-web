@@ -150,30 +150,53 @@
         return { ok: true, changes };
     }
 
+    // 結算單位 opts = { cur, dec, rate, baseDec }（rate = 1 單位結算幣別 = ? 基準幣別）；不傳就以基準幣別結算
+    // 結算幣別的支出直接用原始金額，其餘依基準幣別金額換算並按分攤比例分配，確保每筆加總必等於總額
+    function unitView(e, opts) {
+        const ps = Object.keys(e.shares || {}), bw = ps.map((p) => (e.shares[p] && Number.isInteger(e.shares[p].b) ? e.shares[p].b : 0));
+        const zip = (arr) => Object.fromEntries(ps.map((p, i) => [p, arr[i]]));
+        if (!opts) return { total: e.baseAmt, sh: zip(bw) };
+        if (e.cur === opts.cur && (Number.isInteger(e.dec) ? e.dec : opts.dec) === opts.dec && Number.isInteger(e.amount)) {
+            const o = ps.map((p) => (e.shares[p] && Number.isInteger(e.shares[p].o) ? e.shares[p].o : 0));
+            return { total: e.amount, sh: zip(o.reduce((a, b) => a + b, 0) === e.amount ? o : allocate(e.amount, bw.some((x) => x > 0) ? bw : ps.map(() => 1))) };
+        }
+        const total = convertBack(e.baseAmt, opts.baseDec, opts.rate, opts.dec);
+        return { total, sh: zip(allocate(total, bw)) };
+    }
+    // 轉帳在結算單位下的金額：有記錄實際轉的金額（amtJ）就用它，舊紀錄則由台幣金額換算
+    function transferAmount(t, opts) {
+        if (!opts) return t.amt;
+        if (Number.isInteger(t.amtJ)) return t.amtJ;
+        return Number.isInteger(t.amt) ? convertBack(t.amt, opts.baseDec, opts.rate, opts.dec) : NaN;
+    }
+
     // 淨額 = 已付 − 應負擔 + 已轉出 − 已收到（已轉帳、已完成的轉帳都計入）
-    function balances(order, expenses, transfers) {
+    function balances(order, expenses, transfers, opts) {
         const B = {};
         const get = (p) => B[p] || (B[p] = { paid: 0, owe: 0, sent: 0, recv: 0, net: 0 });
         (order || []).forEach(get);
         Object.values(expenses || {}).forEach((e) => {
             if (!e || !e.shares || !Number.isInteger(e.baseAmt)) return;
-            get(e.payer).paid += e.baseAmt;
-            Object.entries(e.shares).forEach(([p, s]) => { get(p).owe += s && Number.isInteger(s.b) ? s.b : 0; });
+            const v = unitView(e, opts);
+            get(e.payer).paid += v.total;
+            Object.entries(v.sh).forEach(([p, n]) => { get(p).owe += n; });
         });
         Object.values(transfers || {}).forEach((t) => {
             if (!t || (t.status !== 'paid' && t.status !== 'done') || !Number.isInteger(t.amt)) return;
-            get(t.from).sent += t.amt;
-            get(t.to).recv += t.amt;
+            const a = transferAmount(t, opts);
+            if (!Number.isInteger(a)) return;
+            get(t.from).sent += a;
+            get(t.to).recv += a;
         });
         Object.values(B).forEach((x) => { x.net = x.paid - x.owe + x.sent - x.recv; });
         return B;
     }
 
     // 刪除某筆支出前評估：已有轉帳紀錄時，刪除會讓哪些人的淨額改變
-    function deleteImpact(order, expenses, transfers, id) {
+    function deleteImpact(order, expenses, transfers, id, opts) {
         const rest = { ...(expenses || {}) };
         delete rest[id];
-        const B0 = balances(order, expenses, transfers), B1 = balances(order, rest, transfers);
+        const B0 = balances(order, expenses, transfers, opts), B1 = balances(order, rest, transfers, opts);
         const trs = Object.values(transfers || {}).filter((t) => t && t.status !== 'void');
         const eidTr = trs.some((t) => t.eid === id);
         const changes = Object.keys(B0).map((p) => ({ p, from: B0[p].net, to: (B1[p] || { net: 0 }).net })).filter((c) => c.from !== c.to);
@@ -182,9 +205,9 @@
     }
 
     // 鎖定的清帳方案：每一筆的轉帳狀態（todo／paid／done），並檢查鎖定後帳務有沒有變動（stale）
-    function planState(order, expenses, transfers, plan) {
+    function planState(order, expenses, transfers, plan, opts) {
         if (!plan || !plan.items) return null;
-        const B = balances(order, expenses, transfers), trs = Object.entries(transfers || {}).filter(([, t]) => t && t.status !== 'void');
+        const B = balances(order, expenses, transfers, opts), trs = Object.entries(transfers || {}).filter(([, t]) => t && t.status !== 'void');
         const items = Object.entries(plan.items).filter(([, it]) => it).sort(([a], [b]) => parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10)).map(([key, it]) => {
             const hit = trs.find(([, t]) => t.plan === plan.id && t.pk === key);
             return { key, from: it.from, to: it.to, amt: it.amt, tid: hit ? hit[0] : null, status: hit ? hit[1].status : 'todo' };
@@ -192,7 +215,8 @@
         const adj = {};
         items.filter((i) => i.status === 'todo').forEach((i) => { adj[i.from] = (adj[i.from] || 0) + i.amt; adj[i.to] = (adj[i.to] || 0) - i.amt; });
         const stale = new Set([...Object.keys(B), ...Object.keys(adj)]);
-        return { items, stale: [...stale].some((p) => ((B[p] || { net: 0 }).net + (adj[p] || 0)) !== 0), done: items.length > 0 && items.every((i) => i.status === 'done') };
+        const curMismatch = (plan.cur || 'TWD') !== (opts ? opts.cur : 'TWD');
+        return { items, curMismatch, stale: curMismatch || [...stale].some((p) => ((B[p] || { net: 0 }).net + (adj[p] || 0)) !== 0), done: items.length > 0 && items.every((i) => i.status === 'done') };
     }
 
     // 每次讓「欠最多的人」付給「應收最多的人」，n 人最多 n−1 筆
@@ -244,5 +268,5 @@
         return { ok: true, v };
     }
 
-    return { RATE_DP, parseAmount, formatAmount, toPlain, parseRate, convert, convertBack, convertCross, allocate, computeSplit, tailBias, rebalanceTails, balances, deleteImpact, planState, settle, evalCalc };
+    return { RATE_DP, parseAmount, formatAmount, toPlain, parseRate, convert, convertBack, convertCross, allocate, computeSplit, tailBias, rebalanceTails, unitView, transferAmount, balances, deleteImpact, planState, settle, evalCalc };
 });
