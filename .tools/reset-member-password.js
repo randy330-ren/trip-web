@@ -1,5 +1,6 @@
 // 用法：node reset-member-password.js <成員名稱> <新密碼>
-const admin = require('firebase-admin');
+const a = require('firebase-admin/app'), t = require('firebase-admin/auth');
+const admin = { initializeApp: a.initializeApp, auth: () => t.getAuth() };
 const [name, pw] = process.argv.slice(2);
 if (!name || !pw || pw.length < 6) { console.error('用法：node reset-member-password.js <成員名稱> <新密碼(至少6碼)>'); process.exit(1); }
 admin.initializeApp({ projectId: 'jp-tottori' });
