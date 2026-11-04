@@ -180,4 +180,24 @@ t('鎖定方案：狀態、過期偵測、完成後不再擋', () => {
     assert.strictEqual(C.planState(ord, ex, {}, null), null);
 });
 
+t('日圓結算：日圓支出用原始金額、舊轉帳由台幣換算、新轉帳用實際日圓', () => {
+    const U = { cur: 'JPY', dec: 0, rate: '0.2064', baseDec: 0 };
+    const ex = { e1: { payer: 'a', cur: 'JPY', dec: 0, amount: 30001, baseAmt: 6192, shares: { a: { o: 10001, b: 2064 }, b: { o: 10000, b: 2064 }, c: { o: 10000, b: 2064 } } } };
+    let B = C.balances(['a', 'b', 'c'], ex, {}, U);
+    assert.deepStrictEqual([B.a.paid, B.a.owe, B.a.net, B.b.net, B.c.net], [30001, 10001, 20000, -10000, -10000]);
+    assert.strictEqual(C.transferAmount({ amt: 2064, status: 'done' }, U), 10000);                 // 舊紀錄：台幣 → 日圓
+    assert.strictEqual(C.transferAmount({ amt: 2064, amtJ: 9990, status: 'done' }, U), 9990);      // 新紀錄：實際轉的日圓
+    B = C.balances(['a', 'b', 'c'], ex, { t1: { from: 'b', to: 'a', amt: 2062, amtJ: 9990, status: 'done' } }, U);
+    assert.deepStrictEqual([B.a.net, B.b.net, B.c.net], [20000 - 9990, -10, -10000]);
+    assert.strictEqual(Object.values(B).reduce((x, y) => x + y.net, 0), 0);
+    const tw = { e2: { payer: 'a', cur: 'TWD', dec: 0, amount: 100, baseAmt: 100, shares: { a: { o: 50, b: 50 }, c: { o: 50, b: 50 } } } };
+    B = C.balances(['a', 'c'], tw, {}, U);                                                          // 非日圓支出：換算後按比例分
+    assert.deepStrictEqual([B.a.paid, B.a.owe, B.c.owe], [484, 242, 242]);
+    assert.strictEqual(Object.values(B).reduce((x, y) => x + y.net, 0), 0);
+    const plan = { id: 'p', cur: 'JPY', items: { i0: { from: 'b', to: 'a', amt: 10000 }, i1: { from: 'c', to: 'a', amt: 10000 } } };
+    assert.strictEqual(C.planState(['a', 'b', 'c'], ex, {}, plan, U).stale, false);
+    assert.strictEqual(C.planState(['a', 'b', 'c'], ex, {}, { ...plan, cur: undefined }, U).curMismatch, true);   // 舊的台幣方案失效
+    assert.strictEqual(C.deleteImpact(['a', 'b', 'c'], ex, { t1: { from: 'b', to: 'a', amt: 2064, status: 'done' } }, 'e1', U).changes.find((c) => c.p === 'b').from, 0);
+});
+
 console.log(`\n全部通過：${pass} 項`);
