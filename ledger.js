@@ -900,7 +900,7 @@
         const sameCur = (e) => e.cur === dc && (Number.isInteger(e.dec) ? e.dec : decOf(e.cur)) === ddec;
         const rows = Object.keys(B).filter((p) => (P()[p] && P()[p].active !== false) || B[p].paid || B[p].owe || B[p].sent || B[p].recv);
         const open = Object.values(B).reduce((s, x) => s + Math.max(0, x.net), 0);
-        const netCell = (v) => v > 0 ? `<b class="pos">+${num(v)}</b><small>應收</small>` : v < 0 ? `<b class="neg">${num(v)}</b><small>應付</small>` : `<b>0</b><small>平衡</small>`;
+        const netCell = (v) => v > 0 ? `<small>應收</small><b class="pos">+${num(v)}</b>` : v < 0 ? `<small>應付</small><b class="neg">${num(v)}</b>` : `<small>平衡</small><b>0</b>`;
         const trE = (t) => { if (!t.eid) return ''; const x = E()[t.eid]; return `<small class="lg-tr-e">📌 依「${esc(x ? x.title : '已刪除的支出')}」${x && x.date ? `（${mdLabel(x.date)}）` : ''}先轉帳</small>`; };
         const li = (a, b) => `<div class="lg-bd-r"><span>${a}</span><span>${b}</span></div>`;
         const eLbl = (e) => `${esc(e.title || '')}${e.date ? `（${mdLabel(e.date)}）` : ''}`;
@@ -932,7 +932,7 @@
         if (day && !dates.length) { $('lg-s-settle').innerHTML = h + '<div class="card lg-card lg-center"><p class="lg-muted">還沒有支出紀錄。</p></div>'; return; }
 
         h += foldCard('bal', `📊 每人帳務 <small>（${esc(dc)}${day ? `・${esc(flt)}` : ''}）</small>`,
-            (rows.length ? `<div class="lg-bal"><div class="lg-bal-r h"><span>成員</span><span>墊付 ＋</span><span>應負擔 −</span><span>已轉出 ＋</span><span>已收到 −</span><span>淨額 ＝</span></div>
+            (rows.length ? `<div class="lg-bal"><div class="lg-bal-r h"><span>成員</span><span>墊付 −</span><span>應負擔 ＋</span><span>已轉出 −</span><span>已收到 ＝</span><span>淨額</span></div>
             ${rows.map((p) => {
                 const x = B[p];
                 const k = 'b:' + p, op = !!S.stOpen[k];
@@ -959,7 +959,7 @@
         const sugBody = () => (sug.length ? sug.map((s) => {
             const k = `s:${s.from}>${s.to}`, op = !!S.stOpen[k];
             return `<div class="lg-tr"><p class="lg-tap" data-act="st-open" data-k="${esc(k)}"><b>${esc(pname(s.from))}</b> → <b>${esc(pname(s.to))}</b><i class="lg-chev">${op ? '▲' : '▼'}</i><span>${amt(s.amt)}</span></p>
-            ${op ? `${bd(s.from)}${bd(s.to)}` : ''}
+            ${op ? `<p class="lg-muted">${esc(pname(s.from))} 應付 ${tt(-B[s.from].net)}、${esc(pname(s.to))} 應收 ${tt(B[s.to].net)}，本筆 ${tt(s.amt)}。</p>${bd(s.from)}${bd(s.to)}` : ''}
             <div class="lg-st">${day ? '<small>依日期檢視，僅供參考</small>' : `<em>付款：未轉帳</em><em>收款：未確認</em>${canAct(s.from)
                 ? `<button type="button" class="lg-btn sm" data-act="st-pay" data-from="${s.from}" data-to="${s.to}" data-amt="${s.amt}">標記已轉帳</button>`
                 : `<small>由 ${esc(pname(s.from))} 本人或管理員標記</small>`}`}</div></div>`;
