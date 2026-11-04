@@ -215,3 +215,12 @@ textarea.lg-in { resize: vertical; }
 .lg-lblrow { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 7px; }
 .lg-clr { width: calc((100% - 14px) / 4); padding: 6px 0; border-radius: 9px; font-size: 12px; font-weight: 800; background: #f3f4f6; color: #4b5563; margin-bottom: 4px; }
 .lg-clr.hidden { display: none; }
+
+.lg-bd-s small { display: block; margin-top: 2px; font-size: 11px; color: var(--lg-muted); }
+.lg-bd-r small { display: block; font-size: 10px; text-align: right; }
+.lg-rate-n { margin-bottom: 6px; }
+.lg-del-r { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px dashed #e5ddcf; font-size: 13px; }
+.lg-del-r:first-child { border-top: none; }
+.lg-del-r small { display: block; font-size: 11px; color: var(--lg-muted); }
+.lg-del-v { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
+.lg-in.lg-auto { background: #f3f4f6; color: #6b7280; font-weight: 800; }
