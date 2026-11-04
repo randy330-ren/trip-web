@@ -223,3 +223,4 @@ textarea.lg-in { resize: vertical; }
 .lg-del-r:first-child { border-top: none; }
 .lg-del-r small { display: block; font-size: 11px; color: var(--lg-muted); }
 .lg-del-v { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
+.lg-in.lg-auto { background: #f3f4f6; color: #6b7280; font-weight: 800; }

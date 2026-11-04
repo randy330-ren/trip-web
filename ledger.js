@@ -1,7 +1,7 @@
 (function () {
     'use strict';
     const C = window.LedgerCore;
-    const VER = '12';
+    const VER = '13';
     const BASE = 'TWD', BASE_DEC = 0;
     const CATS = ['餐飲', '交通', '住宿', '門票', '購物', '其他'];
     const DEC_FIX = { TWD: 0, JPY: 0, KRW: 0 };
@@ -313,7 +313,9 @@
         $('lg-f-scope').innerHTML = [['group', '團體記帳'], ['personal', '個人記帳']].map(([k, l]) => `<button type="button" data-act="scope" data-v="${k}" class="${f.scope === k ? 'on' : ''}">${l}</button>`).join('');
         $('lg-f-grp').classList.toggle('hidden', f.scope === 'personal');
         pickSet($('lg-f-cur'), f.cur);
-        $('lg-f-amount-l').textContent = f.mode === 'each' ? '每人金額' : '金額';
+        const auto = f.mode === 'amount' && f.scope !== 'personal';
+        $('lg-f-amount-l').textContent = f.mode === 'each' ? '每人金額' : auto ? '總額（自動加總）' : '金額';
+        $('lg-f-amount').classList.toggle('lg-auto', auto);
         const pay = activeIds();
         if (f.payer && P()[f.payer] && !pay.includes(f.payer)) pay.push(f.payer);
         $('lg-f-payer').innerHTML = `<option value="">請選擇付款人</option>` + selOpts(pay.map((p) => [p, pname(p)]), f.payer);
@@ -345,7 +347,7 @@
         const unit = f.mode === 'ratio' ? '%' : f.cur;
         box.innerHTML = `<div class="lg-parts">` + f.members.map((p) =>
             `<div class="lg-part"><span>${esc(pname(p))}</span><input class="lg-in" inputmode="none" readonly data-part="${p}" value="${esc(f.parts[p] || '')}" placeholder="0"><small>${esc(unit)}</small></div>`).join('') +
-            `</div><button type="button" class="lg-link" data-act="fill">${f.mode === 'ratio' ? '平均填入比例' : '平均填入金額'}</button>`;
+            `</div>` + (f.mode === 'ratio' ? `<button type="button" class="lg-link" data-act="fill">平均填入比例</button>` : `<p class="lg-muted lg-mt">各成員金額加總即為總額，不用另外輸入。</p>`);
     }
     function rateInfo() {
         const f = S.form, t = R()[f.cur];
@@ -375,9 +377,18 @@
         const members = pe ? ['me'] : f.members, mode = pe ? 'equal' : f.mode;
         if (!f.title.trim()) errs.push('請輸入支出名稱');
         const each = mode === 'each';
-        const amt = C.parseAmount(f.amount, dec);
-        if (!amt.ok) errs.push((each ? '每人金額：' : '金額：') + amt.err);
-        else if (amt.v <= 0) errs.push(each ? '每人金額必須大於零' : '支出金額必須大於零');
+        let amt;
+        if (mode === 'amount') {
+            const vals = members.map((p) => C.parseAmount(String(f.parts[p] ?? '').trim() || '0', dec));
+            const bad = vals.findIndex((v) => !v.ok);
+            amt = bad >= 0 ? { ok: false, err: '' } : { ok: true, v: vals.reduce((t, v) => t + v.v, 0) };
+            if (bad >= 0) errs.push(`${pname(members[bad])} 的金額：${vals[bad].err}`);
+            else if (members.length && amt.v <= 0) errs.push('分攤金額加總必須大於零');
+        } else {
+            amt = C.parseAmount(f.amount, dec);
+            if (!amt.ok) errs.push((each ? '每人金額：' : '金額：') + amt.err);
+            else if (amt.v <= 0) errs.push(each ? '每人金額必須大於零' : '支出金額必須大於零');
+        }
         if (each && amt.ok) amt.v *= members.length;
         const ri = rateInfo(), r = C.parseRate(ri.rate);
         if (!ri.rate) errs.push(`匯率表沒有 ${f.cur}，請管理員先新增`);
@@ -395,6 +406,10 @@
     }
     function renderPreview() {
         const f = S.form, c = computeForm();
+        if (f.mode === 'amount' && f.scope !== 'personal') {
+            if (c.amt.ok && c.amt.v > 0) f.amount = C.toPlain(c.amt.v, c.dec);
+            $('lg-f-amount').value = c.amt.ok && c.amt.v > 0 ? f.amount : '';
+        }
         const btn = $('lg-f-save');
         btn.disabled = !!c.errs.length || S.saving;
         btn.textContent = S.saving ? '儲存中...' : (S.editId ? '儲存修改' : c.pe ? '儲存個人支出' : '儲存支出');
@@ -1269,6 +1284,7 @@
         const t = e.target;
         if (!t || !t.matches) return;
         if (t.matches('input[data-pick]')) { if (PK.el !== t) pickOpen(t); return; }
+        if (t.id === 'lg-f-amount' && S.form && S.form.mode === 'amount' && S.form.scope !== 'personal') { t.blur(); return; }
         if (t.id === 'lg-f-amount' || t.id === 'lg-c-amt' || (t.dataset && t.dataset.part != null)) { if (PAD.el !== t) { t.blur(); padOpen(t); } }
     });
     document.addEventListener('keydown', (e) => {
@@ -1319,7 +1335,7 @@
                 f.members = allOn ? [] : act2;
                 f.parts = {};
                 refreshForm();
-            } else if (act === 'mode') { if (f.mode !== v) { f.mode = v; f.parts = {}; refreshForm(); } }
+            } else if (act === 'mode') { if (f.mode !== v) { f.mode = v; f.parts = {}; $('lg-f-amount').value = f.amount; refreshForm(); } }
             else if (act === 'scope') { if (f.scope !== v) { f.scope = v; refreshForm(); } }
             else if (act === 'cat') { f.cat = v; refreshForm(); }
             else if (act === 'cat-add') addCat();
