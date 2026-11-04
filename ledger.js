@@ -932,11 +932,11 @@
         if (day && !dates.length) { $('lg-s-settle').innerHTML = h + '<div class="card lg-card lg-center"><p class="lg-muted">還沒有支出紀錄。</p></div>'; return; }
 
         h += foldCard('bal', `📊 每人帳務 <small>（${esc(dc)}${day ? `・${esc(flt)}` : ''}）</small>`,
-            (rows.length ? `<div class="lg-bal"><div class="lg-bal-r h"><span>成員</span><span>墊付 −</span><span>應負擔 ＋</span><span>已轉出 −</span><span>已收到 ＝</span><span>淨額</span></div>
+            (rows.length ? `<div class="lg-bal"><div class="lg-bal-r h"><span>成員</span><span>墊付</span><span class="op">−</span><span>應負擔</span><span class="op">＋</span><span>已轉出</span><span class="op">−</span><span>已收到</span><span class="op">＝</span><span>應付(淨額)</span></div>
             ${rows.map((p) => {
                 const x = B[p];
                 const k = 'b:' + p, op = !!S.stOpen[k];
-                return `<div class="lg-bal-r lg-tap" data-act="st-open" data-k="${esc(k)}"><span>${esc(pname(p))}<i class="lg-chev">${op ? '▲' : '▼'}</i></span><span>${num(x.paid)}</span><span>${num(x.owe)}</span><span>${num(x.sent)}</span><span>${num(x.recv)}</span><span>${netCell(x.net)}</span></div>${op ? bd(p) : ''}`;
+                return `<div class="lg-bal-r lg-tap" data-act="st-open" data-k="${esc(k)}"><span>${esc(pname(p))}<i class="lg-chev">${op ? '▲' : '▼'}</i></span><span>${num(x.paid)}</span><span class="op"></span><span>${num(x.owe)}</span><span class="op"></span><span>${num(x.sent)}</span><span class="op"></span><span>${num(x.recv)}</span><span class="op"></span><span>${netCell(x.net)}</span></div>${op ? bd(p) : ''}`;
             }).join('')}</div>` : '<p class="lg-muted">還沒有團員。</p>') +
             `<p class="lg-sum lg-mt">${day ? '篩選範圍未平衡' : '尚未結清'}：<b>${amt(open)}</b></p>
             <p class="lg-muted">淨額 ＝ 墊付 − 應負擔 ＋ 已轉出 − 已收到；已標記轉帳的金額會立即計入${day ? '（只算指定這些支出的先轉帳）' : ''}。</p>`);
