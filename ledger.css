@@ -96,9 +96,12 @@ textarea.lg-in { resize: vertical; }
 .lg-actions { display: flex; gap: 8px; margin-top: 10px; }
 
 .lg-bal { font-size: 12px; }
-.lg-bal-r { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1.1fr; gap: 4px; align-items: center; padding: 7px 0; border-top: 1px solid var(--lg-line); }
-.lg-bal-r.h { border-top: none; font-size: 11px; font-weight: 700; color: var(--lg-muted); padding-top: 0; }
+.lg-bal-r { display: grid; grid-template-columns: 3.4em 1fr 9px 1fr 9px 1fr 9px 1fr 9px 1.25fr; gap: 2px; font-size: 11px; align-items: center; padding: 7px 0; border-top: 1px solid var(--lg-line); }
+.lg-bal-r.h { border-top: none; font-size: 10px; line-height: 1.25; font-weight: 700; color: var(--lg-muted); padding-top: 0; }
 .lg-bal-r span:not(:first-child) { text-align: right; }
+.lg-bal-r.h span:not(:first-child):not(:last-child) { text-align: center; white-space: nowrap; }
+.lg-bal-r.h span:last-child { white-space: nowrap; }
+.lg-bal-r span.op { text-align: center; padding: 0; }
 .lg-bal-r span:first-child { font-weight: 700; color: #1f2937; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .lg-bal-r small { display: block; font-size: 10px; font-weight: 500; color: var(--lg-muted); }
 .lg-bal-r .pos { color: var(--lg-pos); }
@@ -206,6 +209,9 @@ textarea.lg-in { resize: vertical; }
 .lg-chev { font-style: normal; font-size: 10px; color: var(--lg-muted); margin-left: 4px; }
 .lg-tr p.lg-muted, .lg-bd p { display: block; }
 .lg-bd { margin: 4px 0 8px; padding: 8px 10px; background: #f8faf9; border: 1px solid var(--lg-line); border-radius: 10px; font-size: 12px; color: #374151; }
+.lg-sg { margin: 4px 0 6px; font-size: 12px; color: #374151; }
+.lg-sg > div { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+.lg-sg > div > span:last-child, .lg-sg > div > b:last-child { text-align: right; }
 .lg-bd-n { font-weight: 800; color: var(--green); }
 .lg-bd-h { margin-top: 6px; font-weight: 700; }
 .lg-bd-r { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0 2px 8px; color: var(--lg-muted); }
