@@ -959,7 +959,7 @@
         const sugBody = () => (sug.length ? sug.map((s) => {
             const k = `s:${s.from}>${s.to}`, op = !!S.stOpen[k];
             return `<div class="lg-tr"><p class="lg-tap" data-act="st-open" data-k="${esc(k)}"><b>${esc(pname(s.from))}</b> → <b>${esc(pname(s.to))}</b><i class="lg-chev">${op ? '▲' : '▼'}</i><span>${amt(s.amt)}</span></p>
-            ${op ? `<p class="lg-muted">${esc(pname(s.from))} 應付 ${tt(-B[s.from].net)}、${esc(pname(s.to))} 應收 ${tt(B[s.to].net)}，本筆 ${tt(s.amt)}。</p>${bd(s.from)}${bd(s.to)}` : ''}
+            ${op ? `<div class="lg-sg"><div><span>應付｜${esc(pname(s.from))}</span><span>${tt(-B[s.from].net)}</span></div><div><span>應收｜${esc(pname(s.to))}</span><span>${tt(B[s.to].net)}</span></div><div><b>本筆</b><b>${tt(s.amt)}</b></div></div>${bd(s.from)}${bd(s.to)}` : ''}
             <div class="lg-st">${day ? '<small>依日期檢視，僅供參考</small>' : `<em>付款：未轉帳</em><em>收款：未確認</em>${canAct(s.from)
                 ? `<button type="button" class="lg-btn sm" data-act="st-pay" data-from="${s.from}" data-to="${s.to}" data-amt="${s.amt}">標記已轉帳</button>`
                 : `<small>由 ${esc(pname(s.from))} 本人或管理員標記</small>`}`}</div></div>`;

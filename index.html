@@ -2390,7 +2390,7 @@
             if (!opts.skipScrollTop) window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        const LEDGER_V = '34';
+        const LEDGER_V = '35';
         let ledgerLoading = null;
         const loadScript = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
         function openLedger() {
@@ -5362,7 +5362,7 @@
         };
 
         // ---------- 成員抽籤（名單取自記帳團員，結果只留在本機） ----------
-        const DR = { people: [], known: null, sel: new Set(), k: 1, rot: 0, res: null, fixed: {}, ord: null, open: false, spin: false, msg: '' };
+        const DR = { people: [], known: null, sel: new Set(), k: 1, rot: 0, res: null, pin: [], ord: null, ordPin: 0, open: false, spin: false, msg: '' };
         const DR_COL = ['#3b4d43', '#b08758', '#5f7a6c', '#8a6f4d', '#6b8576', '#a9744f', '#4a6358', '#9b8160'];
         const rnd = (n) => { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; };
         const shuffle = (arr) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -5407,16 +5407,15 @@
             DR.k = Math.max(1, Math.min(DR.k, pool.length || 1));
             const btn = 'px-4 py-2 rounded-xl text-sm font-bold';
             const wheel = pool.length ? drawWheelSvg(pool) : '<p class="text-xs text-gray-400 py-4 text-center">沒有可抽的成員。</p>';
-            DR.fixed = Object.fromEntries(Object.entries(DR.fixed).filter(([i, id]) => +i < n && DR.sel.has(id)));
-            const used = new Set(Object.values(DR.fixed));
-            const slots = sel.map((_, i) => `<label class="flex items-center gap-2 text-xs"><span class="w-6 text-gray-500 font-bold">${i + 1}</span><select data-da="fx" data-i="${i}" class="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 bg-white"><option value="">抽籤決定</option>${sel.filter(p => !used.has(p.id) || DR.fixed[i] === p.id).map(p => `<option value="${p.id}" ${DR.fixed[i] === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}</select></label>`).join('');
-            const ord = DR.ord && DR.ord.length === n ? `<div class="bg-amber-50 rounded-xl px-3 py-2 text-sm leading-7">${DR.ord.map((id, i) => `<div>${i + 1}. <b>${escapeHtml(drName(id))}</b>${DR.fixed[i] === id ? ' <span class="text-[10px] text-gray-400">指定</span>' : ''}</div>`).join('')}</div>` : '';
+            DR.pin = DR.pin.filter(id => DR.sel.has(id));
+            const slots = sel.map(p => { const i = DR.pin.indexOf(p.id); return `<button type="button" data-da="pin" data-id="${p.id}" class="px-3 py-1.5 rounded-full text-xs font-bold border ${i >= 0 ? 'bg-[#b08758] text-white border-[#b08758]' : 'bg-white text-[#3b4d43] border-gray-300'}">${i >= 0 ? `<span class="inline-block w-4 h-4 leading-4 rounded-full bg-white text-[#b08758] text-[10px] mr-1">${i + 1}</span>` : ''}${escapeHtml(p.name)}</button>`; }).join('');
+            const ord = DR.ord && DR.ord.length === n ? `<div class="flex flex-wrap gap-1.5">${DR.ord.map((id, i) => `<span class="px-3 py-1.5 rounded-full text-sm font-bold ${i < DR.ordPin ? 'bg-[#b08758] text-white' : 'bg-[#e7efe9] text-[#3b4d43]'}"><span class="text-[10px] opacity-70 mr-1">${i + 1}</span>${escapeHtml(drName(id))}</span>`).join('')}</div>` : '';
             box.innerHTML = `<p class="text-[11px] text-gray-500 mb-1.5">參加成員（點選切換）</p><div class="flex flex-wrap gap-1.5">${chips}</div>
                 <div class="border-t border-gray-100 mt-4 pt-3"><p class="text-sm font-bold">🎡 隨機挑選</p>${wheel}
                 <div class="flex items-center justify-center gap-3 my-2"><button type="button" data-da="kdec" class="w-9 h-9 rounded-full bg-[#e7e4db] text-lg font-bold text-[#3b4d43]">−</button><span class="text-sm font-bold w-16 text-center">抽 ${DR.k} 位</span><button type="button" data-da="kinc" class="w-9 h-9 rounded-full bg-[#e7e4db] text-lg font-bold text-[#3b4d43]">＋</button></div>
                 <div class="text-center mb-2"><button type="button" data-da="spin" class="${btn} bg-[#3b4d43] text-white" ${pool.length ? '' : 'disabled'}>🎲 轉！</button></div><div id="draw-res">${drResHtml(DR.res || [])}</div>${DR.msg ? `<p class="text-xs text-red-500 text-center mt-1">${DR.msg}</p>` : ''}</div>
-                <div class="border-t border-gray-100 mt-4 pt-3"><p class="text-sm font-bold mb-1">🔀 隨機排序</p><p class="text-[11px] text-gray-500 mb-2">可先指定誰排在第幾位，其餘用抽的。</p><div class="space-y-1.5 mb-3">${slots}</div>
-                <button type="button" data-da="shuf" class="${btn} bg-[#3b4d43] text-white" ${n ? '' : 'disabled'}>🔀 開始排序</button>${ord ? `<div class="mt-3">${ord}</div>` : ''}</div>`;
+                <div class="border-t border-gray-100 mt-4 pt-3"><p class="text-sm font-bold mb-1">🔀 隨機排序</p><p class="text-[11px] text-gray-500 mb-2">依序點選成員，即可指定排在第 1、2、3…位（再點一次取消），其餘用抽的。</p><div class="flex flex-wrap gap-1.5 mb-3">${slots}</div>
+                <button type="button" data-da="shuf" class="${btn} bg-[#3b4d43] text-white" ${n ? '' : 'disabled'}>🔀 開始排序</button>${ord ? `<div class="mt-3">${ord}${DR.ordPin ? '<p class="text-[10px] text-gray-400 mt-1.5">金色為指定名次</p>' : ''}</div>` : ''}</div>`;
         }
         function drawSpin() {
             const pool = drPool();
@@ -5450,10 +5449,9 @@
         }
         function drawShuffle() {
             const sel = DR.people.filter(p => DR.sel.has(p.id)), n = sel.length;
-            const out = new Array(n).fill(null);
-            Object.entries(DR.fixed).forEach(([i, id]) => { out[+i] = id; });
-            const rest = shuffle(sel.map(p => p.id).filter(id => !out.includes(id)));
-            DR.ord = out.map(x => x || rest.shift());
+            const pin = DR.pin.filter(id => DR.sel.has(id));
+            DR.ord = pin.concat(shuffle(sel.map(p => p.id).filter(id => !pin.includes(id))));
+            DR.ordPin = pin.length;
             drawRender();
         }
         (function () {
@@ -5464,6 +5462,7 @@
                 if (!b || DR.spin) return;
                 const a = b.dataset.da;
                 if (a === 'tg') { const id = b.dataset.id; DR.sel.has(id) ? DR.sel.delete(id) : DR.sel.add(id); DR.ord = null; DR.res = null; DR.msg = ''; }
+                else if (a === 'pin') { const id = b.dataset.id, i = DR.pin.indexOf(id); if (i >= 0) DR.pin.splice(i, 1); else DR.pin.push(id); DR.ord = null; }
                 else if (a === 'kdec') DR.k = Math.max(1, DR.k - 1);
                 else if (a === 'kinc') DR.k = Math.min(Math.max(1, drPool().length), DR.k + 1);
                 else if (a === 'spin') return drawSpin();
@@ -5473,9 +5472,7 @@
             box.addEventListener('change', (e) => {
                 const el = e.target, a = el.dataset.da;
                 if (DR.spin) return;
-                if (a === 'fx') { if (el.value) DR.fixed[el.dataset.i] = el.value; else delete DR.fixed[el.dataset.i]; DR.ord = null; }
-                else return;
-                drawRender();
+                return;
             });
         })();
 
