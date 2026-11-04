@@ -913,7 +913,7 @@
             const trV = (t) => { const v = C.transferAmount(t, U); return two(conv(v), v); };
             const f = (k) => money(conv(x[k]), dc);
             return `<div class="lg-bd"><p class="lg-bd-n">${esc(pname(p))}</p>`
-                + sec(`已付 ${tt(x.paid)}`, ex.filter((e) => e.payer === p).map((e) => li(eLbl(e), paidV(e))))
+                + sec(`墊付 ${tt(x.paid)}`, ex.filter((e) => e.payer === p).map((e) => li(eLbl(e), paidV(e))))
                 + sec(`應負擔 ${tt(x.owe)}`, ex.filter((e) => e.shares[p] && e.shares[p].b > 0).map((e) => li(`${eLbl(e)}${e.payer === p ? '（自己付）' : ''}`, oweV(e))))
                 + sec(`已轉出 ${tt(x.sent)}`, live.filter((t) => t.from === p).map((t) => li(`給 ${esc(pname(t.to))}`, trV(t))))
                 + sec(`已收到 ${tt(x.recv)}`, live.filter((t) => t.to === p).map((t) => li(`來自 ${esc(pname(t.from))}`, trV(t))))
@@ -932,14 +932,14 @@
         if (day && !dates.length) { $('lg-s-settle').innerHTML = h + '<div class="card lg-card lg-center"><p class="lg-muted">還沒有支出紀錄。</p></div>'; return; }
 
         h += foldCard('bal', `📊 每人帳務 <small>（${esc(dc)}${day ? `・${esc(flt)}` : ''}）</small>`,
-            (rows.length ? `<div class="lg-bal"><div class="lg-bal-r h"><span>成員</span><span>已付</span><span>應負擔</span><span>淨額</span></div>
+            (rows.length ? `<div class="lg-bal"><div class="lg-bal-r h"><span>成員</span><span>墊付 ＋</span><span>應負擔 −</span><span>已轉出 ＋</span><span>已收到 −</span><span>淨額 ＝</span></div>
             ${rows.map((p) => {
                 const x = B[p];
                 const k = 'b:' + p, op = !!S.stOpen[k];
-                return `<div class="lg-bal-r lg-tap" data-act="st-open" data-k="${esc(k)}"><span>${esc(pname(p))}<i class="lg-chev">${op ? '▲' : '▼'}</i>${x.sent || x.recv ? `<small>轉出 ${num(x.sent)}・收到 ${num(x.recv)}</small>` : ''}</span><span>${num(x.paid)}</span><span>${num(x.owe)}</span><span>${netCell(x.net)}</span></div>${op ? bd(p) : ''}`;
+                return `<div class="lg-bal-r lg-tap" data-act="st-open" data-k="${esc(k)}"><span>${esc(pname(p))}<i class="lg-chev">${op ? '▲' : '▼'}</i></span><span>${num(x.paid)}</span><span>${num(x.owe)}</span><span>${num(x.sent)}</span><span>${num(x.recv)}</span><span>${netCell(x.net)}</span></div>${op ? bd(p) : ''}`;
             }).join('')}</div>` : '<p class="lg-muted">還沒有團員。</p>') +
             `<p class="lg-sum lg-mt">${day ? '篩選範圍未平衡' : '尚未結清'}：<b>${amt(open)}</b></p>
-            <p class="lg-muted">淨額 ＝ 已付 − 應負擔 ＋ 已轉出 − 已收到；已標記轉帳的金額會立即計入${day ? '（只算指定這些支出的先轉帳）' : ''}。</p>`);
+            <p class="lg-muted">淨額 ＝ 墊付 − 應負擔 ＋ 已轉出 − 已收到；已標記轉帳的金額會立即計入${day ? '（只算指定這些支出的先轉帳）' : ''}。</p>`);
 
         const planBody = () => {
             const pl = D().plan, fin = ps.items.filter((x) => x.status === 'done').length;
@@ -959,11 +959,11 @@
         const sugBody = () => (sug.length ? sug.map((s) => {
             const k = `s:${s.from}>${s.to}`, op = !!S.stOpen[k];
             return `<div class="lg-tr"><p class="lg-tap" data-act="st-open" data-k="${esc(k)}"><b>${esc(pname(s.from))}</b> → <b>${esc(pname(s.to))}</b><i class="lg-chev">${op ? '▲' : '▼'}</i><span>${amt(s.amt)}</span></p>
-            ${op ? `<p class="lg-muted">依淨額配對：由欠最多的人付給應收最多的人。${esc(pname(s.from))} 應付 ${tt(-B[s.from].net)}、${esc(pname(s.to))} 應收 ${tt(B[s.to].net)}，本筆 ${tt(s.amt)}。</p>${bd(s.from)}${bd(s.to)}` : ''}
+            ${op ? `${bd(s.from)}${bd(s.to)}` : ''}
             <div class="lg-st">${day ? '<small>依日期檢視，僅供參考</small>' : `<em>付款：未轉帳</em><em>收款：未確認</em>${canAct(s.from)
                 ? `<button type="button" class="lg-btn sm" data-act="st-pay" data-from="${s.from}" data-to="${s.to}" data-amt="${s.amt}">標記已轉帳</button>`
                 : `<small>由 ${esc(pname(s.from))} 本人或管理員標記</small>`}`}</div></div>`;
-        }).join('')
+        }).join('') + '<p class="lg-muted">依淨額配對：由欠最多的人付給應收最多的人。</p>'
             : `<p class="lg-muted">🎉 ${day ? '這個範圍的' : ''}帳務已平衡，沒有需要轉帳的項目。</p>`) + (U && open > 0 && open < 100 ? `<p class="lg-muted">剩餘金額很小（不到 100 ${UC}），可以大家自行抵銷，或照建議轉帳。</p>` : '') + (!day && isEditor && sug.length ? '<div class="lg-actions lg-mt"><button type="button" class="lg-btn sm" data-act="plan-lock">🔒 鎖定目前建議</button></div><p class="lg-muted">鎖定後方案固定，不會因為誰先轉帳而改變。</p>' : '');
         h += foldCard('sug', planOn ? '🔒 清帳方案（已鎖定）' : '💸 清帳建議', planOn ? planBody() : sugBody());
 
