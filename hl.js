@@ -22,14 +22,14 @@
     };
 
     const ORDER = ['topic', 'early', 'helper', 'share', 'welcome'];
-    const NT = { at: ['📌', '有人在貼文中標注你'], myl: ['❤️', '有人對你的貼文按讚'], myc: ['💬', '有人對你的貼文留言'], photo: ['📸', '有人新增了貼文'], cmt: ['💬', '有人對貼文留言'] };
+    const NT = { at: ['📌', '有人在貼文中標注你'], all: ['📌', '有人@全部'], myl: ['❤️', '有人對你的貼文按讚'], myc: ['💬', '有人對你的貼文留言'], photo: ['📸', '有人新增了貼文'], cmt: ['💬', '有人對貼文留言'] };
 
     const S = {
         built: false, active: false, live: false, booted: false, jumped: false,
         photos: cacheLoad('highlights') || {}, photosLive: false, emojis: cacheLoad('hl_emojis'), emoLoaded: false, seeding: false,
         tasks: [], gone: new Set(), qerr: '',
         react: {}, comments: {}, members: {}, rts: {}, award: {}, ready: {}, pubRefs: [], privRefs: [], privKey: null,
-        seen: null, dis: new Set(), nl: [], settling: new Set(),
+        seen: null, dis: new Set(), fl: new Set(), nl: [], settling: new Set(),
         open: new Set(), html: {}, raf: 0, det: null, zoom: false, toBottom: false, sheet: null, pickDay: null, winOpen: false
     };
 
@@ -273,8 +273,7 @@
             if (n.type === 'award') jumpToDay(n.n, { flash: true }); else openDet(n.day, n.day, n.id);
             renderNotices();
         });
-        const ub = $('upd-bar');
-        if (ub && window.MutationObserver) new MutationObserver(sched).observe(ub, { attributes: true, attributeFilter: ['class'] });
+        ['upd-bar', 'rem-bar'].forEach(id => { const ub = $(id); if (ub && window.MutationObserver) new MutationObserver(sched).observe(ub, { attributes: true, attributeFilter: ['class'] }); });
     }
     function sched() { if (!S.raf) S.raf = requestAnimationFrame(() => { S.raf = 0; renderNow(); }); }
     function put(id, html) { if (S.html[id] === html) return; S.html[id] = html; const el = $(id); if (el) el.innerHTML = html; }
@@ -325,7 +324,7 @@
         const sub = [tt ? tt.textContent.trim() : '', m.tag].filter(Boolean).join('｜');
         const tile = (p) => `<button type="button" class="hl-tile" data-a="det" data-l="${k}" data-d="${k}" data-i="${esc(p.id)}">
             <span class="hl-ti"><img src="${esc(p.thumb || p.url)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></span>
-            <span class="hl-tx"><span class="hl-tc${p.caption ? '' : ' none'}">${esc(p.caption || '（無說明）')}</span>
+            <span class="hl-tx">${p.caption ? `<span class="hl-tc">${esc(p.caption)}</span>` : ''}
             <span class="hl-tm"><span class="hl-ta">${esc(p.author || '')}</span>${si ? `<span class="hl-cnt"><span>${emoText(Object.values(reacts(p)))}</span><span>💬 ${comments(p).length}</span></span>` : ''}</span></span></button>`;
         const sum = si && ps.length ? `<span class="hl-dsum">${emoText(ps.flatMap(p => Object.values(reacts(p))))} · 💬 ${ps.reduce((n, p) => n + comments(p).length, 0)} 則留言</span>` : '<span></span>';
         const more = ps.length > SHOW ? `<button type="button" data-a="more" data-d="${k}" class="hl-link">${exp ? '收合 ▲' : `查看全部 ${ps.length} 張 →`}</button>` : '';
@@ -428,7 +427,7 @@
         const add = (type, ts, p) => { if (ts > seen && !(best[type] && best[type].ts >= ts)) best[type] = { type, ts, day: p.day, id: p.id, key: type + ':' + ts }; };
         allList().forEach(p => {
             const mine = p.uid === me;
-            if (!mine) add(p.mentions && p.mentions[me] ? 'at' : 'photo', p.ts, p);
+            if (!mine) add(p.mentions && p.mentions[me] ? 'at' : p.mentionAll ? 'all' : 'photo', p.ts, p);
             comments(p).forEach(c => { if (c.uid !== me) add(mine ? 'myc' : 'cmt', c.ts || 0, p); });
             if (mine) { const rs = reacts(p); Object.entries(rtsOf(p)).forEach(([u, t]) => { if (u !== me && rs[u]) add('myl', +t || 0, p); }); }
         });
@@ -439,17 +438,20 @@
             if (!ids.length || ids.some(id => f[id] === me)) return;
             out.push({ type: 'award', ts: f.ts, n: meta(k).n, key: 'award:' + k, text: `D${meta(k).n} 恭喜 ${ids.map(id => nameOf(f[id]) + '成為' + TITLES[id][1]).join('、')}` });
         });
-        const ub = $('upd-bar'), slots = ub && ub.classList.contains('show') ? 1 : 2;
-        return out.filter(n => !S.dis.has(n.key)).sort((a, b) => a.ts - b.ts).slice(-slots);
+        const slots = 2 - ['upd-bar', 'rem-bar'].filter(id => $(id) && $(id).classList.contains('show')).length;
+        const list = out.filter(n => !S.dis.has(n.key)).sort((a, b) => a.ts - b.ts);
+        return list.slice(Math.max(0, list.length - slots));
     }
     function renderNotices() {
         const box = $('hl-notices');
         if (!box) return;
         S.nl = calcNotices();
-        const h = S.nl.map((n, i) => n.type === 'award'
-            ? `<button type="button" class="hl-nt aw" data-i="${i}"><span>🎉 ${esc(n.text)}</span><u>點擊查看</u></button>`
-            : `<button type="button" class="hl-nt" data-i="${i}"><span>${NT[n.type][0]} ${NT[n.type][1]}</span><u>點擊查看</u></button>`).join('');
-        if (S.html.nt !== h) { S.html.nt = h; box.innerHTML = h; }
+        const fl = (n) => S.fl.has(n.key) ? '' : ' fl';
+        const mk = (n, i, f) => n.type === 'award'
+            ? `<button type="button" class="hl-nt aw${f}" data-i="${i}"><span>🎉 ${esc(n.text)}</span><u>點擊查看</u></button>`
+            : `<button type="button" class="hl-nt${f}" data-i="${i}"><span>${NT[n.type][0]} ${NT[n.type][1]}</span><u>點擊查看</u></button>`;
+        const base = S.nl.map((n, i) => mk(n, i, '')).join('');
+        if (S.html.nt !== base) { S.html.nt = base; box.innerHTML = S.nl.map((n, i) => mk(n, i, fl(n))).join(''); S.nl.forEach(n => S.fl.add(n.key)); }
     }
 
     // ---------- 照片詳細畫面 ----------
@@ -504,6 +506,7 @@
     }
     const capHtml = (p) => {
         let h = esc(p.caption);
+        if (p.mentionAll) h = h.split('@全部').join('<span class="hl-at">@全部</span>');
         Object.keys(p.mentions || {}).forEach(u => { const n = S.members[u] && S.members[u].name; if (n) h = h.split(esc('@' + n)).join(`<span class="hl-at">${esc('@' + n)}</span>`); });
         return h;
     };
@@ -608,7 +611,7 @@
             const r = await openInputModal({ title: '編輯說明', fields: [{ key: 'caption', value: p.caption || '', placeholder: `說明文字（${CAP} 字內）`, max: CAP }], submitLabel: '儲存' });
             if (!r) return;
             if ((r.caption || '').length > CAP) { alert(`說明最多 ${CAP} 字，請縮短後再儲存`); return; }
-            manageDb().ref(`highlights/${p.day}/${p.id}`).update({ caption: r.caption || '', mentions: mentionsOrNull(r.caption || '') })
+            manageDb().ref(`highlights/${p.day}/${p.id}`).update({ caption: r.caption || '', mentions: mentionsOrNull(r.caption || ''), mentionAll: hasAll(r.caption) || null })
                 .catch((e) => alert('儲存失敗：' + (e.code === 'PERMISSION_DENIED' ? '沒有權限，或這張是舊照片（請刪除後重新上傳）。' : e.message)));
         } else if (confirm('確定要刪除這張照片嗎？留言和心情也會一起刪除。' + (isCld(p.url) ? '\n\n（這張存在 Cloudinary，原圖需要管理員到 Cloudinary 後台刪除）' : ''))) {
             manageDb().ref(`hl_rts/${p.day}/${p.id}`).remove().catch(() => { })
@@ -649,6 +652,7 @@
         });
         return out;
     }
+    const hasAll = (cap) => String(cap || '').includes('@全部');
     const mentionsOrNull = (cap) => { const m = mentionsOf(cap); return Object.keys(m).length ? m : null; };
     let atEl = null, atInp = null;
     function atHide() { if (atEl) atEl.classList.add('hidden'); atInp = null; }
@@ -657,6 +661,7 @@
         const m = /@([^\s@]*)$/.exec(inp.value.slice(0, pos));
         const q = m ? m[1].toLowerCase() : '';
         const list = m ? Object.entries(S.members).filter(([u, v]) => v && v.name && u !== currentUserUid && v.name.toLowerCase().includes(q)).slice(0, 8) : [];
+        if (m && '全部'.includes(q)) list.unshift(['all', { name: '全部' }]);
         if (!list.length) { atHide(); return; }
         if (!atEl) {
             atEl = document.createElement('div');
@@ -954,7 +959,7 @@
         const who = name || ADMIN_NAME;
         const ref = createDb().ref('highlights/' + day).push();
         const m = mentionsOf(cap || '');
-        await ref.set({ url: r.url, thumb: r.thumb, caption: cap || '', author: who, uid, ...(Object.keys(m).length ? { mentions: m } : {}) });
+        await ref.set({ url: r.url, thumb: r.thumb, caption: cap || '', author: who, uid, ...(Object.keys(m).length ? { mentions: m } : {}), ...(hasAll(cap) ? { mentionAll: true } : {}) });
         if (String(r.del).startsWith('https://ibb.co/')) createDb().ref('img_del/' + ref.key).set({ del: r.del, ...(r.thumb ? { thumb: r.thumb } : {}), author: who, uid, ts: Date.now() }).catch(() => { });
     }
     async function runTask(t) {
