@@ -382,13 +382,18 @@
         #top-notices > * { pointer-events: auto; }
         #upd-bar { display: none; flex-wrap: wrap; justify-content: center; align-items: center; max-width: 100%; padding: 4px 6px 4px 18px; border-radius: 22px; background: rgba(217,119,6,.97); color: #fff; font-size: 15px; font-weight: 700; box-shadow: 0 4px 14px rgba(0,0,0,.28); }
         #upd-bar.show { display: flex; }
-        #rem-bar { display: none; align-items: center; width: 100%; border-radius: 20px; background: rgba(180,83,9,.98); color: #fff; font-size: 15px; font-weight: 700; line-height: 1.45; box-shadow: 0 4px 14px rgba(0,0,0,.28); }
-        #rem-bar.show { display: flex; }
-        #rem-bar .rem-go { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 8px; padding: 12px 6px 12px 18px; text-align: center; color: inherit; font: inherit; }
-        #rem-bar u { font-size: 13px; font-weight: 600; opacity: .85; white-space: nowrap; }
-        #rem-bar .rem-x { padding: 12px 16px; opacity: .75; color: inherit; font: inherit; }
+        #nt-box { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; }
+        #nt-box:empty { display: none; }
+        .nt { display: flex; align-items: center; width: 100%; border-radius: 20px; background: rgba(217,119,6,.97); color: #fff; font-size: 15px; font-weight: 700; line-height: 1.45; box-shadow: 0 4px 14px rgba(0,0,0,.28); }
+        .nt.dk { background: rgba(180,83,9,.98); }
+        .nt .nt-go { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 8px; padding: 12px 6px 12px 18px; text-align: center; color: inherit; font: inherit; }
+        .nt.nx .nt-go { padding-right: 18px; }
+        .nt u { font-size: 13px; font-weight: 600; opacity: .85; white-space: nowrap; }
+        .nt .nt-x { padding: 12px 16px; opacity: .75; color: inherit; font: inherit; }
         @keyframes ntFlash { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
-        #rem-bar.fl, .hl-nt.fl { animation: ntFlash .45s ease-in-out 2; }
+        .nt.fl { animation: ntFlash .45s ease-in-out 2; }
+        .nt-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: left; padding: 11px 14px; border-radius: 12px; background: #f6ecde; color: #7a5428; font-size: 14px; font-weight: 700; }
+        .nt-row i { font-style: normal; opacity: .6; }
         #upd-bar button { color: inherit; font: inherit; white-space: nowrap; }
         #upd-bar .upd-go { padding: 11px 6px; }
         #upd-bar .upd-log { padding: 11px 8px; text-decoration: underline; opacity: .85; font-size: 14px; }
@@ -1172,10 +1177,21 @@
             </div>
         </div>
     </div>
+    <div id="nt-modal" style="display:none;position:fixed;inset:0;z-index:62;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.5)">
+        <div style="width:100%;max-width:24rem;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;background:#fff;border-radius:18px;box-shadow:0 8px 28px rgba(0,0,0,.3)">
+            <div style="flex:1;min-height:0;overflow-y:auto;padding:18px 18px 8px">
+                <h3 style="font-size:17px;font-weight:800;color:#3b4d43">🔔 你有多項通知</h3>
+                <p style="font-size:12px;color:#888;margin-top:2px">點選項目前往查看，沒查看的會繼續留在頂端。</p>
+                <div id="nt-list" style="display:flex;flex-direction:column;gap:8px;margin-top:12px"></div>
+            </div>
+            <div style="flex-shrink:0;padding:10px 18px 18px;border-top:1px solid #ece8df">
+                <button type="button" onclick="NOTI.close()" style="width:100%;padding:11px 0;border-radius:12px;background:#e7e4db;color:#3b4d43;font-size:14px;font-weight:700">關閉</button>
+            </div>
+        </div>
+    </div>
     <div id="top-notices">
         <div id="upd-bar"><button type="button" class="upd-go" onclick="applyUpdate()">🔄 有新版本，點此更新</button><button type="button" class="upd-log" onclick="showUpdateLog()">看更新內容</button><button type="button" class="upd-x" onclick="dismissUpdate()" aria-label="稍後再說">✕</button></div>
-        <div id="rem-bar"><button type="button" class="rem-go" onclick="remClose(true)"><span id="rem-txt"></span><u>點擊查看</u></button><button type="button" class="rem-x" onclick="remClose(false)" aria-label="關閉">✕</button></div>
-        <div id="hl-notices"></div>
+        <div id="nt-box"></div>
     </div>
 
     <!-- 圖片燈箱 Modal -->
@@ -2368,7 +2384,7 @@
             if (strip) strip.classList.toggle('hidden', !DATE_STRIP_TABS.includes(pageName));
             updateMoreFooterVisibility();
             syncOverlay();
-            if (pageName === 'ledger') openLedger();
+            if (pageName === 'ledger') { openLedger(); try { remView(); } catch (e) { } }
             if (window.HL) HL.onTab(pageName);
             if (pageName === 'highlights') openHighlights();
             if (pageName === 'itinerary') {
@@ -2386,7 +2402,7 @@
             if (!opts.skipScrollTop) window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        const LEDGER_V = '35';
+        const LEDGER_V = '36';
         let ledgerLoading = null;
         const loadScript = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
         function openLedger() {
@@ -2402,7 +2418,7 @@
             }
             ledgerLoading.then(() => { if (window.LEDGER) LEDGER.open(); });
         }
-        const HL_V = '9';
+        const HL_V = '10';
         let hlLoading = null;
         function loadHL() {
             if (!hlLoading) {
@@ -5481,8 +5497,52 @@
             });
         })();
 
+        // ---------- 頂端通知中心：帳務、發文提醒、花絮通知統一顯示；超過上限合併成「多項通知」 ----------
+        window.flashEl = flashEl;
+        const NOTI = window.NOTI = (() => {
+            const src = {}, fl = new Set(), ORD = ['rem', 'post', 'hl'];
+            let ent = [], last = '', raf = 0, open = false;
+            const $n = (id) => document.getElementById(id);
+            function render() {
+                raf = 0;
+                const box = $n('nt-box');
+                if (!box) return;
+                ent = ORD.flatMap(k => src[k] || []);
+                const ub = $n('upd-bar'), multi = ent.length > (ub && ub.classList.contains('show') ? 1 : 2);
+                const item = (e, i, f) => `<div class="nt${e.dk ? ' dk' : ''}${f}"><button type="button" class="nt-go" data-i="${i}"><span>${escapeHtml(e.txt)}</span><u>點擊查看</u></button><button type="button" class="nt-x" data-x="${i}" aria-label="關閉">✕</button></div>`;
+                const fresh = ent.some(e => !fl.has(e.key));
+                const html = (f) => multi ? `<div class="nt dk nx${f}"><button type="button" class="nt-go" data-m="1"><span>🔔 你有多項通知（${ent.length}）</span><u>點擊查看</u></button></div>` : ent.map((e, i) => item(e, i, fresh && !fl.has(e.key) ? ' fl' : '')).join('');
+                const base = multi ? 'M' + ent.map(e => e.key).join('|') : html('').replace(/ fl"/g, '"');
+                if (base !== last) {
+                    last = base;
+                    box.innerHTML = multi ? html(fresh ? ' fl' : '') : html('');
+                    ent.forEach(e => fl.add(e.key));
+                }
+                if (!ent.length) close();
+                else if (open) list();
+            }
+            function list() {
+                $n('nt-list').innerHTML = ent.map((e, i) => `<button type="button" class="nt-row" data-i="${i}"><span>${escapeHtml(e.txt)}</span><i>›</i></button>`).join('');
+            }
+            function close() { if (!open) return; open = false; $n('nt-modal').style.display = 'none'; unlockScroll(); }
+            function sched() { if (!raf) raf = requestAnimationFrame(render); }
+            document.addEventListener('click', (ev) => {
+                const g = ev.target.closest('#nt-box [data-i], #nt-box [data-x], #nt-box [data-m], #nt-list [data-i]');
+                if (!g) return;
+                if (g.dataset.m) { open = true; list(); lockScroll(); $n('nt-modal').style.display = 'flex'; return; }
+                const e = ent[+(g.dataset.i != null ? g.dataset.i : g.dataset.x)];
+                if (!e) return;
+                if (g.dataset.x != null) { if (e.close) e.close(); return; }
+                close();
+                e.act();
+            });
+            const ub = $n('upd-bar');
+            if (ub && window.MutationObserver) new MutationObserver(sched).observe(ub, { attributes: true, attributeFilter: ['class'] });
+            return { set(k, v) { src[k] = v || []; sched(); }, close };
+        })();
+
         // ---------- 帳務提醒：有你分攤的新增／修改支出、待你確認的轉帳 ----------
-        const REM = { refs: [], key: '', people: null, exps: null, trs: null, timer: 0, fl: 0, max: 0 };
+        const REM = { refs: [], key: '', people: null, exps: null, trs: null, timer: 0, max: 0, fresh: [] };
         const remSeenKey = (uid) => 'lg_rem_' + uid;
         function remStop() { REM.refs.forEach(([r, f]) => r.off('value', f)); REM.refs = []; REM.key = ''; REM.people = REM.exps = REM.trs = null; clearTimeout(REM.timer); remHide(); }
         function remSync() {
@@ -5502,13 +5562,13 @@
             if (!pid) return null;
             const nm = (id) => (REM.people[id] && REM.people[id].name) || '（已刪除）';
             const out = [];
-            Object.values(REM.exps).forEach((e) => {
+            Object.entries(REM.exps).forEach(([id, e]) => {
                 if (!e || !e.shares || !e.shares[pid]) return;
-                out.push({ t: e.uts || e.ts || 0, mine: (e.updBy || e.by) === uid, txt: `${e.uts && e.uts !== e.ts ? '修改' : '新增'}支出「${e.title || ''}」（${nm(e.payer)} 墊付），你有分攤` });
+                out.push({ k: 'e', id, t: e.uts || e.ts || 0, mine: (e.updBy || e.by) === uid, txt: `${e.uts && e.uts !== e.ts ? '修改' : '新增'}支出「${e.title || ''}」（${nm(e.payer)} 墊付），你有分攤` });
             });
-            Object.values(REM.trs).forEach((t) => {
+            Object.entries(REM.trs).forEach(([id, t]) => {
                 if (!t || t.to !== pid || t.status !== 'paid') return;
-                out.push({ t: t.paidTs || 0, mine: t.paidBy === uid, txt: `${nm(t.from)} 已轉帳給你，請確認收款` });
+                out.push({ k: 't', id, t: t.paidTs || 0, mine: t.paidBy === uid, txt: `${nm(t.from)} 已轉帳給你，請確認收款` });
             });
             return out;
         }
@@ -5522,16 +5582,22 @@
             const fresh = all.filter(x => !x.mine && x.t > +seen).sort((a, b) => b.t - a.t);
             if (!fresh.length) return remHide();
             REM.max = Math.max(...fresh.map(x => x.t));
-            document.getElementById('rem-txt').textContent = fresh.length === 1 ? '💰 ' + fresh[0].txt : `💰 有 ${fresh.length} 筆和你相關的帳務`;
-            const bar = document.getElementById('rem-bar');
-            if (REM.fl !== REM.max) { REM.fl = REM.max; bar.classList.remove('fl'); void bar.offsetWidth; bar.classList.add('fl'); }
-            bar.classList.add('show');
+            REM.fresh = fresh;
+            NOTI.set('rem', [{
+                key: 'rem:' + REM.max, dk: true,
+                txt: fresh.length === 1 ? '💰 ' + fresh[0].txt : `💰 有 ${fresh.length} 筆和你相關的帳務`,
+                act: remGo, close: remView
+            }]);
         }
         function remSave(v) { try { localStorage.setItem(remSeenKey(REM.key), String(v)); } catch (e) { } }
-        function remHide() {
-            document.getElementById('rem-bar').classList.remove('show');
+        function remHide() { NOTI.set('rem', []); }
+        function remView() { if (REM.key && REM.max) remSave(REM.max); remHide(); }
+        function remGo() {
+            const ex = REM.fresh.filter(x => x.k === 'e').map(x => x.id), tr = REM.fresh.filter(x => x.k === 't').map(x => x.id);
+            remView();
+            switchTab('ledger');
+            (ledgerLoading || Promise.resolve()).then(() => { if (window.LEDGER && LEDGER.focus) LEDGER.focus(ex, tr); });
         }
-        window.remClose = (go) => { remSave(REM.max); remHide(); if (go) switchTab('ledger'); };
         window.onIdentity = () => { remSync(); if (DR.open) drawLoad(); };
         onIdentity();
 

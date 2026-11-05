@@ -241,3 +241,6 @@ textarea.lg-in { resize: vertical; }
 .lg-mem-r small { margin-left: 6px; font-size: 11px; font-weight: 500; color: var(--lg-muted); }
 .lg-mem-n { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e5ddcf; font-size: 11px; line-height: 1.6; color: var(--lg-muted); }
 .lg-import { width: 100%; margin-bottom: 8px; }
+
+@keyframes lgFlash { 0%, 100% { outline-color: rgba(59, 77, 67, 0); } 20%, 70% { outline-color: rgba(59, 77, 67, 1); } 45% { outline-color: rgba(59, 77, 67, 0); } }
+.lg-flash { outline: 3px solid transparent; outline-offset: 2px; border-radius: 14px; animation: lgFlash 1.4s ease-in-out; }
