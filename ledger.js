@@ -1,7 +1,7 @@
 (function () {
     'use strict';
     const C = window.LedgerCore;
-    const VER = '22';
+    const VER = '23';
     const BASE = 'TWD', BASE_DEC = 0;
     const CATS = ['餐飲', '交通', '住宿', '門票', '購物', '其他'];
     const DEC_FIX = { TWD: 0, JPY: 0, KRW: 0 };
@@ -274,7 +274,7 @@
     function blankForm(keep) {
         const k = keep || {};
         return {
-            title: '', amount: '', note: '', parts: {}, rate: null, rf: null, dtId: null,
+            title: '', amount: '', note: '', parts: {}, rate: null, rf: null, dl: null, dtId: null,
             cur: k.cur || (curs().includes('JPY') ? 'JPY' : BASE), date: k.date || today(),
             scope: k.scope || 'group', payer: k.payer || '', members: k.members ? k.members.slice() : [], mode: k.mode || 'equal', cat: k.cat || '餐飲'
         };
@@ -460,6 +460,7 @@
             base: BASE, baseAmt: c.sp.baseAmt, date: f.date, payer: c.pe ? 'me' : f.payer, mode: c.pe ? 'equal' : f.mode,
             unit: !c.pe && f.mode === 'each' ? f.amount.trim() : null,
             parts: c.pe || f.mode === 'equal' || f.mode === 'each' ? null : Object.fromEntries(f.members.map((p) => [p, String(f.parts[p] || '0').trim()])),
+            dl: !c.pe && f.mode === 'amount' && f.dl ? Object.fromEntries(Object.entries(f.dl).filter(([p]) => f.members.includes(p))) : null,
             rf: !c.pe && f.mode === 'amount' && f.rf ? Object.fromEntries(Object.entries(f.rf).filter(([p, v]) => f.members.includes(p) && v > 0)) : null,
             shares: c.sp.shares, seed: c.seed, cat: f.cat, note: f.note.trim(), updBy: m.uid, updName: m.name, uts: TS()
         };
@@ -489,7 +490,7 @@
         S.form = {
             title: e.title || '', amount: e.mode === 'each' && e.unit ? e.unit : C.toPlain(e.amount, Number.isInteger(e.dec) ? e.dec : decOf(e.cur)), cur: e.cur, date: e.date || today(),
             scope: pe ? 'personal' : 'group', payer: pe ? '' : e.payer, members: pe ? [] : order().filter((p) => e.shares && e.shares[p]), mode: e.mode || 'equal',
-            parts: { ...(e.parts || {}) }, cat: e.cat || '其他', note: e.note || '', rate: e.cur === BASE ? null : e.rate, rf: e.rf ? { ...e.rf } : null
+            parts: { ...(e.parts || {}) }, cat: e.cat || '其他', note: e.note || '', rate: e.cur === BASE ? null : e.rate, rf: e.rf ? { ...e.rf } : null, dl: e.dl ? JSON.parse(JSON.stringify(e.dl)) : null
         };
         writeForm();
         S.editSig = formSig();
@@ -537,9 +538,8 @@
                 const f = S.form;
                 if (f.cur !== 'JPY') f.rate = null;
                 f.cur = 'JPY'; f.mode = 'amount'; f.members = order().filter((p) => r.members.includes(p));
-                f.parts = r.parts; f.rf = Object.keys(r.rf).length ? r.rf : null; f.dtId = r.id;
+                f.parts = r.parts; f.rf = Object.keys(r.rf).length ? r.rf : null; f.dl = r.dl; f.dtId = r.id;
                 if (r.name) f.title = r.name;
-                if (r.note && !f.note.includes(r.note)) f.note = (f.note.trim() ? f.note.trim() + '\n' : '') + r.note, f.note = f.note.slice(0, 200);
                 if (r.date) f.date = r.date;
                 if (r.payer && P()[r.payer]) f.payer = r.payer;
                 if (cats().includes('購物')) f.cat = '購物';
@@ -547,6 +547,14 @@
                 toast('已帶入明細分帳，確認後按「儲存支出」');
             }
         });
+    }
+    // 明細分帳帶進來的每人品項明細
+    function dlHtml(e, p) {
+        const d = e.dl && e.dl[p];
+        if (!d || !Array.isArray(d.l)) return '';
+        const m = (v) => money(v, e.cur), row = (a, b, cls) => `<div class="${cls || ''}"><span>${a}</span><span>${b}</span></div>`;
+        return `<div class="lg-dl"><ul>${d.l.map((x) => `<li><span>${esc(x[0])} × ${x[1]}${x[3] ? '（不退稅）' : ''}</span><span>${m(x[2])}</span></li>`).join('')}</ul>` +
+            `<div class="lg-dlb">${row('品項小計（未稅）', m(d.b || 0))}${row('消費稅', m(d.t || 0))}${d.bs === 'after' ? row('預計退稅', '−' + m(d.r || 0), 'neg') : ''}${d.j ? row('進位調整', (d.j > 0 ? '+' : '−') + m(Math.abs(d.j))) : ''}${d.bs !== 'after' && d.r > 0 ? row('出境後預計可退（不含於上方）', m(d.r), 'note') : ''}</div>${d.n ? `<p class="lg-note">📝 ${esc(d.n)}</p>` : ''}</div>`;
     }
     const refundOf = (id) => Object.entries(E()).filter(([, x]) => x && x.rfOf === id);
     function refundHtml(id, e) {
@@ -891,7 +899,7 @@
             h += `<div class="lg-detail">
                 ${pe ? '' : order().filter((p) => e.shares && e.shares[p]).map((p) => {
                     const s = e.shares[p];
-                    return `<div class="lg-pv-row"><span>${esc(pname(p))}${payTag(id, e, p, ti)}</span><span>${fx ? `${money(s.o, e.cur)}<small>≈ ${money(s.b, BASE)}</small>` : money(s.b, BASE)}</span></div>`;
+                    return `<div class="lg-pv-row"><span>${esc(pname(p))}${payTag(id, e, p, ti)}</span><span>${fx ? `${money(s.o, e.cur)}<small>≈ ${money(s.b, BASE)}</small>` : money(s.b, BASE)}</span></div>${dlHtml(e, p)}`;
                 }).join('')}
                 <p class="lg-muted lg-mt">${pe ? '' : `分帳方式：${esc(modeL)}`}${fx ? `・匯率 1 ${esc(e.cur)} = ${esc(e.rate)} ${BASE}（${String(e.rateRef || '').startsWith('table:') ? '當時匯率表' : '自訂'}）` : ''}</p>
                 ${e.note ? `<p class="lg-note">${esc(e.note)}</p>` : ''}
@@ -1548,15 +1556,15 @@
             else if (act === 'mem') {
                 const set = new Set(f.members);
                 if (set.has(id)) { set.delete(id); delete f.parts[id]; } else set.add(id);
-                f.rf = null;
+                f.rf = f.dl = null;
                 f.members = order().filter((p) => set.has(p));
                 refreshForm();
             } else if (act === 'all') {
                 const act2 = activeIds(), allOn = act2.every((p) => f.members.includes(p));
                 f.members = allOn ? [] : act2;
-                f.parts = {}; f.rf = null;
+                f.parts = {}; f.rf = f.dl = null;
                 refreshForm();
-            } else if (act === 'mode') { if (f.mode !== v) { f.mode = v; f.parts = {}; f.rf = null; $('lg-f-amount').value = f.amount; refreshForm(); } }
+            } else if (act === 'mode') { if (f.mode !== v) { f.mode = v; f.parts = {}; f.rf = f.dl = null; $('lg-f-amount').value = f.amount; refreshForm(); } }
             else if (act === 'scope') { if (f.scope !== v) { f.scope = v; refreshForm(); } }
             else if (act === 'cat') { f.cat = v; refreshForm(); }
             else if (act === 'cat-add') addCat();
@@ -1609,7 +1617,7 @@
             if (!f) return;
             const map = { 'lg-f-title': 'title', 'lg-f-amount': 'amount', 'lg-f-note': 'note', 'lg-f-date': 'date' };
             if (map[el.id]) { f[map[el.id]] = el.value; renderPreview(); }
-            else if (el.dataset.part) { f.parts[el.dataset.part] = el.value; f.rf = null; renderPreview(); }
+            else if (el.dataset.part) { f.parts[el.dataset.part] = el.value; f.rf = f.dl = null; renderPreview(); }
             else if (el.id === 'lg-f-rate-in') { f.rate = el.value.trim(); renderPreview(); }
             else if (el.id === 'lg-q') { S.filter.q = el.value; renderItems(); }
         });

@@ -311,12 +311,16 @@
             else if (a === 'prompt') copy(buildPrompt()).then((ok) => { if (ok) say('已複製 AI 提示詞。貼給 AI 並附上收據照片，再把回傳的 JSON 貼到下方匯入。'); else { $('#ld-paste').value = buildPrompt(); $('#ld-paste').select(); say('無法自動複製，提示詞已放進下方文字框，請全選複製。', true); } });
             else if (a === 'import') doImport($('#ld-paste').value);
             else if (a === 'apply') {
-                const S = cfg(), parts = {}, rf = {}, members = [];
-                rows().forEach(({ p, c, amount }) => {
-                    if (amount > 0) { parts[p.id] = String(amount); members.push(p.id); if (S.basis === 'before' && c.refund > 0) rf[p.id] = c.refund; }
+                const S = cfg(), parts = {}, rf = {}, dl = {}, members = [];
+                rows().forEach(({ p, lines, c, adj, amount }) => {
+                    if (amount <= 0) return;
+                    parts[p.id] = String(amount); members.push(p.id);
+                    if (S.basis === 'before' && c.refund > 0) rf[p.id] = c.refund;
+                    const nt = (st.notes[p.id] || '').trim();
+                    dl[p.id] = { l: lines.map((l) => [String(l.item.zh || l.item.jp).slice(0, 40), l.n, Math.round(l.item.unit * l.n * S.disc), l.item.star ? 0 : 1]), b: c.base, t: c.tax, r: c.refund, j: adj, bs: S.basis, ...(nt ? { n: nt.slice(0, 60) } : {}) };
                 });
                 if (!members.length) return;
-                const out = { id: st.id, name: st.name.trim() || st.receipt.name, date: st.date || st.receipt.date, payer: people.some((p) => p.id === st.payer) ? st.payer : '', members, parts, rf, note: people.filter((p) => members.includes(p.id) && (st.notes[p.id] || '').trim()).map((p) => `${p.name}：${st.notes[p.id].trim()}`).join('\n') };
+                const out = { id: st.id, name: st.name.trim() || st.receipt.name, date: st.date || st.receipt.date, payer: people.some((p) => p.id === st.payer) ? st.payer : '', members, parts, rf, dl };
                 const o = curOpts;
                 close();
                 o.onApply(out);
