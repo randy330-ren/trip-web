@@ -1,7 +1,7 @@
 (function () {
     'use strict';
     const C = window.LedgerCore;
-    const VER = '20';
+    const VER = '21';
     const BASE = 'TWD', BASE_DEC = 0;
     const CATS = ['餐飲', '交通', '住宿', '門票', '購物', '其他'];
     const DEC_FIX = { TWD: 0, JPY: 0, KRW: 0 };
@@ -551,8 +551,8 @@
     function refundHtml(id, e) {
         const rf = Object.entries(e.rf || {}).filter(([p, v]) => P()[p] && v > 0);
         if (!rf.length) return '';
-        const done = refundOf(id);
-        if (done.length) return `<p class="lg-muted lg-mt">💴 退稅已分配：${done.map(([, x]) => `${esc(pname(x.payer))} ${money(x.amount, x.cur)}`).join('、')}（要重做請先刪除這些「退稅返還」支出）</p>`;
+        const done = refundOf(id), fees = Object.entries(E()).filter(([, x]) => x && x.feeOf === id);
+        if (done.length) return `<p class="lg-muted lg-mt">💴 退稅已分配：${done.map(([, x]) => `${esc(pname(x.payer))} ${money(x.amount, x.cur)}`).join('、')}${fees.length ? `；手續費 ${money(fees[0][1].amount, fees[0][1].cur)} 已分攤` : ''}（要重做請先刪除這些「退稅返還」與「手續費」支出）</p>`;
         const sum = rf.reduce((s, [, v]) => s + v, 0), friends = rf.some(([p]) => p !== e.payer);
         return `<p class="lg-muted lg-mt">💴 預計退稅 ${money(sum, e.cur)}：${rf.map(([p, v]) => `${esc(pname(p))} ${money(v, e.cur)}`).join('、')}</p>` +
             (friends && !planLocked() ? `<div class="lg-actions"><button type="button" class="lg-btn sm" data-act="exp-refund" data-id="${id}">💴 退稅分配</button></div>` : '');
@@ -567,18 +567,21 @@
         const rf = Object.fromEntries(Object.entries(e.rf).filter(([p, v]) => P()[p] && v > 0));
         const keys = Object.keys(rf), sum = keys.reduce((s, p) => s + rf[p], 0), dec = Number.isInteger(e.dec) ? e.dec : decOf(e.cur);
         if (!keys.some((p) => p !== e.payer)) return alert('這筆沒有需要退還給朋友的退稅。');
-        let amt, rate, v = { amt: C.toPlain(sum, dec), rate: '' };
+        let amt, rate, fee = null, v = { amt: C.toPlain(sum, dec), rate: '', fee: '' };
         for (;;) {
             const r = await openInputModal({ title: '退稅分配', submitLabel: '下一步', fields: [
-                { type: 'note', text: `退稅收款人：${pname(e.payer)}（原付款人）\n預計退稅合計 ${money(sum, e.cur)}（含收款人自己的份）\n匯率另外輸入，不會動到匯率表。` },
+                { type: 'note', text: `退稅收款人：${pname(e.payer)}（原付款人）\n預計退稅合計 ${money(sum, e.cur)}（含收款人自己的份）\n匯率另外輸入，不會動到匯率表。\n手續費（台幣）選填：會依每人刷卡金額比例分攤給所有分攤成員。` },
                 { key: 'amt', value: v.amt, placeholder: `實際退稅總額（${e.cur}）` },
-                { key: 'rate', value: v.rate, placeholder: `匯率：1 ${e.cur} = ? ${BASE}` }
+                { key: 'rate', value: v.rate, placeholder: `匯率：1 ${e.cur} = ? ${BASE}` },
+                { key: 'fee', value: v.fee, placeholder: `手續費（${BASE}，選填）` }
             ] });
             if (!r) return;
-            v = { amt: r.amt, rate: r.rate };
+            v = { amt: r.amt, rate: r.rate, fee: r.fee };
             amt = C.parseAmount(r.amt, dec); rate = C.parseRate(r.rate);
             if (!amt.ok || amt.v <= 0) { alert('退稅總額：' + (amt.err || '必須大於零')); continue; }
             if (!rate.ok) { alert('匯率：' + rate.err); continue; }
+            fee = r.fee ? C.parseAmount(r.fee, BASE_DEC) : null;
+            if (fee && (!fee.ok || fee.v <= 0)) { alert('手續費：' + (fee.err || '必須大於零')); continue; }
             break;
         }
         const alloc = C.allocate(amt.v, keys.map((p) => rf[p])), m = me(), recs = [];
@@ -593,11 +596,25 @@
                 by: m.uid, byName: m.name, ts: TS(), updBy: m.uid, updName: m.name, uts: TS()
             } });
         });
+        let feeRec = null;
+        if (fee) {
+            const fp = order().filter((p) => e.shares && e.shares[p] && e.shares[p].o > 0), fa = C.allocate(fee.v, fp.map((p) => e.shares[p].o));
+            const mem = fp.filter((p, i) => fa[i] > 0), parts = Object.fromEntries(fp.map((p, i) => [p, C.toPlain(fa[i], BASE_DEC)]).filter(([p]) => mem.includes(p)));
+            const sp = mem.length ? C.computeSplit({ amount: fee.v, dec: BASE_DEC, mode: 'amount', members: mem, parts, rate: '1', baseDec: BASE_DEC }) : null;
+            if (!sp || !sp.ok) return alert('手續費分攤失敗，這筆支出沒有可分攤的成員。');
+            feeRec = { mem, fa: Object.fromEntries(fp.map((p, i) => [p, fa[i]])), rec: {
+                title: `手續費：${e.title || ''}`.slice(0, 50), amount: fee.v, cur: BASE, dec: BASE_DEC, rate: '1', rateRef: 'base', base: BASE, baseAmt: sp.baseAmt,
+                date: today(), payer: e.payer, mode: 'amount', unit: null, parts, shares: sp.shares, seed: 0, cat: e.cat || '其他',
+                note: `來自「${e.title || ''}」的信用卡手續費，依每人刷卡金額比例分攤`, feeOf: id,
+                by: m.uid, byName: m.name, ts: TS(), updBy: m.uid, updName: m.name, uts: TS()
+            } };
+        }
         if (!recs.length) return alert('分配後沒有朋友分到金額。');
-        if (!confirm(`建立 ${recs.length} 筆退稅返還？\n` + recs.map((x) => `${pname(x.p)} 收到 ${money(x.a, e.cur)}（≈ ${money(x.rec.baseAmt, BASE)}）`).join('\n') + `\n\n由 ${pname(e.payer)} 退還，匯率 1 ${e.cur} = ${rate.s} ${BASE}`)) return;
+        if (!confirm(`建立 ${recs.length} 筆退稅返還？\n` + recs.map((x) => `${pname(x.p)} 收到 ${money(x.a, e.cur)}（≈ ${money(x.rec.baseAmt, BASE)}）`).join('\n') + `\n\n由 ${pname(e.payer)} 退還，匯率 1 ${e.cur} = ${rate.s} ${BASE}` + (feeRec ? `\n\n另建立手續費 ${money(fee.v, BASE)}（${pname(e.payer)} 付款）：\n` + feeRec.mem.map((p) => `${pname(p)} 分攤 ${money(feeRec.fa[p], BASE)}`).join('\n') : ''))) return;
         const ref = wdb().ref('ledger/expenses'), up = {};
         recs.forEach((x) => { up[ref.push().key] = x.rec; });
-        try { await ref.update(up); toast(`已建立 ${recs.length} 筆退稅返還`); } catch (err) { fail(err); }
+        if (feeRec) up[ref.push().key] = feeRec.rec;
+        try { await ref.update(up); toast(`已建立 ${recs.length} 筆退稅返還${feeRec ? '與手續費' : ''}`); } catch (err) { fail(err); }
     }
 
     async function addCat() {
