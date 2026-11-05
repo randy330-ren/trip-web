@@ -1,7 +1,7 @@
 (function () {
     'use strict';
     const C = window.LedgerCore;
-    const VER = '19';
+    const VER = '20';
     const BASE = 'TWD', BASE_DEC = 0;
     const CATS = ['餐飲', '交通', '住宿', '門票', '購物', '其他'];
     const DEC_FIX = { TWD: 0, JPY: 0, KRW: 0 };
@@ -274,7 +274,7 @@
     function blankForm(keep) {
         const k = keep || {};
         return {
-            title: '', amount: '', note: '', parts: {}, rate: null, rf: null,
+            title: '', amount: '', note: '', parts: {}, rate: null, rf: null, dtId: null,
             cur: k.cur || (curs().includes('JPY') ? 'JPY' : BASE), date: k.date || today(),
             scope: k.scope || 'group', payer: k.payer || '', members: k.members ? k.members.slice() : [], mode: k.mode || 'equal', cat: k.cat || '餐飲'
         };
@@ -293,7 +293,7 @@
             <div id="lg-f-grp">
             <label class="lg-lbl" for="lg-f-payer">付款人</label>
             <select id="lg-f-payer" class="lg-in"></select>
-            <div class="lg-lblrow"><label class="lg-lbl">分帳方式</label><button type="button" class="lg-link" data-act="detail">🧾 明細分帳</button></div>
+            <label class="lg-lbl">分帳方式</label>
             <div id="lg-f-mode" class="lg-seg sm"></div>
             <label class="lg-lbl">分攤成員（可多選）</label>
             <div id="lg-f-members" class="lg-chips"></div>
@@ -305,7 +305,8 @@
             <textarea id="lg-f-note" class="lg-in" maxlength="200" rows="2" placeholder="選填"></textarea>
             <div id="lg-f-rate"></div>
             <div id="lg-f-preview" class="lg-preview"></div>
-            <button type="button" id="lg-f-save" class="lg-btn wide" data-act="save">儲存支出</button>`;
+            <button type="button" id="lg-f-save" class="lg-btn wide" data-act="save">儲存支出</button>
+            <div id="lg-f-dtbox"><div id="lg-f-pend"></div><button type="button" class="lg-btn wide ld-open" data-act="detail">🧾 明細分帳</button></div>`;
     }
     function writeForm() {
         const f = S.form;
@@ -327,6 +328,8 @@
         $('lg-f-scope').classList.toggle('hidden', !!S.editId);
         $('lg-f-scope').innerHTML = [['group', '團體記帳'], ['personal', '個人記帳']].map(([k, l]) => `<button type="button" data-act="scope" data-v="${k}" class="${f.scope === k ? 'on' : ''}">${l}</button>`).join('');
         $('lg-f-grp').classList.toggle('hidden', f.scope === 'personal');
+        $('lg-f-dtbox').classList.toggle('hidden', f.scope === 'personal');
+        renderPending();
         pickSet($('lg-f-cur'), f.cur);
         const auto = f.mode === 'amount' && f.scope !== 'personal';
         $('lg-f-amount-l').textContent = f.mode === 'each' ? '每人金額' : auto ? '總額（自動加總）' : '金額';
@@ -468,6 +471,7 @@
             : xref(c.pe).push({ ...rec, by: m.uid, byName: m.name, ts: TS() });
         try {
             await job;
+            if (f.dtId && window.LedgerDetail) LedgerDetail.remove(f.dtId);
             toast(editing ? '已儲存修改' : c.pe ? '已新增個人支出' : '已新增支出');
             if (editing) { cancelEdit(); S.filter.scope = c.pe ? 'personal' : 'group'; renderFilterOpts(); setTab('list'); setSub('list'); S.open = editing; renderItems(); }
             else { S.form = blankForm(f); writeForm(); }
@@ -518,23 +522,28 @@
     }
 
     // ---------- 明細分帳與退稅分配 ----------
-    function openDetail() {
+    function renderPending() {
+        const box = $('lg-f-pend'), l = window.LedgerDetail ? LedgerDetail.list() : [];
+        box.innerHTML = l.length ? `<label class="lg-lbl">待處理的明細分帳（${l.length}）</label>` + l.map((d) => `<div class="lg-pend"><span><b>${esc(d.title)}</b><small>${esc(d.date || '未填日期')}・${d.has ? `已分配 ${d.got}／${d.qty} 件` : '尚未匯入收據'}</small></span><span><button type="button" class="lg-btn sm" data-act="detail" data-id="${esc(d.id)}">繼續</button><button type="button" class="lg-btn sm danger" data-act="detail-del" data-id="${esc(d.id)}">刪除</button></span></div>`).join('') : '';
+    }
+    function openDetail(did) {
         if (!window.LedgerDetail) return toast('明細分帳模組載入中，請稍後再試');
         if (!curs().includes('JPY')) return alert('匯率表沒有 JPY，請管理員先到「匯率」頁新增日圓。');
         const people = activeIds().map((id) => ({ id, name: pname(id) }));
         if (!people.length) return toast('請先在上方「團員名單」新增團員');
         LedgerDetail.open({
-            people,
+            people, id: did || '', onClose: renderPending,
             onApply(r) {
                 const f = S.form;
                 if (f.cur !== 'JPY') f.rate = null;
                 f.cur = 'JPY'; f.mode = 'amount'; f.members = order().filter((p) => r.members.includes(p));
-                f.parts = r.parts; f.rf = Object.keys(r.rf).length ? r.rf : null;
-                if (!f.title.trim()) f.title = r.name;
+                f.parts = r.parts; f.rf = Object.keys(r.rf).length ? r.rf : null; f.dtId = r.id;
+                if (r.name) f.title = r.name;
                 if (r.date) f.date = r.date;
+                if (r.payer && P()[r.payer]) f.payer = r.payer;
                 if (cats().includes('購物')) f.cat = '購物';
                 writeForm();
-                toast('已帶入明細分帳，請確認付款人後儲存');
+                toast('已帶入明細分帳，確認後按「儲存支出」');
             }
         });
     }
@@ -1541,7 +1550,8 @@
             else if (act === 'fold') { S.fold[v] = !S.fold[v]; renderSettle(); }
             else if (act === 'st-open') { S.stOpen[b.dataset.k] = !S.stOpen[b.dataset.k]; renderSettle(); }
             else if (act === 'fill') fillParts();
-            else if (act === 'detail') openDetail();
+            else if (act === 'detail') openDetail(id);
+            else if (act === 'detail-del') { if (confirm('刪除這份待處理的明細分帳？')) { LedgerDetail.remove(id); if (f.dtId === id) f.dtId = null; renderPending(); } }
             else if (act === 'exp-refund') refundFlow(id);
             else if (act === 'rate-table') { f.rate = null; renderRate(); renderPreview(); }
             else if (act === 'rate-custom') { const t = R()[f.cur]; f.rate = t ? t.rate : ''; renderRate(); renderPreview(); }

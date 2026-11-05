@@ -275,3 +275,10 @@ textarea.lg-in { resize: vertical; }
 .ld-step span { min-width: 26px; text-align: center; font-weight: 800; font-size: 16px; }
 .ld-note { margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: #f3f4f6; font-size: 12px; color: #4b5563; }
 .ld-note.warn { background: #fef3c7; color: #92400e; }
+.ld-open { margin-top: 14px; padding: 15px; font-size: 16px; background: #2f7d4f; }
+#lg-f-dtbox.hidden { display: none; }
+.lg-pend { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px dashed #e5ddcf; }
+.lg-pend > span:first-child { min-width: 0; }
+.lg-pend b { display: block; font-size: 14px; word-break: break-all; }
+.lg-pend small { font-size: 11px; color: var(--lg-muted); }
+.lg-pend > span:last-child { display: flex; gap: 6px; flex-shrink: 0; }

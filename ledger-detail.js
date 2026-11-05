@@ -42,7 +42,7 @@
         if (j.error) return { error: j.error };
         const obj = j.value, raw = obj && (obj.receipt || (Array.isArray(obj.items) ? obj : null));
         if (!raw || !Array.isArray(raw.items) || !raw.items.length) return { error: '缺少 items（品項清單），或清單是空的' };
-        const items = [], errs = [];
+        const items = [], errs = [], idMap = {};
         raw.items.forEach((it, i) => {
             if (!it || typeof it !== 'object') { errs.push(`第 ${i + 1} 筆不是物件`); return; }
             const label = it.jp || it.zh || '?';
@@ -52,6 +52,7 @@
             if (!(unit >= 0)) { errs.push(`第 ${i + 1} 筆（${label}）的 unit 不是有效數字`); return; }
             if (!(qty >= 1) || Math.floor(qty) !== qty) { errs.push(`第 ${i + 1} 筆（${label}）的 qty 必須是 1 以上的整數`); return; }
             if (!(rate >= 0 && rate <= 100)) { errs.push(`第 ${i + 1} 筆（${label}）的 rate 不是有效稅率`); return; }
+            idMap[String(it.id != null ? it.id : i + 1)] = items.length + 1;
             items.push({ id: items.length + 1, jp: String(it.jp || it.zh || '品項 ' + (i + 1)), zh: String(it.zh || it.jp || ''), unit, qty, rate, star: toBool(it.star, true) });
         });
         if (errs.length) return { error: errs.slice(0, 4).join('；') + (errs.length > 4 ? `…（共 ${errs.length} 處）` : '') };
@@ -60,12 +61,47 @@
         const ds = String(raw.date || '').replace(/\//g, '-');
         const date = /^\d{4}-\d{2}-\d{2}$/.test(ds) ? ds : '', store = String(raw.store || '');
         return {
+            idMap,
             receipt: {
                 name: (String(raw.name || '').trim() || [store, date].filter(Boolean).join(' ') || '未命名收據').slice(0, 50),
                 store, date, taxMode: raw.taxMode === 'incl' || raw.taxMode === 'included' ? 'incl' : 'excl',
                 couponPercent: cp >= 0 && cp <= 100 ? cp : 0, total: total > 0 ? total : null, refund: refund >= 0 ? refund : null, items
             }
         };
+    }
+    // 匯入檔若含舊版的朋友與分配（朋友名單 people、分配 assign），依名字對應到目前的團員
+    function parseImport(text, people) {
+        const p = parseReceipt(text);
+        if (p.error) return p;
+        const res = { receipt: p.receipt, assign: null, basis: null, coupon: null, matched: [], missing: [] };
+        const j = extractJSON(text).value;
+        if (!j || !Array.isArray(j.people) || !j.assign || typeof j.assign !== 'object') return res;
+        const norm = (x) => String(x || '').trim().toLowerCase(), byName = {}, pmap = {}, used = new Set();
+        (people || []).forEach((x) => { if (!(norm(x.name) in byName)) byName[norm(x.name)] = x.id; });
+        Object.values(j.assign).forEach((row) => { if (row && typeof row === 'object') Object.keys(row).forEach((k) => { if (parseNum(row[k]) > 0) used.add(k); }); });
+        j.people.forEach((op) => {
+            if (!op || typeof op.id !== 'string' || !used.has(op.id)) return;
+            const nid = byName[norm(op.name)];
+            if (nid) { pmap[op.id] = nid; res.matched.push(String(op.name)); } else res.missing.push(String(op.name));
+        });
+        res.assign = {};
+        for (const oid in j.assign) {
+            const nid = p.idMap[oid], row = j.assign[oid];
+            if (!nid || !row || typeof row !== 'object') continue;
+            let left = p.receipt.items[nid - 1].qty;
+            const out = {};
+            for (const op in row) {
+                const np = pmap[op];
+                let n = Math.floor(parseNum(row[op]));
+                if (!np || !(n > 0) || left <= 0) continue;
+                n = Math.min(n, left); out[np] = (out[np] || 0) + n; left -= n;
+            }
+            if (Object.keys(out).length) res.assign[nid] = out;
+        }
+        const so = j.s || j.settings || {};
+        res.basis = so.basis === 'after' ? 'after' : 'before';
+        res.coupon = so.coupon !== false;
+        return res;
     }
     function buildPrompt() {
         return [
@@ -91,26 +127,51 @@
     const KEY = 'ledger_dt';
     const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const yen = (n) => '¥' + Math.round(n).toLocaleString('en-US');
-    let st = { receipt: null, assign: {}, basis: 'before', coupon: true, active: '' };
-    try { const v = typeof cacheLoad === 'function' && cacheLoad(KEY); if (v && v.receipt && Array.isArray(v.receipt.items)) st = { ...st, ...v }; } catch (e) { }
-    const persist = () => { try { if (typeof cacheSave === 'function') cacheSave(KEY, st); } catch (e) { } };
+    const blank = () => ({ id: 'd' + Date.now().toString(36), ts: Date.now(), name: '', date: '', payer: '', receipt: null, assign: {}, basis: 'before', coupon: true, active: '' });
+    // 待處理資料：每份收據一個草稿（名稱、日期、付款人各自獨立），每次輸入都會暫存，按 ✕ 不會刪除
+    let DB = { drafts: {} };
+    try {
+        const v = typeof cacheLoad === 'function' && cacheLoad(KEY);
+        if (v && v.drafts && typeof v.drafts === 'object') DB = { drafts: v.drafts };
+        else if (v && v.receipt && Array.isArray(v.receipt.items)) { const d = { ...blank(), ...v, name: v.receipt.name || '', date: v.receipt.date || '' }; DB.drafts[d.id] = d; }
+    } catch (e) { }
+    const meaningful = (d) => !!(d.receipt || d.name || d.date || d.payer);
+    const flush = () => { try { if (typeof cacheSave === 'function') cacheSave(KEY, DB); } catch (e) { } };
+    const keep = (d) => { if (meaningful(d)) { d.ts = Date.now(); DB.drafts[d.id] = d; } else delete DB.drafts[d.id]; flush(); };
+    function list() {
+        return Object.values(DB.drafts).sort((a, b) => b.ts - a.ts).map((d) => {
+            const its = d.receipt ? d.receipt.items : [];
+            return { id: d.id, title: d.name || (d.receipt && d.receipt.name) || '未命名收據', date: d.date || '', qty: its.reduce((a, i) => a + i.qty, 0),
+                got: Object.values(d.assign || {}).reduce((a, r) => a + Object.values(r).reduce((x, y) => x + y, 0), 0), has: !!d.receipt };
+        });
+    }
+    function remove(id) { delete DB.drafts[id]; flush(); }
+    let cur = null, curOpts = null;
 
     function open(opts) {
         close();
         const people = opts.people || [];
         if (!people.length) return;
+        curOpts = opts;
+        const st = cur = (opts.id && DB.drafts[opts.id]) || blank();
         if (!people.some((p) => p.id === st.active)) st.active = people[0].id;
         const el = document.createElement('div');
         el.id = 'ld-root'; el.className = 'ld';
         el.innerHTML = `<div class="ld-head"><b>🧾 明細分帳</b><button type="button" data-a="close" aria-label="關閉">✕</button></div>
             <div class="ld-scroll">
-                <details class="ld-card" id="ld-imp"><summary>匯入收據（用 AI 整理成 JSON）</summary>
-                    <p class="lg-muted lg-mt">① 複製提示詞 ② 連同收據照片丟給 AI ③ 把回傳的 JSON 貼到下面。匯入新收據會清空目前的品項分配。</p>
+                <div class="ld-card">
+                    <p class="lg-h">這筆記帳資料<small>　獨立暫存，按 ✕ 不會刪除，可從記帳頁「待處理」繼續</small></p>
+                    <label class="lg-lbl" for="ld-name">名稱</label><input id="ld-name" class="lg-in" maxlength="50" placeholder="例：唐吉訶德 米子店">
+                    <label class="lg-lbl" for="ld-date">日期</label><input id="ld-date" type="date" class="lg-in">
+                    <label class="lg-lbl" for="ld-payer">付款人</label><select id="ld-payer" class="lg-in"><option value="">請選擇付款人</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>
+                </div>
+                <details class="ld-card" id="ld-imp"><summary>匯入收據（AI 整理的 JSON，或舊版匯出檔）</summary>
+                    <p class="lg-muted lg-mt">新收據：① 複製提示詞 ② 連同收據照片丟給 AI ③ 把回傳的 JSON 貼到下面。舊版匯出檔（含朋友與分配）會依名字對應到團員。匯入會清空目前的品項分配。</p>
                     <div class="ld-btns"><button type="button" class="lg-btn sm ghost" data-a="prompt">複製 AI 提示詞</button><label class="lg-btn sm ghost" for="ld-file">選擇檔案匯入</label><input type="file" id="ld-file" hidden accept=".json,.txt,application/json,text/plain"></div>
                     <textarea id="ld-paste" class="lg-in lg-mt" rows="4" placeholder="把 AI 回傳的 JSON 貼在這裡（含 \`\`\`json 也沒關係）"></textarea>
                     <button type="button" class="lg-btn sm lg-mt" data-a="import">匯入貼上的內容</button>
-                    <p class="ld-msg" id="ld-msg" role="status"></p>
                 </details>
+                <p class="ld-msg" id="ld-msg" role="status"></p>
                 <div class="ld-card" id="ld-main"></div>
                 <div class="ld-card" id="ld-res"></div>
             </div>
@@ -118,6 +179,7 @@
         document.body.appendChild(el);
         document.body.style.overflow = 'hidden';
         const $ = (s) => el.querySelector(s);
+        $('#ld-name').value = st.name; $('#ld-date').value = st.date; $('#ld-payer').value = people.some((p) => p.id === st.payer) ? st.payer : '';
         const items = () => (st.receipt ? st.receipt.items : []);
         const asg = (iid, pid) => ((st.assign[iid] || {})[pid]) || 0;
         const tot = (iid) => Object.values(st.assign[iid] || {}).reduce((a, b) => a + b, 0);
@@ -176,16 +238,21 @@
             btn.disabled = !any;
             btn.textContent = any ? `套用到記帳（共 ${yen(sum)}）` : '套用到記帳';
         }
-        const renderAll = () => { renderMain(); renderRes(); persist(); };
+        const renderAll = () => { renderMain(); renderRes(); keep(st); };
 
         function doImport(text, from) {
-            const p = parseReceipt(text);
+            const p = parseImport(text, people);
             if (p.error) { say(`匯入失敗${from ? '（' + from + '）' : ''}：${p.error}`, true); return; }
             if (Object.values(st.assign).some((r) => Object.keys(r).length) && !confirm('匯入新收據會清空目前的品項分配，確定嗎？')) return;
-            st = { ...st, receipt: p.receipt, assign: {}, coupon: true };
+            st.receipt = p.receipt; st.assign = p.assign || {};
+            if (p.assign) { st.basis = p.basis; st.coupon = p.coupon; } else st.coupon = true;
+            if (!st.name) { st.name = p.receipt.name; $('#ld-name').value = st.name; }
+            if (!st.date && p.receipt.date) { st.date = p.receipt.date; $('#ld-date').value = st.date; }
             renderAll();
-            say(`已匯入「${p.receipt.name}」，共 ${p.receipt.items.length} 項。`);
-            $('#ld-imp').open = false;
+            say([`已匯入「${p.receipt.name}」，共 ${p.receipt.items.length} 項。`,
+                p.assign ? (p.matched.length ? `已依名字帶入分配：${p.matched.join('、')}` : '檔案裡的朋友名字都和團員名單對不上，分配沒有帶入。') : '',
+                p.missing.length ? `找不到對應團員，這些人的分配沒帶入：${p.missing.join('、')}（請先在團員名單用相同名字新增，再重新匯入）` : ''].filter(Boolean).join('\n'), p.missing.length > 0);
+            $('#ld-imp').open = !!p.missing.length;
             $('#ld-paste').value = '';
         }
         function copy(t) {
@@ -212,14 +279,22 @@
                     if (c.amount > 0) { parts[p.id] = String(c.amount); members.push(p.id); if (S.basis === 'before' && c.refund > 0) rf[p.id] = c.refund; }
                 });
                 if (!members.length) return;
-                const out = { name: st.receipt.name, date: st.receipt.date, members, parts, rf };
+                const out = { id: st.id, name: st.name.trim() || st.receipt.name, date: st.date || st.receipt.date, payer: people.some((p) => p.id === st.payer) ? st.payer : '', members, parts, rf };
+                const o = curOpts;
                 close();
-                opts.onApply(out);
+                o.onApply(out);
             }
+        });
+        el.addEventListener('input', (ev) => {
+            const t = ev.target;
+            if (t.id === 'ld-name') { st.name = t.value; keep(st); }
+            else if (t.id === 'ld-date') { st.date = t.value; keep(st); }
         });
         el.addEventListener('change', (ev) => {
             const t = ev.target;
-            if (t.dataset && t.dataset.a === 'coupon') { st.coupon = t.checked; renderAll(); }
+            if (t.id === 'ld-payer') { st.payer = t.value; keep(st); }
+            else if (t.id === 'ld-date') { st.date = t.value; keep(st); }
+            else if (t.dataset && t.dataset.a === 'coupon') { st.coupon = t.checked; renderAll(); }
             else if (t.id === 'ld-file') {
                 const f = t.files && t.files[0]; if (!f) return;
                 const rd = new FileReader();
@@ -233,7 +308,11 @@
     }
     function close() {
         const el = typeof document !== 'undefined' && document.getElementById('ld-root');
-        if (el) { el.remove(); document.body.style.overflow = ''; }
+        if (!el) return;
+        el.remove(); document.body.style.overflow = '';
+        if (cur) keep(cur);
+        const o = curOpts; cur = curOpts = null;
+        if (o && o.onClose) o.onClose();
     }
-    return { open, close, calcPerson, parseReceipt, buildPrompt, parseNum };
+    return { open, close, list, remove, calcPerson, parseReceipt, parseImport, buildPrompt, parseNum };
 });

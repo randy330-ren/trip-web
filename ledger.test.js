@@ -222,5 +222,15 @@ t('退稅分配：依預計退稅比例拆開，加總等於實際退稅', () =>
     const r = C.allocate(1500, [54, 120, 30]);
     assert.strictEqual(r.reduce((x, y) => x + y, 0), 1500);
 });
+t('明細分帳：舊版匯出檔依名字對應團員、帶回分配與設定', () => {
+    const old = { app: 'donki-split', receipt: { items: [{ id: 1, jp: 'A', unit: 100, qty: 3 }, { id: 2, jp: 'B', unit: 200, qty: 1 }] },
+        people: [{ id: 'p1', name: '冠廷' }, { id: 'p2', name: '路人' }], assign: { 1: { p1: 2, p2: 5 }, 2: { p2: 1 } }, s: { basis: 'after', coupon: false } };
+    const r = LD.parseImport(JSON.stringify(old), [{ id: 'x1', name: '冠廷' }, { id: 'x2', name: '安萱' }]);
+    assert.deepStrictEqual(r.assign, { 1: { x1: 2 } });
+    assert.deepStrictEqual(r.missing, ['路人']);
+    assert.strictEqual(r.basis, 'after');
+    assert.strictEqual(r.coupon, false);
+    assert.strictEqual(LD.parseImport('{"items":[{"unit":1}]}', []).assign, null);
+});
 
 console.log(`\n全部通過：${pass} 項`);
