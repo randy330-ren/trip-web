@@ -204,7 +204,7 @@ const LD = require('./ledger-detail.js');
 t('明細分帳：未稅 8%/10% 計稅、折扣、免稅前後與退稅取整', () => {
     const it = (unit, rate, star = true) => ({ unit, rate, star });
     const a = LD.calcPerson([{ item: it(227, 8), n: 3 }, { item: it(1980, 10, false), n: 1 }], { basis: 'before', taxMode: 'excl', disc: 1 });
-    assert.deepStrictEqual(a, { gross: 2913, refund: 54, amount: 2913 });
+    assert.deepStrictEqual({ g: a.gross, r: a.refund, a: a.amount, b: a.base, t: a.tax }, { g: 2913, r: 54, a: 2913, b: 2661, t: 252 });
     assert.strictEqual(LD.calcPerson([{ item: it(227, 8), n: 3 }], { basis: 'after', taxMode: 'excl', disc: 1 }).amount, 735 - 54);
     assert.strictEqual(LD.calcPerson([{ item: it(1100, 10), n: 1 }], { basis: 'before', taxMode: 'incl', disc: 1 }).refund, 100);
     assert.strictEqual(LD.calcPerson([{ item: it(1000, 10), n: 1 }], { basis: 'before', taxMode: 'excl', disc: 0.95 }).gross, 1045);

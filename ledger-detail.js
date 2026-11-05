@@ -25,7 +25,7 @@
             if (item.star) refund += t;
         }
         const gross = base + tax;
-        return { gross: Math.round(gross), refund: Math.round(refund), amount: Math.round(s.basis === 'after' ? gross - refund : gross) };
+        return { base: Math.round(base), tax: Math.round(tax), gross: Math.round(gross), refund: Math.round(refund), amount: Math.round(s.basis === 'after' ? gross - refund : gross) };
     }
     function extractJSON(text) {
         if (typeof text !== 'string' || !text.trim()) return { error: '內容是空的' };
@@ -186,6 +186,7 @@
         const cnt = (pid) => items().reduce((a, it) => a + asg(it.id, pid), 0);
         const linesFor = (pid) => items().map((item) => ({ item, n: asg(item.id, pid) })).filter((l) => l.n > 0);
         const cfg = () => { const r = st.receipt; return { basis: st.basis, taxMode: r.taxMode, disc: st.coupon && r.couponPercent > 0 ? 1 - r.couponPercent / 100 : 1 }; };
+        const shut = {};
         const color = (pid) => COLORS[Math.max(0, people.findIndex((p) => p.id === pid)) % COLORS.length];
         function setQty(iid, pid, n) {
             const it = items().find((x) => x.id === iid); if (!it) return;
@@ -223,7 +224,12 @@
             people.forEach((p) => {
                 const lines = linesFor(p.id); if (!lines.length) return;
                 const c = calcPerson(lines, S); any = true; sum += c.amount;
-                html += `<div class="lg-pv-row"><span style="color:${color(p.id)};font-weight:800">${esc(p.name)}<small>${lines.reduce((a, l) => a + l.n, 0)} 件${S.basis === 'before' && c.refund > 0 ? `・預計退稅 ${yen(c.refund)}` : ''}</small></span><span>${yen(c.amount)}</span></div>`;
+                const open = !shut[p.id];
+                html += `<div class="ld-rp"><button type="button" class="ld-rh" data-a="rexp" data-id="${esc(p.id)}"><span style="color:${color(p.id)};font-weight:800">${esc(p.name)}<i>${open ? '▲' : '▼'}</i><small>${lines.reduce((a, l) => a + l.n, 0)} 件${S.basis === 'before' && c.refund > 0 ? `・預計退稅 ${yen(c.refund)}` : ''}</small></span><b>${yen(c.amount)}</b></button>` +
+                    (open ? `<ul class="ld-rl">${lines.map((l) => `<li><span>${esc(l.item.zh || l.item.jp)} × ${l.n}${l.item.star ? '' : '（不退稅）'}</span><span>${yen(l.item.unit * l.n * S.disc)}</span></li>`).join('')}</ul>
+                        <div class="ld-rb"><div><span>品項小計（${S.disc < 1 ? '折後、' : ''}未稅）</span><span>${yen(c.base)}</span></div><div><span>消費稅</span><span>${yen(c.tax)}</span></div>
+                        ${S.basis === 'after' ? `<div class="neg"><span>預計退稅</span><span>−${yen(c.refund)}</span></div>` : ''}<div><b>應付（${S.basis === 'after' ? '免稅後' : '免稅前'}）</b><b>${yen(c.amount)}</b></div>
+                        ${S.basis === 'before' && c.refund > 0 ? `<div class="note"><span>出境後預計可退（不含於上方）</span><span>${yen(c.refund)}</span></div>` : ''}</div>` : '') + '</div>';
             });
             if (!any) html += '<p class="lg-muted">尚未分配任何品項。</p>';
             const left = items().map((item) => ({ item, n: item.qty - tot(item.id) })).filter((l) => l.n > 0);
@@ -264,6 +270,7 @@
             const a = b.dataset.a, iid = +b.dataset.i;
             if (a === 'close') close();
             else if (a === 'basis') { st.basis = b.dataset.v; renderAll(); }
+            else if (a === 'rexp') { shut[b.dataset.id] = !shut[b.dataset.id]; renderRes(); }
             else if (a === 'pick') { st.active = b.dataset.id; renderAll(); }
             else if (a === 'inc' || a === 'dec') { setQty(iid, st.active, asg(iid, st.active) + (a === 'inc' ? 1 : -1)); renderAll(); }
             else if (a === 'takeall') { items().forEach((it) => { const rem = it.qty - tot(it.id); if (rem > 0) setQty(it.id, st.active, asg(it.id, st.active) + rem); }); renderAll(); }

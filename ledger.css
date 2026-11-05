@@ -282,3 +282,15 @@ textarea.lg-in { resize: vertical; }
 .lg-pend b { display: block; font-size: 14px; word-break: break-all; }
 .lg-pend small { font-size: 11px; color: var(--lg-muted); }
 .lg-pend > span:last-child { display: flex; gap: 6px; flex-shrink: 0; }
+.ld-rp { border-top: 1px dashed #e5ddcf; }
+.ld-rp:first-of-type { border-top: 0; }
+.ld-rh { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; width: 100%; padding: 8px 0; text-align: left; font-size: 13px; }
+.ld-rh b { font-size: 15px; color: #1f2937; }
+.ld-rh i { font-style: normal; font-size: 10px; margin-left: 4px; color: var(--lg-muted); }
+.ld-rh small { display: block; font-size: 11px; font-weight: 500; color: var(--lg-muted); }
+.ld-rl { list-style: none; margin: 0 0 6px; padding: 0; font-size: 12px; color: var(--lg-muted); }
+.ld-rl li { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; }
+.ld-rb { margin-bottom: 8px; padding: 6px 8px; border-radius: 10px; background: #f6f3ec; font-size: 12px; }
+.ld-rb > div { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; }
+.ld-rb .neg { color: var(--lg-pos); }
+.ld-rb .note { color: var(--lg-muted); font-size: 11px; }
