@@ -1529,7 +1529,34 @@
         }, { passive: true });
     }
 
+    // 從頂端帳務提醒跳進來：切到明細（或清帳）並讓相關項目閃兩下
+    function focusItems(ex, tr) {
+        build(); bind();
+        const useEx = ex.length > 0;
+        if (useEx) {
+            S.filter = { ...S.filter, scope: 'group', dates: [], cats: [], payer: '', members: [], cur: '', q: '' };
+            ex.forEach((id) => { const e = E()[id]; if (e && e.date) S.listShut[e.date] = false; });
+            renderFilterOpts(); setTab('list'); setSub('list'); renderItems();
+        } else {
+            S.fold.tr = false;
+            setTab('list'); setSub('settle'); renderSettle();
+        }
+        const t0 = Date.now();
+        const find = () => (useEx
+            ? ex.map((id) => document.querySelector(`#lg-items .lg-item-h[data-id="${id}"]`)).filter(Boolean).map((b) => b.closest('.lg-item'))
+            : tr.map((id) => document.querySelector(`#lg-p-list [data-act="tr-done"][data-id="${id}"], #lg-s-settle [data-act="tr-done"][data-id="${id}"]`)).filter(Boolean).map((b) => b.closest('.lg-tr')).filter(Boolean));
+        const tick = () => {
+            const els = find();
+            if (els.length) {
+                els[0].scrollIntoView({ block: 'center' });
+                els.forEach((el) => { el.classList.remove('lg-flash'); void el.offsetWidth; el.classList.add('lg-flash'); setTimeout(() => el.classList.remove('lg-flash'), 1600); });
+            } else if (Date.now() - t0 < 5000) setTimeout(tick, 150);
+        };
+        tick();
+    }
+
     window.LEDGER = {
+        focus: focusItems,
         open() { build(); bind(); render(); if (S.tab === 'fx') setTab('fx'); },
         onAuth() { bind(); render(); }
     };

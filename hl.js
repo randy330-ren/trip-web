@@ -12,24 +12,30 @@
     const cssUrl = (u) => esc(String(u).replace(/["'()\\\s]/g, (c) => encodeURIComponent(c)));
     const isCld = (u) => /^https:\/\/res\.cloudinary\.com\//.test(String(u || ''));
     const TITLES = {
-        early: ['⏰', '準時王', '當天第一個分享照片的旅伴'],
+        early: ['⏰', '頭香王', '當天第一個分享照片的旅伴'],
         share: ['📸', '分享王', '當天分享最多照片的旅伴'],
         welcome: ['💖', '歡迎王', '當天你的照片收到最多心情'],
         topic: ['💬', '話題王', '當天最多留言的照片是你分享的'],
         helper: ['🙌', '熱心王', '當天幫大家按最多心情'],
         pop: ['👑', '旅程人氣王', '整趟旅程收到最多心情'],
-        full: ['📅', '全勤王', '每天都有分享照片']
+        full: ['📅', '全勤王', '每天都有分享照片'],
+        pay: ['💳', '墊費王', '當天墊付金額最多的旅伴', '整趟旅程墊付金額最多的旅伴'],
+        cnt: ['📝', '記帳王', '當天記帳筆數最多的旅伴', '整趟旅程記帳筆數最多的旅伴'],
+        spend: ['💸', '花錢王', '當天應分攤金額最多的旅伴', '整趟旅程應分攤金額最多的旅伴'],
+        save: ['🪙', '最省王', '當天應分攤金額最少的旅伴', '整趟旅程應分攤金額最少的旅伴']
     };
 
     const ORDER = ['topic', 'early', 'helper', 'share', 'welcome'];
+    const LG = ['pay', 'cnt', 'spend', 'save'];
+    const ALLD = ORDER.concat(LG);
     const NT = { at: ['📌', '有人在貼文中標注你'], all: ['📌', '有人@全部'], myl: ['❤️', '有人對你的貼文按讚'], myc: ['💬', '有人對你的貼文留言'], photo: ['📸', '有人新增了貼文'], cmt: ['💬', '有人對貼文留言'] };
 
     const S = {
         built: false, active: false, live: false, booted: false, jumped: false,
         photos: cacheLoad('highlights') || {}, photosLive: false, emojis: cacheLoad('hl_emojis'), emoLoaded: false, seeding: false,
         tasks: [], gone: new Set(), qerr: '',
-        react: {}, comments: {}, members: {}, rts: {}, award: {}, ready: {}, pubRefs: [], privRefs: [], privKey: null,
-        seen: null, dis: new Set(), fl: new Set(), nl: [], settling: new Set(),
+        react: {}, comments: {}, members: {}, rts: {}, award: {}, lg: { people: {}, exps: {}, ok: true }, ready: {}, tload: null, fid: null, pubRefs: [], privRefs: [], privKey: null,
+        seen: null, dis: new Set(), nl: [], settling: new Set(),
         open: new Set(), html: {}, raf: 0, det: null, zoom: false, toBottom: false, sheet: null, pickDay: null, winOpen: false
     };
 
@@ -152,20 +158,70 @@
         ORDER.forEach(id => { const u = (r[id] || []).find(x => !used.has(x)); if (u) { out[id] = u; used.add(u); } });
         return out;
     }
+    // ---------- 記帳獎（團體記帳；金額用基準幣別；只算有綁定帳號的團員） ----------
+    const lgOn = () => signed() && !!S.ready.lgp && !!S.ready.lge && S.lg.ok;
+    const lgNew = () => ({ pay: {}, cnt: {}, spend: {} });
+    let lgMemo = null;
+    function lgAgg() {
+        const L = S.lg;
+        if (lgMemo && lgMemo.e === L.exps && lgMemo.p === L.people && lgMemo.m === S.members) return lgMemo.r;
+        const pu = {};
+        Object.entries(L.people).forEach(([pid, p]) => { if (p && p.uid) pu[pid] = p.uid; });
+        const byDate = {}, all = lgNew();
+        const add = (m, u, n, t) => { if (!u || isAdm(u)) return; const x = m[u] || (m[u] = { n: 0, t }); x.n += n; if (t < x.t) x.t = t; };
+        Object.values(L.exps).forEach(e => {
+            if (!e || !e.shares) return;
+            const t = e.ts || 0, bd = byDate[e.date] || (byDate[e.date] = lgNew());
+            [bd, all].forEach(g => {
+                add(g.pay, pu[e.payer], Number.isInteger(e.baseAmt) ? e.baseAmt : 0, t);
+                add(g.cnt, e.by, 1, t);
+                Object.entries(e.shares).forEach(([pid, s]) => add(g.spend, pu[pid], s && Number.isInteger(s.b) ? s.b : 0, t));
+            });
+        });
+        const r = { byDate, all };
+        lgMemo = { e: L.exps, p: L.people, m: S.members, r };
+        return r;
+    }
+    function lgPick(g) {
+        const out = {}, best = (m) => {
+            let b = null;
+            Object.entries(m).forEach(([u, v]) => { if (v.n > 0 && (!b || v.n > b.n || (v.n === b.n && v.t < b.t))) b = { u, n: v.n, t: v.t }; });
+            return b;
+        };
+        const p = best(g.pay), c = best(g.cnt), s = best(g.spend);
+        if (p) out.pay = p.u;
+        if (c) out.cnt = c.u;
+        if (s) out.spend = s.u;
+        const es = Object.entries(g.spend);
+        if (es.length >= 2) {
+            let lo = null, hi = 0;
+            es.forEach(([u, v]) => { hi = Math.max(hi, v.n); if (!lo || v.n < lo.n || (v.n === lo.n && v.t < lo.t)) lo = { u, n: v.n, t: v.t }; });
+            if (lo.n < hi) out.save = lo.u;
+        }
+        return out;
+    }
+    const lgDay = (k) => {
+        if (!lgOn()) return {};
+        const m = meta(k);
+        return lgPick(lgAgg().byDate[`${TRIP_YEAR}-${pad(m.month)}-${pad(m.day)}`] || lgNew());
+    };
     function dayTitles(k) {
         const f = S.award[k];
-        if (signed() && S.ready.award && f) return Object.fromEntries(ORDER.filter(id => f[id]).map(id => [id, f[id]]));
+        const lg = f && f.lg ? Object.fromEntries(LG.filter(id => f[id]).map(id => [id, f[id]])) : lgDay(k);
+        if (signed() && S.ready.award && f) return { ...Object.fromEntries(ORDER.filter(id => f[id]).map(id => [id, f[id]])), ...lg };
         const end = dayEnd(k);
-        return assign(ranks(k, Date.now() >= end ? end : 0));
+        return { ...assign(ranks(k, Date.now() >= end ? end : 0)), ...lg };
     }
     // 日本時間當天 24:00 過後，第一位開啟花絮的會員把結果寫進資料庫；先寫入者為準，之後不再變動
     function settle() {
-        if (!signed() || !allReady()) return;
+        if (!signed() || !allReady() || !S.ready.lgp || !S.ready.lge) return;
         dayMeta.forEach(d => {
-            const k = 'd' + d.n, end = dayEnd(k);
-            if (S.award[k] || S.settling.has(k) || Date.now() < end) return;
+            const k = 'd' + d.n, end = dayEnd(k), f = S.award[k];
+            if (S.settling.has(k) || Date.now() < end || (f && (f.lg || !S.lg.ok))) return;
             S.settling.add(k);
-            createDb().ref('hl_award/' + k).set({ ...assign(ranks(k, end)), ts: firebase.database.ServerValue.TIMESTAMP }).catch(() => { });
+            const lg = S.lg.ok ? { ...lgDay(k), lg: true } : {};
+            const ref = createDb().ref('hl_award/' + k);
+            (f ? ref.update(lg) : ref.set({ ...assign(ranks(k, end)), ...lg, ts: firebase.database.ServerValue.TIMESTAMP })).catch(() => { });
         });
     }
     function tripTitles() {
@@ -181,6 +237,7 @@
             const pp = pickMax(Object.entries(groupBy(ps)).map(([u, l]) => ({ u, n: l.reduce((s, p) => s + rCount(p), 0), t: l[0].ts, min: 1 })));
             if (pp) out.pop = pp.u;
         }
+        if (lgOn()) Object.assign(out, lgPick(lgAgg().all));
         return out;
     }
     const medal = (id, uids, dark) => `<span class="hl-md${dark ? ' dark' : ''}">${TITLES[id][0]} ${TITLES[id][1]} ${esc([].concat(uids).map(nameOf).join('、'))}</span>`;
@@ -201,6 +258,7 @@
         off(S.privRefs);
         S.privKey = key;
         S.ready = {};
+        S.lg = { people: {}, exps: {}, ok: true };
         const c = key ? cacheLoad('hl_priv_' + key) : null;
         S.react = (c && c.r) || {};
         S.comments = (c && c.c) || {};
@@ -214,6 +272,8 @@
             on(d.ref('hl_comments'), S.privRefs, (v) => { S.comments = v || {}; S.ready.comments = 1; save(); sched(); });
             on(d.ref('members'), S.privRefs, (v) => { S.members = v || {}; S.ready.members = 1; save(); sched(); });
             on(d.ref('hl_rts'), S.privRefs, (v) => { S.rts = v || {}; S.ready.rts = 1; save(); sched(); }, () => { S.ready.rts = 1; sched(); });
+            on(d.ref('ledger/people'), S.privRefs, (v) => { S.lg.people = v || {}; S.ready.lgp = 1; sched(); }, () => { S.lg.ok = false; S.ready.lgp = 1; sched(); });
+            on(d.ref('ledger/expenses'), S.privRefs, (v) => { S.lg.exps = v || {}; S.ready.lge = 1; sched(); }, () => { S.lg.ok = false; S.ready.lge = 1; sched(); });
             on(d.ref('hl_award'), S.privRefs, (v) => { S.award = v || {}; S.ready.award = 1; save(); sched(); }, () => { S.ready.award = 1; sched(); });
         }
         sched();
@@ -262,29 +322,14 @@
         S.booted = true;
         document.addEventListener('visibilitychange', () => { if (document.hidden && S.active) markRead(); });
         window.addEventListener('pagehide', () => { if (S.active) markRead(); });
-        $('hl-notices').addEventListener('click', (e) => {
-            const b = e.target.closest('[data-i]'), n = b && S.nl[+b.dataset.i];
-            if (!n) return;
-            S.dis.add(n.key);
-            S.jumped = true;
-            if (currentTab !== 'highlights') switchTab('highlights', { skipScrollTop: true });
-            if (!S.built) build();
-            renderNow();
-            if (n.type === 'award') jumpToDay(n.n, { flash: true }); else openDet(n.day, n.day, n.id);
-            renderNotices();
-        });
-        ['upd-bar', 'rem-bar'].forEach(id => { const ub = $(id); if (ub && window.MutationObserver) new MutationObserver(sched).observe(ub, { attributes: true, attributeFilter: ['class'] }); });
+        setInterval(() => { if (S.live) renderNotices(); }, 60000);
     }
     function sched() { if (!S.raf) S.raf = requestAnimationFrame(() => { S.raf = 0; renderNow(); }); }
     function put(id, html) { if (S.html[id] === html) return; S.html[id] = html; const el = $(id); if (el) el.innerHTML = html; }
-    function featured(all, si) {
-        let f = null;
-        all.forEach(p => {
-            if (!f) { f = p; return; }
-            const a = si ? rCount(p) : 0, b = si ? rCount(f) : 0;
-            if (a > b || (a === b && p.ts > f.ts)) f = p;
-        });
-        return f;
+    function featured(all) {
+        let f = S.fid && all.find(p => p.id === S.fid);
+        if (!f && all.length) { f = all[Math.floor(Math.random() * all.length)]; S.fid = f.id; }
+        return f || null;
     }
 
     function renderNow() {
@@ -294,7 +339,7 @@
         const nc = si ? all.reduce((n, p) => n + comments(p).length, 0) : 0;
         const stats = [[all.length, '張旅行照片'], [new Set(real.map(p => p.uid)).size, '位旅伴分享']];
         if (si) stats.push([nc, '則留言']);
-        const trip = medalsHtml(tripTitles(), ['pop', 'full'], true);
+        const trip = medalsHtml(tripTitles(), ['pop', 'full', ...LG], true);
         const act = activeTasks(), running = act.some(t => BUSY.includes(t.st));
         put('hl-head', `<div class="hl-ht"><h2>📸 旅途花絮</h2><span class="hl-pills">${si ? `<button type="button" data-a="tasks" class="hl-pill">📋 任務${act.length ? `<b class="hl-bdg">${act.length}</b>` : ''}</button>` : ''}<button type="button" data-a="album" class="hl-pill"${all.length ? '' : ' disabled'}>共同相簿</button></span></div>
             <p class="hl-sub">${si ? `每人每天最多分享 ${MAX_HIGHLIGHTS_PER_DAY} 張，記錄這趟旅程的片刻` : '登入後可以分享照片、留言和心情'}</p>
@@ -303,7 +348,7 @@
             <div class="hl-acts">${si ? '<button type="button" data-a="share" class="hl-btn pri">＋ 分享照片</button>' : '<button type="button" data-a="login" class="hl-btn pri">👤 會員登入</button>'}
             <button type="button" data-a="random" class="hl-btn soft"${all.length ? '' : ' disabled'}>🎲 隨機回憶</button></div>`);
         put('hl-pend', act.length ? `<div class="hl-pend"><span>${running ? `📤 正在上傳…（還剩 ${act.length} 張）` : `📤 還有 ${act.length} 張照片待上傳，連上網路會自動上傳`}</span><button type="button" data-a="tasks" class="hl-btn line sm">查看任務</button></div>` : '');
-        const f = featured(all, si);
+        const f = featured(all);
         put('hl-feat', f ? `<div class="hl-sec"><span>✨ 本次旅行精選</span><button type="button" data-a="det" data-l="all" data-d="${f.day}" data-i="${esc(f.id)}">看看回憶 →</button></div>
             <button type="button" class="hl-feat" data-a="det" data-l="all" data-d="${f.day}" data-i="${esc(f.id)}">
             <span class="hl-fbg" style="background-image:url('${cssUrl(f.thumb || f.url)}')"></span>
@@ -328,7 +373,7 @@
             <span class="hl-tm"><span class="hl-ta">${esc(p.author || '')}</span>${si ? `<span class="hl-cnt"><span>${emoText(Object.values(reacts(p)))}</span><span>💬 ${comments(p).length}</span></span>` : ''}</span></span></button>`;
         const sum = si && ps.length ? `<span class="hl-dsum">${emoText(ps.flatMap(p => Object.values(reacts(p))))} · 💬 ${ps.reduce((n, p) => n + comments(p).length, 0)} 則留言</span>` : '<span></span>';
         const more = ps.length > SHOW ? `<button type="button" data-a="more" data-d="${k}" class="hl-link">${exp ? '收合 ▲' : `查看全部 ${ps.length} 張 →`}</button>` : '';
-        const md = medalsHtml(dayTitles(k), ['early', 'share', 'welcome', 'topic', 'helper']);
+        const md = medalsHtml(dayTitles(k), ['early', 'share', 'welcome', 'topic', 'helper', ...LG]);
         return `<div class="hl-dh"><div><p class="hl-dt">${pad(m.month)}/${pad(m.day)} ${m.week} · DAY ${m.n}</p>${sub ? `<p class="hl-ds">${esc(sub)}</p>` : ''}</div>${ps.length ? `<span class="hl-pill sm">${ps.length} 張照片</span>` : ''}</div>
             ${md ? `<div class="hl-mds">${md}</div>` : ''}
             ${ps.length ? `<div class="hl-grid">${show.map(tile).join('')}</div>` : '<p class="hl-empty">還沒有人分享這天的照片。</p>'}
@@ -372,7 +417,7 @@
         const fresh = [];
         dayMeta.forEach(d => {
             const k = 'd' + d.n, f = S.award[k];
-            if (f) ORDER.forEach(id => { if (f[id] === me && !seen['a_' + k + '_' + id]) fresh.push({ key: 'a_' + k + '_' + id, id, k }); });
+            if (f) ALLD.forEach(id => { if (f[id] === me && !seen['a_' + k + '_' + id]) fresh.push({ key: 'a_' + k + '_' + id, id, k }); });
         });
         Object.entries(tripTitles()).forEach(([id, u]) => { if ([].concat(u).includes(me) && !seen['trip_' + id]) fresh.push({ key: 'trip_' + id, id, k: null }); });
         if (!fresh.length) return;
@@ -389,7 +434,7 @@
         ov.innerHTML = `<div class="hl-conf">${Array.from({ length: 28 }, (_, i) => `<i style="left:${Math.random() * 100}%;background:${colors[i % colors.length]};animation-delay:${(Math.random() * .5).toFixed(2)}s;transform:rotate(${Math.round(Math.random() * 360)}deg)"></i>`).join('')}</div>
             <div class="hl-wcard"><div class="hl-wic">${T[0]}</div>
             <p class="hl-wk">${m.k ? `D${meta(m.k).n} 花絮小挑戰` : '旅程挑戰'}</p>
-            <p class="hl-wt">你是${m.k ? '今天的' : ''}${T[1]}！</p><p class="hl-wd">${T[2]}</p>
+            <p class="hl-wt">你是${m.k ? '今天的' : ''}${T[1]}！</p><p class="hl-wd">${m.k ? T[2] : (T[3] || T[2])}</p>
             ${rest.length ? `<div class="hl-mds c">${rest.map(r => `<span class="hl-md">${TITLES[r.id][0]} 同時獲得：${r.k ? `D${meta(r.k).n} ` : ''}${TITLES[r.id][1]}</span>`).join('')}</div>` : ''}
             <button type="button" class="hl-btn pri">太棒了</button></div>`;
         document.body.appendChild(ov);
@@ -434,24 +479,71 @@
         const out = Object.values(best);
         Object.entries(S.award).forEach(([k, f]) => {
             if (!f || !(f.ts > seen) || !meta(k)) return;
-            const ids = ORDER.filter(id => f[id]);
+            const ids = ALLD.filter(id => f[id]);
             if (!ids.length || ids.some(id => f[id] === me)) return;
             out.push({ type: 'award', ts: f.ts, n: meta(k).n, key: 'award:' + k, text: `D${meta(k).n} 恭喜 ${ids.map(id => nameOf(f[id]) + '成為' + TITLES[id][1]).join('、')}` });
         });
-        const slots = 2 - ['upd-bar', 'rem-bar'].filter(id => $(id) && $(id).classList.contains('show')).length;
-        const list = out.filter(n => !S.dis.has(n.key)).sort((a, b) => a.ts - b.ts);
-        return list.slice(Math.max(0, list.length - slots));
+        return out.filter(n => !S.dis.has(n.key)).sort((a, b) => b.ts - a.ts);
+    }
+    // ---------- 發文提醒（日本時間：8:00 起提醒昨天、12:00 起提醒今天；打開 App 時判斷） ----------
+    const prKey = () => 'hl_pr_' + currentUserUid;
+    function prLoad() { try { return JSON.parse(localStorage.getItem(prKey()) || '{}') || {}; } catch (e) { return {}; } }
+    function prView(keys) {
+        const v = prLoad();
+        keys.forEach(k => { v[k] = Date.now(); });
+        try { localStorage.setItem(prKey(), JSON.stringify(v)); } catch (e) { }
+    }
+    function postDue() {
+        const me = memberUser && memberUser.uid;
+        if (!me || !S.live || !S.photosLive || !S.ready.members || S.tload !== me || isEditor || isAdm(me)) return [];
+        const j = new Date(Date.now() + 9 * 36e5), h = j.getUTCHours();
+        const t = j.getUTCFullYear() === TRIP_YEAR && dayMeta.find(d => d.month === j.getUTCMonth() + 1 && d.day === j.getUTCDate());
+        if (!t) return [];
+        const posted = (k) => myCount(k) + taskCount(k) > 0, out = [];
+        if (h >= 8 && t.n >= 2 && !posted('d' + (t.n - 1))) out.push({ key: 'post:yest:d' + (t.n - 1), k: 'd' + (t.n - 1), txt: '📝 昨天沒有發貼文哦，點擊發貼文？' });
+        if (h >= 12 && !posted('d' + t.n)) out.push({ key: 'post:today:d' + t.n, k: 'd' + t.n, txt: '📝 今天還沒有發文哦，點擊發貼文' });
+        return out;
+    }
+    function postEntries() {
+        const seen = prLoad();
+        return postDue().filter(p => !seen[p.key]).map(p => ({
+            key: p.key, txt: p.txt,
+            act: () => goPost(p.k, p.key),
+            close: () => { prView([p.key]); renderNotices(); }
+        }));
+    }
+    function goPost(k, key) {
+        if (key) prView([key]);
+        S.jumped = true;
+        if (currentTab !== 'highlights') switchTab('highlights', { skipScrollTop: true });
+        if (!S.built) build();
+        renderNow();
+        const n = meta(k).n;
+        jumpToDay(n, { instant: true });
+        setTimeout(() => {
+            const b = document.querySelector(`#hl-day${n} [data-a="share"]`);
+            if (b) { b.scrollIntoView({ block: 'center' }); window.flashEl(b); }
+        }, 450);
+    }
+    function goNotice(n) {
+        S.dis.add(n.key);
+        S.jumped = true;
+        if (currentTab !== 'highlights') switchTab('highlights', { skipScrollTop: true });
+        if (!S.built) build();
+        renderNow();
+        if (n.type === 'award') jumpToDay(n.n, { flash: true }); else openDet(n.day, n.day, n.id);
+        renderNotices();
     }
     function renderNotices() {
-        const box = $('hl-notices');
-        if (!box) return;
+        if (!window.NOTI) return;
         S.nl = calcNotices();
-        const fl = (n) => S.fl.has(n.key) ? '' : ' fl';
-        const mk = (n, i, f) => n.type === 'award'
-            ? `<button type="button" class="hl-nt aw${f}" data-i="${i}"><span>🎉 ${esc(n.text)}</span><u>點擊查看</u></button>`
-            : `<button type="button" class="hl-nt${f}" data-i="${i}"><span>${NT[n.type][0]} ${NT[n.type][1]}</span><u>點擊查看</u></button>`;
-        const base = S.nl.map((n, i) => mk(n, i, '')).join('');
-        if (S.html.nt !== base) { S.html.nt = base; box.innerHTML = S.nl.map((n, i) => mk(n, i, fl(n))).join(''); S.nl.forEach(n => S.fl.add(n.key)); }
+        NOTI.set('hl', S.nl.map(n => ({
+            key: n.key, dk: n.type === 'award',
+            txt: n.type === 'award' ? '🎉 ' + n.text : NT[n.type][0] + ' ' + NT[n.type][1],
+            act: () => goNotice(n),
+            close: () => { S.dis.add(n.key); renderNotices(); }
+        })));
+        NOTI.set('post', postEntries());
     }
 
     // ---------- 照片詳細畫面 ----------
@@ -1022,7 +1114,9 @@
             });
             S.tasks.sort((a, b) => a.ts - b.ts);
         }
+        S.tload = uid || null;
         tick();
+        sched();
     }
 
     // ---------- 對外 ----------
@@ -1047,6 +1141,7 @@
             const was = S.active;
             if (was && page !== 'highlights') markRead();
             S.active = page === 'highlights';
+            if (S.active && currentUserUid) { prView(postDue().map(p => p.key)); renderNotices(); }
             if (!S.active && !S.live) off(S.pubRefs); else bindPub();
             bindPriv();
             sched();
