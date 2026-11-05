@@ -1,7 +1,7 @@
 (function () {
     'use strict';
     const C = window.LedgerCore;
-    const VER = '21';
+    const VER = '22';
     const BASE = 'TWD', BASE_DEC = 0;
     const CATS = ['餐飲', '交通', '住宿', '門票', '購物', '其他'];
     const DEC_FIX = { TWD: 0, JPY: 0, KRW: 0 };
@@ -539,6 +539,7 @@
                 f.cur = 'JPY'; f.mode = 'amount'; f.members = order().filter((p) => r.members.includes(p));
                 f.parts = r.parts; f.rf = Object.keys(r.rf).length ? r.rf : null; f.dtId = r.id;
                 if (r.name) f.title = r.name;
+                if (r.note && !f.note.includes(r.note)) f.note = (f.note.trim() ? f.note.trim() + '\n' : '') + r.note, f.note = f.note.slice(0, 200);
                 if (r.date) f.date = r.date;
                 if (r.payer && P()[r.payer]) f.payer = r.payer;
                 if (cats().includes('購物')) f.cat = '購物';

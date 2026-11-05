@@ -136,7 +136,7 @@
     const KEY = 'ledger_dt';
     const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const yen = (n) => '¥' + Math.round(n).toLocaleString('en-US');
-    const blank = () => ({ id: 'd' + Date.now().toString(36), ts: Date.now(), name: '', date: '', payer: '', receipt: null, assign: {}, basis: 'before', coupon: true, active: '' });
+    const blank = () => ({ id: 'd' + Date.now().toString(36), ts: Date.now(), name: '', date: '', payer: '', notes: {}, receipt: null, assign: {}, basis: 'before', coupon: true, active: '' });
     // 待處理資料：每份收據一個草稿（名稱、日期、付款人各自獨立），每次輸入都會暫存，按 ✕ 不會刪除
     let DB = { drafts: {} };
     try {
@@ -163,6 +163,7 @@
         if (!people.length) return;
         curOpts = opts;
         const st = cur = (opts.id && DB.drafts[opts.id]) || blank();
+        if (!st.notes || typeof st.notes !== 'object') st.notes = {};
         if (!people.some((p) => p.id === st.active)) st.active = people[0].id;
         const el = document.createElement('div');
         el.id = 'ld-root'; el.className = 'ld';
@@ -243,16 +244,17 @@
             const box = $('#ld-res'), btn = $('#ld-apply');
             if (!st.receipt) { box.innerHTML = ''; btn.disabled = true; btn.textContent = '套用到記帳'; return; }
             const S = cfg(), r = st.receipt;
-            let html = '<p class="lg-h">每人結果</p>', sum = 0, any = false;
-            const RW = rows();
+            const RW = rows(), anyOpen = RW.some((x) => !shut[x.p.id]);
+            let html = `<div class="ld-rhead"><p class="lg-h">每人結果</p>${RW.length ? `<button type="button" class="lg-btn sm ghost" data-a="rall">${anyOpen ? '全部收合' : '全部展開'}</button>` : ''}</div>`, sum = 0, any = false;
             RW.forEach(({ p, lines, c, adj, amount }) => {
                 any = true; sum += amount;
                 const open = !shut[p.id];
-                html += `<div class="ld-rp"><button type="button" class="ld-rh" data-a="rexp" data-id="${esc(p.id)}"><span style="color:${color(p.id)};font-weight:800">${esc(p.name)}<i>${open ? '▲' : '▼'}</i><small>${lines.reduce((a, l) => a + l.n, 0)} 件${S.basis === 'before' && c.refund > 0 ? `・預計退稅 ${yen(c.refund)}` : ''}</small></span><b>${yen(amount)}</b></button>` +
+                html += `<div class="ld-rp"><button type="button" class="ld-rh" data-a="rexp" data-id="${esc(p.id)}"><span style="color:${color(p.id)};font-weight:800">${esc(p.name)}<i>${open ? '▲' : '▼'}</i><small>${lines.reduce((a, l) => a + l.n, 0)} 件${S.basis === 'before' && c.refund > 0 ? `・預計退稅 ${yen(c.refund)}` : ''}</small></span><b>${yen(amount)}</b></button>` + (!open && st.notes[p.id] ? `<p class="ld-pnote">📝 ${esc(st.notes[p.id])}</p>` : '') +
                     (open ? `<ul class="ld-rl">${lines.map((l) => `<li><span>${esc(l.item.zh || l.item.jp)} × ${l.n}${l.item.star ? '' : '（不退稅）'}</span><span>${yen(l.item.unit * l.n * S.disc)}</span></li>`).join('')}</ul>
                         <div class="ld-rb"><div><span>品項小計（${S.disc < 1 ? '折後、' : ''}未稅）</span><span>${yen(c.base)}</span></div><div><span>消費稅</span><span>${yen(c.tax)}</span></div>
                         ${S.basis === 'after' ? `<div class="neg"><span>預計退稅</span><span>−${yen(c.refund)}</span></div>` : ''}${adj ? `<div class="note"><span>進位調整（對齊收據合計）</span><span>${adj > 0 ? '+' : '−'}${yen(Math.abs(adj))}</span></div>` : ''}<div><b>應付（${S.basis === 'after' ? '免稅後' : '免稅前'}）</b><b>${yen(amount)}</b></div>
-                        ${S.basis === 'before' && c.refund > 0 ? `<div class="note"><span>出境後預計可退（不含於上方）</span><span>${yen(c.refund)}</span></div>` : ''}</div>` : '') + '</div>';
+                        ${S.basis === 'before' && c.refund > 0 ? `<div class="note"><span>出境後預計可退（不含於上方）</span><span>${yen(c.refund)}</span></div>` : ''}</div>
+                        <input class="lg-in ld-pn" data-pn="${esc(p.id)}" maxlength="60" placeholder="${esc(p.name)} 的備註（選填）" value="${esc(st.notes[p.id] || '')}">` : '') + '</div>';
             });
             if (!any) html += '<p class="lg-muted">尚未分配任何品項。</p>';
             const left = items().map((item) => ({ item, n: item.qty - tot(item.id) })).filter((l) => l.n > 0);
@@ -299,6 +301,7 @@
                 const it = items().find((x) => x.id === iid);
                 if (it) { if (a === 'star') it.star = !it.star; else it.rate = it.rate === 8 ? 10 : 8; renderAll(); }
             }
+            else if (a === 'rall') { const RW = rows(), anyOpen = RW.some((x) => !shut[x.p.id]); RW.forEach((x) => { shut[x.p.id] = anyOpen; }); renderRes(); }
             else if (a === 'rexp') { shut[b.dataset.id] = !shut[b.dataset.id]; renderRes(); }
             else if (a === 'pick') { st.active = b.dataset.id; renderAll(); }
             else if (a === 'inc' || a === 'dec') { setQty(iid, st.active, asg(iid, st.active) + (a === 'inc' ? 1 : -1)); renderAll(); }
@@ -313,7 +316,7 @@
                     if (amount > 0) { parts[p.id] = String(amount); members.push(p.id); if (S.basis === 'before' && c.refund > 0) rf[p.id] = c.refund; }
                 });
                 if (!members.length) return;
-                const out = { id: st.id, name: st.name.trim() || st.receipt.name, date: st.date || st.receipt.date, payer: people.some((p) => p.id === st.payer) ? st.payer : '', members, parts, rf };
+                const out = { id: st.id, name: st.name.trim() || st.receipt.name, date: st.date || st.receipt.date, payer: people.some((p) => p.id === st.payer) ? st.payer : '', members, parts, rf, note: people.filter((p) => members.includes(p.id) && (st.notes[p.id] || '').trim()).map((p) => `${p.name}：${st.notes[p.id].trim()}`).join('\n') };
                 const o = curOpts;
                 close();
                 o.onApply(out);
@@ -321,7 +324,8 @@
         });
         el.addEventListener('input', (ev) => {
             const t = ev.target;
-            if (t.id === 'ld-name') { st.name = t.value; keep(st); }
+            if (t.dataset && t.dataset.pn) { if (t.value.trim()) st.notes[t.dataset.pn] = t.value; else delete st.notes[t.dataset.pn]; keep(st); }
+            else if (t.id === 'ld-name') { st.name = t.value; keep(st); }
             else if (t.id === 'ld-date') { st.date = t.value; keep(st); }
         });
         el.addEventListener('change', (ev) => {
