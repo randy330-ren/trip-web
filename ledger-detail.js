@@ -227,6 +227,7 @@
                 <div class="lg-seg sm">${[['before', '免稅前（含稅價）'], ['after', '免稅後（扣預計退稅）']].map(([k, l]) => `<button type="button" data-a="basis" data-v="${k}" class="${st.basis === k ? 'on' : ''}">${l}</button>`).join('')}</div>
                 <p class="lg-muted">${st.basis === 'before' ? '依刷卡當下的價格記帳，預計退稅會一併記下，旅程結束後可在支出明細用「退稅分配」還給大家。' : '直接扣掉預計退稅後記帳，之後不需要再分配退稅。'}</p>
                 ${cp}
+                <p class="lg-muted">品項右邊的「★ 退稅／不退稅」和「8%／10%」可以點一下切換，用來修正 AI 看錯的地方。</p>
                 <p class="ld-sec">分配給誰</p>
                 <div class="lg-chips">${people.map((p) => `<button type="button" data-a="pick" data-id="${esc(p.id)}" class="lg-chip ${p.id === st.active ? 'on' : ''}" style="--c:${color(p.id)}">${esc(p.name)} ${cnt(p.id)}</button>`).join('')}</div>
                 <div class="ld-btns"><button type="button" class="lg-btn sm ghost" data-a="takeall">拿走剩餘</button><button type="button" class="lg-btn sm ghost" data-a="clearp">清除此人</button><button type="button" class="lg-btn sm ghost danger" data-a="resetall">清除全部</button></div>
@@ -234,7 +235,7 @@
                     const mine = asg(it.id, st.active), rem = it.qty - tot(it.id);
                     const badges = people.map((p) => (asg(it.id, p.id) ? `<span class="ld-bdg" style="--c:${color(p.id)}">${esc(p.name)}×${asg(it.id, p.id)}</span>` : '')).join('');
                     return `<div class="ld-item ${mine ? 'sel' : ''}"><div class="ld-i"><b>${esc(it.jp)}</b>${it.zh && it.zh !== it.jp ? `<small>${esc(it.zh)}</small>` : ''}
-                        <small>${yen(it.unit)} × ${it.qty}　${it.star ? `★ ${it.rate}%` : `不退稅 ${it.rate}%`}${it.qty > 1 ? `　剩 ${rem}` : ''}</small>${badges ? `<span class="ld-bdgs">${badges}</span>` : ''}</div>
+                        <small class="ld-meta">${yen(it.unit)} × ${it.qty}<button type="button" class="ld-tg ${it.star ? 'on' : ''}" data-a="star" data-i="${it.id}">${it.star ? '★ 退稅' : '不退稅'}</button><button type="button" class="ld-tg" data-a="rate" data-i="${it.id}">${it.rate}%</button>${it.qty > 1 ? `剩 ${rem}` : ''}</small>${badges ? `<span class="ld-bdgs">${badges}</span>` : ''}</div>
                         <div class="ld-step"><button type="button" data-a="dec" data-i="${it.id}" ${mine ? '' : 'disabled'} aria-label="減少">−</button><span>${mine}</span><button type="button" data-a="inc" data-i="${it.id}" ${rem > 0 ? '' : 'disabled'} aria-label="增加">＋</button></div></div>`;
                 }).join('')}</div>`;
         }
@@ -294,6 +295,10 @@
             const a = b.dataset.a, iid = +b.dataset.i;
             if (a === 'close') close();
             else if (a === 'basis') { st.basis = b.dataset.v; renderAll(); }
+            else if (a === 'star' || a === 'rate') {
+                const it = items().find((x) => x.id === iid);
+                if (it) { if (a === 'star') it.star = !it.star; else it.rate = it.rate === 8 ? 10 : 8; renderAll(); }
+            }
             else if (a === 'rexp') { shut[b.dataset.id] = !shut[b.dataset.id]; renderRes(); }
             else if (a === 'pick') { st.active = b.dataset.id; renderAll(); }
             else if (a === 'inc' || a === 'dec') { setQty(iid, st.active, asg(iid, st.active) + (a === 'inc' ? 1 : -1)); renderAll(); }
