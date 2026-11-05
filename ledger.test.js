@@ -200,4 +200,27 @@ t('日圓結算：日圓支出用原始金額、舊轉帳由台幣換算、新�
     assert.strictEqual(C.deleteImpact(['a', 'b', 'c'], ex, { t1: { from: 'b', to: 'a', amt: 2064, status: 'done' } }, 'e1', U).changes.find((c) => c.p === 'b').from, 0);
 });
 
+const LD = require('./ledger-detail.js');
+t('明細分帳：未稅 8%/10% 計稅、折扣、免稅前後與退稅取整', () => {
+    const it = (unit, rate, star = true) => ({ unit, rate, star });
+    const a = LD.calcPerson([{ item: it(227, 8), n: 3 }, { item: it(1980, 10, false), n: 1 }], { basis: 'before', taxMode: 'excl', disc: 1 });
+    assert.deepStrictEqual(a, { gross: 2913, refund: 54, amount: 2913 });
+    assert.strictEqual(LD.calcPerson([{ item: it(227, 8), n: 3 }], { basis: 'after', taxMode: 'excl', disc: 1 }).amount, 735 - 54);
+    assert.strictEqual(LD.calcPerson([{ item: it(1100, 10), n: 1 }], { basis: 'before', taxMode: 'incl', disc: 1 }).refund, 100);
+    assert.strictEqual(LD.calcPerson([{ item: it(1000, 10), n: 1 }], { basis: 'before', taxMode: 'excl', disc: 0.95 }).gross, 1045);
+});
+t('明細分帳：匯入 JSON 容錯與錯誤訊息', () => {
+    const ok = LD.parseReceipt('好的：\n```json\n{"receipt":{"store":"X","date":"2026/11/05","items":[{"jp":"A","unit":"¥1,000","qty":2}]}}\n```');
+    assert.strictEqual(ok.receipt.items[0].unit, 1000);
+    assert.strictEqual(ok.receipt.items[0].rate, 10);
+    assert.strictEqual(ok.receipt.date, '2026-11-05');
+    assert.ok(LD.parseReceipt('{"items":[]}').error);
+    assert.ok(LD.parseReceipt('{"items":[{"unit":10,"qty":1.5}]}').error);
+    assert.ok(LD.parseReceipt('沒有json').error);
+});
+t('退稅分配：依預計退稅比例拆開，加總等於實際退稅', () => {
+    const r = C.allocate(1500, [54, 120, 30]);
+    assert.strictEqual(r.reduce((x, y) => x + y, 0), 1500);
+});
+
 console.log(`\n全部通過：${pass} 項`);

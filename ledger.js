@@ -1,7 +1,7 @@
 (function () {
     'use strict';
     const C = window.LedgerCore;
-    const VER = '18';
+    const VER = '19';
     const BASE = 'TWD', BASE_DEC = 0;
     const CATS = ['餐飲', '交通', '住宿', '門票', '購物', '其他'];
     const DEC_FIX = { TWD: 0, JPY: 0, KRW: 0 };
@@ -274,7 +274,7 @@
     function blankForm(keep) {
         const k = keep || {};
         return {
-            title: '', amount: '', note: '', parts: {}, rate: null,
+            title: '', amount: '', note: '', parts: {}, rate: null, rf: null,
             cur: k.cur || (curs().includes('JPY') ? 'JPY' : BASE), date: k.date || today(),
             scope: k.scope || 'group', payer: k.payer || '', members: k.members ? k.members.slice() : [], mode: k.mode || 'equal', cat: k.cat || '餐飲'
         };
@@ -293,7 +293,7 @@
             <div id="lg-f-grp">
             <label class="lg-lbl" for="lg-f-payer">付款人</label>
             <select id="lg-f-payer" class="lg-in"></select>
-            <label class="lg-lbl">分帳方式</label>
+            <div class="lg-lblrow"><label class="lg-lbl">分帳方式</label><button type="button" class="lg-link" data-act="detail">🧾 明細分帳</button></div>
             <div id="lg-f-mode" class="lg-seg sm"></div>
             <label class="lg-lbl">分攤成員（可多選）</label>
             <div id="lg-f-members" class="lg-chips"></div>
@@ -457,6 +457,7 @@
             base: BASE, baseAmt: c.sp.baseAmt, date: f.date, payer: c.pe ? 'me' : f.payer, mode: c.pe ? 'equal' : f.mode,
             unit: !c.pe && f.mode === 'each' ? f.amount.trim() : null,
             parts: c.pe || f.mode === 'equal' || f.mode === 'each' ? null : Object.fromEntries(f.members.map((p) => [p, String(f.parts[p] || '0').trim()])),
+            rf: !c.pe && f.mode === 'amount' && f.rf ? Object.fromEntries(Object.entries(f.rf).filter(([p, v]) => f.members.includes(p) && v > 0)) : null,
             shares: c.sp.shares, seed: c.seed, cat: f.cat, note: f.note.trim(), updBy: m.uid, updName: m.name, uts: TS()
         };
         S.saving = true;
@@ -484,7 +485,7 @@
         S.form = {
             title: e.title || '', amount: e.mode === 'each' && e.unit ? e.unit : C.toPlain(e.amount, Number.isInteger(e.dec) ? e.dec : decOf(e.cur)), cur: e.cur, date: e.date || today(),
             scope: pe ? 'personal' : 'group', payer: pe ? '' : e.payer, members: pe ? [] : order().filter((p) => e.shares && e.shares[p]), mode: e.mode || 'equal',
-            parts: { ...(e.parts || {}) }, cat: e.cat || '其他', note: e.note || '', rate: e.cur === BASE ? null : e.rate
+            parts: { ...(e.parts || {}) }, cat: e.cat || '其他', note: e.note || '', rate: e.cur === BASE ? null : e.rate, rf: e.rf ? { ...e.rf } : null
         };
         writeForm();
         S.editSig = formSig();
@@ -514,6 +515,80 @@
         }
         renderParts(true);
         renderPreview();
+    }
+
+    // ---------- 明細分帳與退稅分配 ----------
+    function openDetail() {
+        if (!window.LedgerDetail) return toast('明細分帳模組載入中，請稍後再試');
+        if (!curs().includes('JPY')) return alert('匯率表沒有 JPY，請管理員先到「匯率」頁新增日圓。');
+        const people = activeIds().map((id) => ({ id, name: pname(id) }));
+        if (!people.length) return toast('請先在上方「團員名單」新增團員');
+        LedgerDetail.open({
+            people,
+            onApply(r) {
+                const f = S.form;
+                if (f.cur !== 'JPY') f.rate = null;
+                f.cur = 'JPY'; f.mode = 'amount'; f.members = order().filter((p) => r.members.includes(p));
+                f.parts = r.parts; f.rf = Object.keys(r.rf).length ? r.rf : null;
+                if (!f.title.trim()) f.title = r.name;
+                if (r.date) f.date = r.date;
+                if (cats().includes('購物')) f.cat = '購物';
+                writeForm();
+                toast('已帶入明細分帳，請確認付款人後儲存');
+            }
+        });
+    }
+    const refundOf = (id) => Object.entries(E()).filter(([, x]) => x && x.rfOf === id);
+    function refundHtml(id, e) {
+        const rf = Object.entries(e.rf || {}).filter(([p, v]) => P()[p] && v > 0);
+        if (!rf.length) return '';
+        const done = refundOf(id);
+        if (done.length) return `<p class="lg-muted lg-mt">💴 退稅已分配：${done.map(([, x]) => `${esc(pname(x.payer))} ${money(x.amount, x.cur)}`).join('、')}（要重做請先刪除這些「退稅返還」支出）</p>`;
+        const sum = rf.reduce((s, [, v]) => s + v, 0), friends = rf.some(([p]) => p !== e.payer);
+        return `<p class="lg-muted lg-mt">💴 預計退稅 ${money(sum, e.cur)}：${rf.map(([p, v]) => `${esc(pname(p))} ${money(v, e.cur)}`).join('、')}</p>` +
+            (friends && !planLocked() ? `<div class="lg-actions"><button type="button" class="lg-btn sm" data-act="exp-refund" data-id="${id}">💴 退稅分配</button></div>` : '');
+    }
+    // 退稅收款人（原付款人）退還朋友：每位朋友一筆「朋友付款、收款人分攤」的日圓支出，匯率另外輸入，不動匯率表
+    async function refundFlow(id) {
+        if (!guard()) return;
+        const e = E()[id];
+        if (!e || !e.rf) return;
+        if (planLocked()) return alert(LOCK_MSG);
+        if (refundOf(id).length) return alert('這筆已經分配過退稅了。');
+        const rf = Object.fromEntries(Object.entries(e.rf).filter(([p, v]) => P()[p] && v > 0));
+        const keys = Object.keys(rf), sum = keys.reduce((s, p) => s + rf[p], 0), dec = Number.isInteger(e.dec) ? e.dec : decOf(e.cur);
+        if (!keys.some((p) => p !== e.payer)) return alert('這筆沒有需要退還給朋友的退稅。');
+        let amt, rate, v = { amt: C.toPlain(sum, dec), rate: '' };
+        for (;;) {
+            const r = await openInputModal({ title: '退稅分配', submitLabel: '下一步', fields: [
+                { type: 'note', text: `退稅收款人：${pname(e.payer)}（原付款人）\n預計退稅合計 ${money(sum, e.cur)}（含收款人自己的份）\n匯率另外輸入，不會動到匯率表。` },
+                { key: 'amt', value: v.amt, placeholder: `實際退稅總額（${e.cur}）` },
+                { key: 'rate', value: v.rate, placeholder: `匯率：1 ${e.cur} = ? ${BASE}` }
+            ] });
+            if (!r) return;
+            v = { amt: r.amt, rate: r.rate };
+            amt = C.parseAmount(r.amt, dec); rate = C.parseRate(r.rate);
+            if (!amt.ok || amt.v <= 0) { alert('退稅總額：' + (amt.err || '必須大於零')); continue; }
+            if (!rate.ok) { alert('匯率：' + rate.err); continue; }
+            break;
+        }
+        const alloc = C.allocate(amt.v, keys.map((p) => rf[p])), m = me(), recs = [];
+        keys.forEach((p, i) => {
+            if (p === e.payer || alloc[i] <= 0) return;
+            const sp = C.computeSplit({ amount: alloc[i], dec, mode: 'amount', members: [e.payer], parts: { [e.payer]: C.toPlain(alloc[i], dec) }, rate: rate.s, baseDec: BASE_DEC });
+            if (!sp.ok) return;
+            recs.push({ p, a: alloc[i], rec: {
+                title: `退稅返還：${e.title || ''}`.slice(0, 50), amount: alloc[i], cur: e.cur, dec, rate: rate.s, rateRef: 'manual', base: BASE, baseAmt: sp.baseAmt,
+                date: today(), payer: p, mode: 'amount', unit: null, parts: { [e.payer]: C.toPlain(alloc[i], dec) }, shares: sp.shares, seed: 0, cat: e.cat || '其他',
+                note: `來自「${e.title || ''}」的退稅分配：實際退稅 ${money(amt.v, e.cur)}，匯率 1 ${e.cur} = ${rate.s} ${BASE}`, rfOf: id,
+                by: m.uid, byName: m.name, ts: TS(), updBy: m.uid, updName: m.name, uts: TS()
+            } });
+        });
+        if (!recs.length) return alert('分配後沒有朋友分到金額。');
+        if (!confirm(`建立 ${recs.length} 筆退稅返還？\n` + recs.map((x) => `${pname(x.p)} 收到 ${money(x.a, e.cur)}（≈ ${money(x.rec.baseAmt, BASE)}）`).join('\n') + `\n\n由 ${pname(e.payer)} 退還，匯率 1 ${e.cur} = ${rate.s} ${BASE}`)) return;
+        const ref = wdb().ref('ledger/expenses'), up = {};
+        recs.forEach((x) => { up[ref.push().key] = x.rec; });
+        try { await ref.update(up); toast(`已建立 ${recs.length} 筆退稅返還`); } catch (err) { fail(err); }
     }
 
     async function addCat() {
@@ -793,6 +868,7 @@
                 }).join('')}
                 <p class="lg-muted lg-mt">${pe ? '' : `分帳方式：${esc(modeL)}`}${fx ? `・匯率 1 ${esc(e.cur)} = ${esc(e.rate)} ${BASE}（${String(e.rateRef || '').startsWith('table:') ? '當時匯率表' : '自訂'}）` : ''}</p>
                 ${e.note ? `<p class="lg-note">${esc(e.note)}</p>` : ''}
+                ${pe ? '' : refundHtml(id, e)}
                 <p class="lg-muted">建立：${esc(e.byName || '')} ${when(e.ts)}${e.updName && e.uts !== e.ts ? `・最後修改：${esc(e.updName)} ${when(e.uts)}` : ''}</p>
                 ${!pe && planLocked() ? '<p class="lg-muted lg-mt">🔒 清帳方案已鎖定，需管理員解除鎖定後才能修改。</p>' : `<div class="lg-actions"><button type="button" class="lg-btn sm" data-act="exp-edit" data-id="${id}">✏️ 編輯</button><button type="button" class="lg-btn sm danger" data-act="exp-del" data-id="${id}">🗑️ 刪除</button></div>`}
             </div>`;
@@ -1445,14 +1521,15 @@
             else if (act === 'mem') {
                 const set = new Set(f.members);
                 if (set.has(id)) { set.delete(id); delete f.parts[id]; } else set.add(id);
+                f.rf = null;
                 f.members = order().filter((p) => set.has(p));
                 refreshForm();
             } else if (act === 'all') {
                 const act2 = activeIds(), allOn = act2.every((p) => f.members.includes(p));
                 f.members = allOn ? [] : act2;
-                f.parts = {};
+                f.parts = {}; f.rf = null;
                 refreshForm();
-            } else if (act === 'mode') { if (f.mode !== v) { f.mode = v; f.parts = {}; $('lg-f-amount').value = f.amount; refreshForm(); } }
+            } else if (act === 'mode') { if (f.mode !== v) { f.mode = v; f.parts = {}; f.rf = null; $('lg-f-amount').value = f.amount; refreshForm(); } }
             else if (act === 'scope') { if (f.scope !== v) { f.scope = v; refreshForm(); } }
             else if (act === 'cat') { f.cat = v; refreshForm(); }
             else if (act === 'cat-add') addCat();
@@ -1464,6 +1541,8 @@
             else if (act === 'fold') { S.fold[v] = !S.fold[v]; renderSettle(); }
             else if (act === 'st-open') { S.stOpen[b.dataset.k] = !S.stOpen[b.dataset.k]; renderSettle(); }
             else if (act === 'fill') fillParts();
+            else if (act === 'detail') openDetail();
+            else if (act === 'exp-refund') refundFlow(id);
             else if (act === 'rate-table') { f.rate = null; renderRate(); renderPreview(); }
             else if (act === 'rate-custom') { const t = R()[f.cur]; f.rate = t ? t.rate : ''; renderRate(); renderPreview(); }
             else if (act === 'save') saveExpense();
@@ -1502,7 +1581,7 @@
             if (!f) return;
             const map = { 'lg-f-title': 'title', 'lg-f-amount': 'amount', 'lg-f-note': 'note', 'lg-f-date': 'date' };
             if (map[el.id]) { f[map[el.id]] = el.value; renderPreview(); }
-            else if (el.dataset.part) { f.parts[el.dataset.part] = el.value; renderPreview(); }
+            else if (el.dataset.part) { f.parts[el.dataset.part] = el.value; f.rf = null; renderPreview(); }
             else if (el.id === 'lg-f-rate-in') { f.rate = el.value.trim(); renderPreview(); }
             else if (el.id === 'lg-q') { S.filter.q = el.value; renderItems(); }
         });
