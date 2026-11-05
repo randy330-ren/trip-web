@@ -2402,7 +2402,7 @@
             if (!opts.skipScrollTop) window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        const LEDGER_V = '36';
+        const LEDGER_V = '46';
         let ledgerLoading = null;
         const loadScript = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
         function openLedger() {
@@ -2410,7 +2410,7 @@
                 const css = document.createElement('link');
                 css.rel = 'stylesheet'; css.href = 'ledger.css?v=' + LEDGER_V;
                 document.head.appendChild(css);
-                ledgerLoading = loadScript('ledger-core.js?v=' + LEDGER_V).then(() => loadScript('ledger.js?v=' + LEDGER_V)).catch(() => {
+                ledgerLoading = loadScript('ledger-core.js?v=' + LEDGER_V).then(() => loadScript('ledger.js?v=' + LEDGER_V)).then(() => loadScript('ledger-detail.js?v=' + LEDGER_V)).catch(() => {
                     ledgerLoading = null;
                     css.remove();
                     document.getElementById('ledger-root').innerHTML = '<div class="card p-5 text-xs text-red-500 text-center">記帳模組載入失敗，請檢查網路後再點一次「記帳」。</div>';

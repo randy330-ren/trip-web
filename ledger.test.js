@@ -200,4 +200,50 @@ t('日圓結算：日圓支出用原始金額、舊轉帳由台幣換算、新�
     assert.strictEqual(C.deleteImpact(['a', 'b', 'c'], ex, { t1: { from: 'b', to: 'a', amt: 2064, status: 'done' } }, 'e1', U).changes.find((c) => c.p === 'b').from, 0);
 });
 
+const LD = require('./ledger-detail.js');
+t('明細分帳：未稅 8%/10% 計稅、折扣、免稅前後與退稅取整', () => {
+    const it = (unit, rate, star = true) => ({ unit, rate, star });
+    const a = LD.calcPerson([{ item: it(227, 8), n: 3 }, { item: it(1980, 10, false), n: 1 }], { basis: 'before', taxMode: 'excl', disc: 1 });
+    assert.deepStrictEqual({ g: a.gross, r: a.refund, a: a.amount, b: a.base, t: a.tax }, { g: 2913, r: 54, a: 2913, b: 2661, t: 252 });
+    assert.strictEqual(LD.calcPerson([{ item: it(227, 8), n: 3 }], { basis: 'after', taxMode: 'excl', disc: 1 }).amount, 735 - 54);
+    assert.strictEqual(LD.calcPerson([{ item: it(1100, 10), n: 1 }], { basis: 'before', taxMode: 'incl', disc: 1 }).refund, 100);
+    assert.strictEqual(LD.calcPerson([{ item: it(1000, 10), n: 1 }], { basis: 'before', taxMode: 'excl', disc: 0.95 }).gross, 1045);
+});
+t('明細分帳：匯入 JSON 容錯與錯誤訊息', () => {
+    const ok = LD.parseReceipt('好的：\n```json\n{"receipt":{"store":"X","date":"2026/11/05","items":[{"jp":"A","unit":"¥1,000","qty":2}]}}\n```');
+    assert.strictEqual(ok.receipt.items[0].unit, 1000);
+    assert.strictEqual(ok.receipt.items[0].rate, 10);
+    assert.strictEqual(ok.receipt.date, '2026-11-05');
+    assert.ok(LD.parseReceipt('{"items":[]}').error);
+    assert.ok(LD.parseReceipt('{"items":[{"unit":10,"qty":1.5}]}').error);
+    assert.ok(LD.parseReceipt('沒有json').error);
+});
+t('退稅分配：依預計退稅比例拆開，加總等於實際退稅', () => {
+    const r = C.allocate(1500, [54, 120, 30]);
+    assert.strictEqual(r.reduce((x, y) => x + y, 0), 1500);
+});
+t('明細分帳：舊版匯出檔依名字對應團員、帶回分配與設定', () => {
+    const old = { app: 'donki-split', receipt: { items: [{ id: 1, jp: 'A', unit: 100, qty: 3 }, { id: 2, jp: 'B', unit: 200, qty: 1 }] },
+        people: [{ id: 'p1', name: '冠廷' }, { id: 'p2', name: '路人' }], assign: { 1: { p1: 2, p2: 5 }, 2: { p2: 1 } }, s: { basis: 'after', coupon: false } };
+    const r = LD.parseImport(JSON.stringify(old), [{ id: 'x1', name: '冠廷' }, { id: 'x2', name: '安萱' }]);
+    assert.deepStrictEqual(r.assign, { 1: { x1: 2 } });
+    assert.deepStrictEqual(r.missing, ['路人']);
+    assert.strictEqual(r.basis, 'after');
+    assert.strictEqual(r.coupon, false);
+    assert.strictEqual(LD.parseImport('{"items":[{"unit":1}]}', []).assign, null);
+});
+t('明細分帳：每人金額對齊收據合計（最大餘數法）', () => {
+    const r = LD.alignTotals([9343.6, 1617.9, 2068.9, 853.7, 6309.9], 20192);
+    assert.strictEqual(r.reduce((a, b) => a + b, 0), 20192);
+    assert.ok(r.every((v, i) => Math.abs(v - [9343.6, 1617.9, 2068.9, 853.7, 6309.9][i]) < 1));
+    assert.deepStrictEqual(LD.alignTotals([100.2], 103), [103]);
+});
+t('明細分帳：每人明細備註文字', () => {
+    const it = { jp: 'A', zh: '甲', unit: 1000, rate: 10, star: true };
+    const S = { basis: 'before', disc: 1, taxMode: 'excl' }, lines = [{ item: it, n: 1 }], c = LD.calcPerson(lines, S);
+    const txt = LD.buildNote([{ p: { id: 'a', name: '小明' }, lines, c, adj: 1, amount: c.amount + 1 }], S, { name: '店', couponPercent: 0 }, { a: '備' });
+    assert.ok(txt.startsWith('【明細分帳】店（免稅前）'));
+    assert.ok(txt.includes('進位 ¥1') && txt.includes('預計可退 ¥100') && txt.includes('備註：備'));
+});
+
 console.log(`\n全部通過：${pass} 項`);
