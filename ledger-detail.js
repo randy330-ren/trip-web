@@ -36,6 +36,18 @@
         for (let k = 0; diff !== 0 && k < 1000; k++) { const i = idx[k % idx.length]; if (diff > 0) { out[i]++; diff--; } else { out[i]--; diff++; } }
         return out;
     }
+    // 把每人明細整理成一段文字，放進支出備註
+    function buildNote(rows, S, receipt, notes) {
+        const y = (n) => '¥' + Math.round(Math.abs(n)).toLocaleString('en-US');
+        const head = `【明細分帳】${receipt.name}（${S.basis === 'after' ? '免稅後' : '免稅前'}${S.disc < 1 ? `，含 ${receipt.couponPercent}% 折扣` : ''}）`;
+        const body = rows.map(({ p, lines, c, adj, amount }) => {
+            const L = lines.map((l) => `  ・${l.item.zh || l.item.jp} × ${l.n}　${y(l.item.unit * l.n * S.disc)}${l.item.star ? '' : '（不退稅）'}`).join('\n');
+            const eq = `  小計 ${y(c.base)} ＋ 稅 ${y(c.tax)}${S.basis === 'after' ? ` － 退稅 ${y(c.refund)}` : ''}${adj ? ` ${adj > 0 ? '＋' : '－'} 進位 ${y(adj)}` : ''} ＝ ${y(amount)}`;
+            const rf = S.basis === 'before' && c.refund > 0 ? `\n  預計可退 ${y(c.refund)}` : '', nt = ((notes || {})[p.id] || '').trim();
+            return `▸ ${p.name}　${y(amount)}\n${L}\n${eq}${rf}${nt ? `\n  備註：${nt}` : ''}`;
+        });
+        return [head, ...body].join('\n');
+    }
     function extractJSON(text) {
         if (typeof text !== 'string' || !text.trim()) return { error: '內容是空的' };
         const t = text.trim();
@@ -197,6 +209,7 @@
         const linesFor = (pid) => items().map((item) => ({ item, n: asg(item.id, pid) })).filter((l) => l.n > 0);
         const cfg = () => { const r = st.receipt; return { basis: st.basis, taxMode: r.taxMode, disc: st.coupon && r.couponPercent > 0 ? 1 - r.couponPercent / 100 : 1 }; };
         const shut = {};
+        let itemsShut = false;
         // 每人結果；品項全部分完、收據有合計、折扣設定一致、差距在 5 円內時，把每人金額對齊收據合計
         const rows = () => {
             const S = cfg(), r = st.receipt, out = [];
@@ -231,8 +244,8 @@
                 <p class="lg-muted">品項右邊的「★ 退稅／不退稅」和「8%／10%」可以點一下切換，用來修正 AI 看錯的地方。</p>
                 <p class="ld-sec">分配給誰</p>
                 <div class="lg-chips">${people.map((p) => `<button type="button" data-a="pick" data-id="${esc(p.id)}" class="lg-chip ${p.id === st.active ? 'on' : ''}" style="--c:${color(p.id)}">${esc(p.name)} ${cnt(p.id)}</button>`).join('')}</div>
-                <div class="ld-btns"><button type="button" class="lg-btn sm ghost" data-a="takeall">拿走剩餘</button><button type="button" class="lg-btn sm ghost" data-a="clearp">清除此人</button><button type="button" class="lg-btn sm ghost danger" data-a="resetall">清除全部</button></div>
-                <div class="ld-items">${items().map((it) => {
+                <div class="ld-btns"><button type="button" class="lg-btn sm ghost" data-a="takeall">拿走剩餘</button><button type="button" class="lg-btn sm ghost" data-a="clearp">清除此人</button><button type="button" class="lg-btn sm ghost danger" data-a="resetall">清除全部</button><button type="button" class="lg-btn sm ghost" data-a="items">${itemsShut ? '展開品項' : '全部收合'}</button></div>
+                <div class="ld-items">${itemsShut ? `<p class="lg-muted">品項已收合（共 ${items().length} 項）。</p>` : items().map((it) => {
                     const mine = asg(it.id, st.active), rem = it.qty - tot(it.id);
                     const badges = people.map((p) => (asg(it.id, p.id) ? `<span class="ld-bdg" style="--c:${color(p.id)}">${esc(p.name)}×${asg(it.id, p.id)}</span>` : '')).join('');
                     return `<div class="ld-item ${mine ? 'sel' : ''}"><div class="ld-i"><b>${esc(it.jp)}</b>${it.zh && it.zh !== it.jp ? `<small>${esc(it.zh)}</small>` : ''}
@@ -301,6 +314,7 @@
                 const it = items().find((x) => x.id === iid);
                 if (it) { if (a === 'star') it.star = !it.star; else it.rate = it.rate === 8 ? 10 : 8; renderAll(); }
             }
+            else if (a === 'items') { itemsShut = !itemsShut; renderMain(); }
             else if (a === 'rall') { const RW = rows(), anyOpen = RW.some((x) => !shut[x.p.id]); RW.forEach((x) => { shut[x.p.id] = anyOpen; }); renderRes(); }
             else if (a === 'rexp') { shut[b.dataset.id] = !shut[b.dataset.id]; renderRes(); }
             else if (a === 'pick') { st.active = b.dataset.id; renderAll(); }
@@ -311,16 +325,15 @@
             else if (a === 'prompt') copy(buildPrompt()).then((ok) => { if (ok) say('已複製 AI 提示詞。貼給 AI 並附上收據照片，再把回傳的 JSON 貼到下方匯入。'); else { $('#ld-paste').value = buildPrompt(); $('#ld-paste').select(); say('無法自動複製，提示詞已放進下方文字框，請全選複製。', true); } });
             else if (a === 'import') doImport($('#ld-paste').value);
             else if (a === 'apply') {
-                const S = cfg(), parts = {}, rf = {}, dl = {}, members = [];
-                rows().forEach(({ p, lines, c, adj, amount }) => {
+                const S = cfg(), parts = {}, rf = {}, members = [];
+                const RW = rows();
+                RW.forEach(({ p, c, amount }) => {
                     if (amount <= 0) return;
                     parts[p.id] = String(amount); members.push(p.id);
                     if (S.basis === 'before' && c.refund > 0) rf[p.id] = c.refund;
-                    const nt = (st.notes[p.id] || '').trim();
-                    dl[p.id] = { l: lines.map((l) => [String(l.item.zh || l.item.jp).slice(0, 40), l.n, Math.round(l.item.unit * l.n * S.disc), l.item.star ? 0 : 1]), b: c.base, t: c.tax, r: c.refund, j: adj, bs: S.basis, ...(nt ? { n: nt.slice(0, 60) } : {}) };
                 });
                 if (!members.length) return;
-                const out = { id: st.id, name: st.name.trim() || st.receipt.name, date: st.date || st.receipt.date, payer: people.some((p) => p.id === st.payer) ? st.payer : '', members, parts, rf, dl };
+                const out = { id: st.id, name: st.name.trim() || st.receipt.name, date: st.date || st.receipt.date, payer: people.some((p) => p.id === st.payer) ? st.payer : '', members, parts, rf, note: buildNote(RW.filter((x) => x.amount > 0), cfg(), st.receipt, st.notes) };
                 const o = curOpts;
                 close();
                 o.onApply(out);
@@ -356,5 +369,5 @@
         const o = curOpts; cur = curOpts = null;
         if (o && o.onClose) o.onClose();
     }
-    return { open, close, list, remove, calcPerson, alignTotals, parseReceipt, parseImport, buildPrompt, parseNum };
+    return { open, close, list, remove, calcPerson, alignTotals, buildNote, parseReceipt, parseImport, buildPrompt, parseNum };
 });

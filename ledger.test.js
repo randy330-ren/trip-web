@@ -238,5 +238,12 @@ t('明細分帳：每人金額對齊收據合計（最大餘數法）', () => {
     assert.ok(r.every((v, i) => Math.abs(v - [9343.6, 1617.9, 2068.9, 853.7, 6309.9][i]) < 1));
     assert.deepStrictEqual(LD.alignTotals([100.2], 103), [103]);
 });
+t('明細分帳：每人明細備註文字', () => {
+    const it = { jp: 'A', zh: '甲', unit: 1000, rate: 10, star: true };
+    const S = { basis: 'before', disc: 1, taxMode: 'excl' }, lines = [{ item: it, n: 1 }], c = LD.calcPerson(lines, S);
+    const txt = LD.buildNote([{ p: { id: 'a', name: '小明' }, lines, c, adj: 1, amount: c.amount + 1 }], S, { name: '店', couponPercent: 0 }, { a: '備' });
+    assert.ok(txt.startsWith('【明細分帳】店（免稅前）'));
+    assert.ok(txt.includes('進位 ¥1') && txt.includes('預計可退 ¥100') && txt.includes('備註：備'));
+});
 
 console.log(`\n全部通過：${pass} 項`);
