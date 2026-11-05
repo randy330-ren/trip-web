@@ -25,7 +25,16 @@
             if (item.star) refund += t;
         }
         const gross = base + tax;
-        return { base: Math.round(base), tax: Math.round(tax), gross: Math.round(gross), refund: Math.round(refund), amount: Math.round(s.basis === 'after' ? gross - refund : gross) };
+        return { raw: gross, base: Math.round(base), tax: Math.round(tax), gross: Math.round(gross), refund: Math.round(refund), amount: Math.round(s.basis === 'after' ? gross - refund : gross) };
+    }
+    // 最大餘數法：把各人未進位的金額調成整數，且加總剛好等於 total（差幾円分給小數餘數最大的人）
+    function alignTotals(raws, total) {
+        const fl = raws.map(Math.floor), fr = raws.map((x, i) => x - fl[i]), idx = raws.map((_, i) => i);
+        let diff = total - fl.reduce((a, b) => a + b, 0);
+        idx.sort((a, b) => (diff >= 0 ? fr[b] - fr[a] : fr[a] - fr[b]) || a - b);
+        const out = fl.slice();
+        for (let k = 0; diff !== 0 && k < 1000; k++) { const i = idx[k % idx.length]; if (diff > 0) { out[i]++; diff--; } else { out[i]--; diff++; } }
+        return out;
     }
     function extractJSON(text) {
         if (typeof text !== 'string' || !text.trim()) return { error: '內容是空的' };
@@ -187,6 +196,19 @@
         const linesFor = (pid) => items().map((item) => ({ item, n: asg(item.id, pid) })).filter((l) => l.n > 0);
         const cfg = () => { const r = st.receipt; return { basis: st.basis, taxMode: r.taxMode, disc: st.coupon && r.couponPercent > 0 ? 1 - r.couponPercent / 100 : 1 }; };
         const shut = {};
+        // 每人結果；品項全部分完、收據有合計、折扣設定一致、差距在 5 円內時，把每人金額對齊收據合計
+        const rows = () => {
+            const S = cfg(), r = st.receipt, out = [];
+            people.forEach((p) => { const lines = linesFor(p.id); if (lines.length) { const c = calcPerson(lines, S); out.push({ p, lines, c, adj: 0, amount: c.amount }); } });
+            out.aligned = false;
+            if (out.length && r.total > 0 && items().every((it) => tot(it.id) === it.qty) && (st.coupon || !(r.couponPercent > 0))
+                && Math.abs(Math.round(out.reduce((a, x) => a + x.c.raw, 0)) - r.total) <= 5) {
+                const al = alignTotals(out.map((x) => x.c.raw), r.total);
+                out.forEach((x, i) => { x.adj = al[i] - x.c.gross; x.amount = x.c.amount + x.adj; });
+                out.aligned = true;
+            }
+            return out;
+        };
         const color = (pid) => COLORS[Math.max(0, people.findIndex((p) => p.id === pid)) % COLORS.length];
         function setQty(iid, pid, n) {
             const it = items().find((x) => x.id === iid); if (!it) return;
@@ -221,14 +243,14 @@
             if (!st.receipt) { box.innerHTML = ''; btn.disabled = true; btn.textContent = '套用到記帳'; return; }
             const S = cfg(), r = st.receipt;
             let html = '<p class="lg-h">每人結果</p>', sum = 0, any = false;
-            people.forEach((p) => {
-                const lines = linesFor(p.id); if (!lines.length) return;
-                const c = calcPerson(lines, S); any = true; sum += c.amount;
+            const RW = rows();
+            RW.forEach(({ p, lines, c, adj, amount }) => {
+                any = true; sum += amount;
                 const open = !shut[p.id];
-                html += `<div class="ld-rp"><button type="button" class="ld-rh" data-a="rexp" data-id="${esc(p.id)}"><span style="color:${color(p.id)};font-weight:800">${esc(p.name)}<i>${open ? '▲' : '▼'}</i><small>${lines.reduce((a, l) => a + l.n, 0)} 件${S.basis === 'before' && c.refund > 0 ? `・預計退稅 ${yen(c.refund)}` : ''}</small></span><b>${yen(c.amount)}</b></button>` +
+                html += `<div class="ld-rp"><button type="button" class="ld-rh" data-a="rexp" data-id="${esc(p.id)}"><span style="color:${color(p.id)};font-weight:800">${esc(p.name)}<i>${open ? '▲' : '▼'}</i><small>${lines.reduce((a, l) => a + l.n, 0)} 件${S.basis === 'before' && c.refund > 0 ? `・預計退稅 ${yen(c.refund)}` : ''}</small></span><b>${yen(amount)}</b></button>` +
                     (open ? `<ul class="ld-rl">${lines.map((l) => `<li><span>${esc(l.item.zh || l.item.jp)} × ${l.n}${l.item.star ? '' : '（不退稅）'}</span><span>${yen(l.item.unit * l.n * S.disc)}</span></li>`).join('')}</ul>
                         <div class="ld-rb"><div><span>品項小計（${S.disc < 1 ? '折後、' : ''}未稅）</span><span>${yen(c.base)}</span></div><div><span>消費稅</span><span>${yen(c.tax)}</span></div>
-                        ${S.basis === 'after' ? `<div class="neg"><span>預計退稅</span><span>−${yen(c.refund)}</span></div>` : ''}<div><b>應付（${S.basis === 'after' ? '免稅後' : '免稅前'}）</b><b>${yen(c.amount)}</b></div>
+                        ${S.basis === 'after' ? `<div class="neg"><span>預計退稅</span><span>−${yen(c.refund)}</span></div>` : ''}${adj ? `<div class="note"><span>進位調整（對齊收據合計）</span><span>${adj > 0 ? '+' : '−'}${yen(Math.abs(adj))}</span></div>` : ''}<div><b>應付（${S.basis === 'after' ? '免稅後' : '免稅前'}）</b><b>${yen(amount)}</b></div>
                         ${S.basis === 'before' && c.refund > 0 ? `<div class="note"><span>出境後預計可退（不含於上方）</span><span>${yen(c.refund)}</span></div>` : ''}</div>` : '') + '</div>';
             });
             if (!any) html += '<p class="lg-muted">尚未分配任何品項。</p>';
@@ -236,6 +258,8 @@
             if (left.length) {
                 const c = calcPerson(left, S);
                 html += `<p class="ld-note warn">還有 ${left.reduce((a, l) => a + l.n, 0)} 件（${yen(c.amount)}）沒人認領，不會計入這筆記帳。</p>`;
+            } else if (RW.aligned) {
+                html += `<p class="ld-note">已對齊收據合計 ${yen(r.total)}（每人金額最多調整 ¥1）。</p>`;
             } else if (any && r.total > 0 && (st.coupon || !(r.couponPercent > 0))) {
                 const full = calcPerson(items().map((item) => ({ item, n: item.qty })), { ...S, basis: 'before' }), diff = full.gross - r.total;
                 html += `<p class="ld-note ${Math.abs(diff) > 5 ? 'warn' : ''}">對帳：品項加總 ${yen(full.gross)}，收據 ${yen(r.total)}（差 ${diff} 円${Math.abs(diff) <= 5 ? '，逐筆進位造成' : '，請確認品項、數量、稅率與稅別'}）。</p>`;
@@ -280,10 +304,8 @@
             else if (a === 'import') doImport($('#ld-paste').value);
             else if (a === 'apply') {
                 const S = cfg(), parts = {}, rf = {}, members = [];
-                people.forEach((p) => {
-                    const lines = linesFor(p.id); if (!lines.length) return;
-                    const c = calcPerson(lines, S);
-                    if (c.amount > 0) { parts[p.id] = String(c.amount); members.push(p.id); if (S.basis === 'before' && c.refund > 0) rf[p.id] = c.refund; }
+                rows().forEach(({ p, c, amount }) => {
+                    if (amount > 0) { parts[p.id] = String(amount); members.push(p.id); if (S.basis === 'before' && c.refund > 0) rf[p.id] = c.refund; }
                 });
                 if (!members.length) return;
                 const out = { id: st.id, name: st.name.trim() || st.receipt.name, date: st.date || st.receipt.date, payer: people.some((p) => p.id === st.payer) ? st.payer : '', members, parts, rf };
@@ -321,5 +343,5 @@
         const o = curOpts; cur = curOpts = null;
         if (o && o.onClose) o.onClose();
     }
-    return { open, close, list, remove, calcPerson, parseReceipt, parseImport, buildPrompt, parseNum };
+    return { open, close, list, remove, calcPerson, alignTotals, parseReceipt, parseImport, buildPrompt, parseNum };
 });

@@ -232,5 +232,11 @@ t('明細分帳：舊版匯出檔依名字對應團員、帶回分配與設定',
     assert.strictEqual(r.coupon, false);
     assert.strictEqual(LD.parseImport('{"items":[{"unit":1}]}', []).assign, null);
 });
+t('明細分帳：每人金額對齊收據合計（最大餘數法）', () => {
+    const r = LD.alignTotals([9343.6, 1617.9, 2068.9, 853.7, 6309.9], 20192);
+    assert.strictEqual(r.reduce((a, b) => a + b, 0), 20192);
+    assert.ok(r.every((v, i) => Math.abs(v - [9343.6, 1617.9, 2068.9, 853.7, 6309.9][i]) < 1));
+    assert.deepStrictEqual(LD.alignTotals([100.2], 103), [103]);
+});
 
 console.log(`\n全部通過：${pass} 項`);
