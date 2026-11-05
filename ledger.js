@@ -1,7 +1,7 @@
 (function () {
     'use strict';
     const C = window.LedgerCore;
-    const VER = '24';
+    const VER = '25';
     const BASE = 'TWD', BASE_DEC = 0;
     const CATS = ['餐飲', '交通', '住宿', '門票', '購物', '其他'];
     const DEC_FIX = { TWD: 0, JPY: 0, KRW: 0 };
@@ -302,7 +302,7 @@
             <label class="lg-lbl">類別</label>
             <div id="lg-f-cats" class="lg-chips"></div>
             <label class="lg-lbl" for="lg-f-note">備註</label>
-            <textarea id="lg-f-note" class="lg-in" maxlength="200" rows="2" placeholder="選填"></textarea>
+            <textarea id="lg-f-note" class="lg-in" maxlength="3000" rows="3" placeholder="選填"></textarea>
             <div id="lg-f-rate"></div>
             <div id="lg-f-preview" class="lg-preview"></div>
             <button type="button" id="lg-f-save" class="lg-btn wide" data-act="save">儲存支出</button>
