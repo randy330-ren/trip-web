@@ -420,7 +420,7 @@
         el.innerHTML = `<div class="ld-head"><b>🧾 明細分帳</b><button type="button" data-a="close" aria-label="關閉">✕</button></div>
             <div class="ld-scroll">
                 <details class="ld-card" id="ld-imp"><summary>匯入收據（AI 整理的 JSON，或舊版匯出檔）</summary>
-                    <p class="lg-muted lg-mt">新收據：用下方按鈕把提示詞帶去 AI、上傳收據照片，再把回傳的 JSON 貼回來。舊版匯出檔（含朋友與分配）會依名字對應到團員。匯入會清空目前的品項分配。</p>
+                    <p class="lg-muted lg-mt">新收據：用下方按鈕把提示詞帶去 AI、上傳收據照片，再把回傳的 JSON 貼回來。可一次匯入多張收據：一張收據一份草稿，這份還沒有收據時第一張放進來，其餘（或這份已有收據時）會另存為新的待處理草稿，不會蓋掉現有內容。舊版匯出檔（含朋友與分配）會依名字對應到團員。</p>
                     ${aiToolsHtml('ld-file')}
                     <textarea id="ld-paste" class="lg-in lg-mt" rows="4" placeholder="把 AI 回傳的 JSON 貼在這裡（含 \`\`\`json 也沒關係）"></textarea>
                     <button type="button" class="lg-btn sm lg-mt" data-a="import">匯入貼上的內容</button>
@@ -526,21 +526,48 @@
         }
         const renderAll = () => { renderMain(); renderRes(); keep(st); };
 
+        // 把解析結果填進草稿（不覆蓋已有的名稱與日期）
+        function fillDraft(d, p) {
+            d.receipt = p.receipt; d.assign = p.assign || {};
+            if (p.assign) { d.basis = p.basis; d.coupon = p.coupon; } else d.coupon = true;
+            if (!d.name) d.name = p.receipt.name;
+            if (!d.date && p.receipt.date) d.date = p.receipt.date;
+        }
+        // 一張收據一份草稿：目前這份還沒有收據時，第一張放進來；其餘（或這份已有收據時的全部）另存為新的待處理草稿，不會蓋掉現有內容
         function doImport(text, from) {
-            const p = parseImport(text, people);
-            if (p.error) { say(`匯入失敗${from ? '（' + from + '）' : ''}：${p.error}`, true); return; }
-            if (Object.values(st.assign).some((r) => Object.keys(r).length) && !confirm('匯入新收據會清空目前的品項分配，確定嗎？')) return;
-            st.receipt = p.receipt; st.assign = p.assign || {};
-            if (p.assign) { st.basis = p.basis; st.coupon = p.coupon; } else st.coupon = true;
-            if (!st.name) { st.name = p.receipt.name; $('#ld-name').value = st.name; }
-            if (!st.date && p.receipt.date) { st.date = p.receipt.date; $('#ld-date').value = st.date; }
-            const warns = checkReceipt(p.receipt, st.coupon);
+            const j = extractJSON(text).value;
+            let list, errs = [];
+            if (j && Array.isArray(j.receipts)) {
+                const m = parseReceipts(text);
+                if (m.error) { say(`匯入失敗${from ? '（' + from + '）' : ''}：${m.error}`, true); return; }
+                list = m.receipts.map((receipt) => ({ receipt, assign: null, matched: [], missing: [] })); errs = m.errs;
+            } else {
+                const p = parseImport(text, people);
+                if (p.error) { say(`匯入失敗${from ? '（' + from + '）' : ''}：${p.error}`, true); return; }
+                list = [p];
+            }
+            const fresh = [], lines = [];
+            let warnAny = false;
+            list.forEach((p) => {
+                const intoCur = !st.receipt;
+                const d = intoCur ? st : blank();
+                if (!intoCur) d.id = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+                fillDraft(d, p);
+                if (!intoCur) { keep(d); fresh.push(d); }
+                const warns = checkReceipt(p.receipt, d.coupon);
+                if (warns.length) warnAny = true;
+                lines.push(`${intoCur ? '放進目前這份' : '另存為新的待處理草稿'}：「${p.receipt.name}」，共 ${p.receipt.items.length} 項。`
+                    + (p.assign ? (p.matched.length ? `\n  已依名字帶入分配：${p.matched.join('、')}` : '\n  檔案裡的朋友名字都和團員名單對不上，分配沒有帶入。') : '')
+                    + (p.missing.length ? `\n  找不到對應團員，這些人的分配沒帶入：${p.missing.join('、')}（請先在團員名單用相同名字新增，再重新匯入）` : '')
+                    + (warns.length ? '\n  ⚠️ 收據可能不完整：' + warns.join('；') : ''));
+            });
+            $('#ld-name').value = st.name; $('#ld-date').value = st.date;
             renderAll();
-            say([`已匯入「${p.receipt.name}」，共 ${p.receipt.items.length} 項。`,
-                p.assign ? (p.matched.length ? `已依名字帶入分配：${p.matched.join('、')}` : '檔案裡的朋友名字都和團員名單對不上，分配沒有帶入。') : '',
-                p.missing.length ? `找不到對應團員，這些人的分配沒帶入：${p.missing.join('、')}（請先在團員名單用相同名字新增，再重新匯入）` : '',
-                warns.length ? '⚠️ 收據可能不完整：\n' + warns.map((x) => '・' + x).join('\n') + '\n請確認照片是否完整、有無混入別張收據；仍可繼續，也可修正後重新匯入。' : ''].filter(Boolean).join('\n'), p.missing.length > 0 || warns.length > 0);
-            $('#ld-imp').open = !!p.missing.length || warns.length > 0;
+            const miss = list.some((p) => p.missing.length);
+            say([...lines, errs.length ? `有 ${errs.length} 張無法匯入：${errs.join('；')}` : '',
+                fresh.length ? `新草稿已存好，不會動到目前這份。關閉後到記帳頁「待處理」按「繼續」處理（共 ${fresh.length} 份）。` : '',
+                warnAny ? '請確認照片是否完整、有無混入別張收據；仍可繼續。' : ''].filter(Boolean).join('\n'), miss || warnAny || errs.length > 0);
+            $('#ld-imp').open = miss || warnAny || errs.length > 0 || fresh.length > 0;
             $('#ld-paste').value = '';
         }
         function copy(t) {
@@ -599,7 +626,7 @@
                 rd.readAsText(f); t.value = '';
             }
         });
-        wireAi(el, { prompt: () => buildPrompt(), onText: doImport, say });
+        wireAi(el, { prompt: () => buildPrompt(undefined, true), onText: doImport, say });
         $('#ld-imp').open = !st.receipt;
         renderAll();
     }
