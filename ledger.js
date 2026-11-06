@@ -840,6 +840,48 @@
         if (!n) return;
         ref.update(up).then(() => toast(`已匯入 ${n} 筆`)).catch(fail);
     }
+    function openReceiptImport() {
+        if (!guard()) return;
+        if (!window.LedgerDetail || !LedgerDetail.openPersonal) return toast('明細分帳模組載入中，請稍後再試');
+        const t = R().JPY, r = t && C.parseRate(t.rate);
+        if (!r || !r.ok) return alert('匯率表沒有 JPY，請管理員先到「匯率」頁新增日圓。');
+        LedgerDetail.openPersonal({ cats: cats(), pays: PAYS, today: today(), onApply: saveReceiptItems });
+    }
+    // 一張收據的每個品項各寫一筆個人支出（日圓），以同一個 rg 串成群組；一次批次寫入
+    function saveReceiptItems(p) {
+        if (!guard()) return false;
+        const t = R().JPY, r = C.parseRate(t && t.rate), m = me(), ref = xref(true), up = {}, dec = decOf('JPY');
+        if (!r.ok) { alert('JPY 匯率無效，請先到「匯率」頁確認。'); return false; }
+        for (const x of p.rows) {
+            const sp = C.computeSplit({ amount: x.amount, dec, mode: 'equal', members: ['me'], rate: r.s, baseDec: BASE_DEC, seed: 0, bias: [0] });
+            if (!sp.ok) { alert(`「${x.title}」無法換算：${sp.errors.join('、')}`); return false; }
+            up[ref.push().key] = {
+                title: x.title.slice(0, 50), amount: x.amount, cur: 'JPY', dec, rate: r.s, rateRef: `table:JPY@${t.ts || 0}`, base: BASE, baseAmt: sp.baseAmt,
+                date: p.date, pay: p.pay, payer: 'me', mode: 'equal', unit: null, parts: null, rf: null, shares: sp.shares, seed: 0, cat: x.cat,
+                note: x.jp && x.jp !== x.title ? `${p.name}｜${x.jp}` : p.name, rg: p.rid, rgName: p.name.slice(0, 50),
+                by: m.uid, byName: m.name, ts: TS(), updBy: m.uid, updName: m.name, uts: TS()
+            };
+        }
+        return ref.update(up).then(() => { toast(`已新增 ${p.rows.length} 筆個人支出`); S.filter.scope = 'personal'; return true; }).catch((e) => { fail(e); return false; });
+    }
+    function delReceipt(rid) {
+        const ids = Object.entries(PE()).filter(([, e]) => e && e.rg === rid).map(([id]) => id);
+        if (!ids.length || !guard()) return;
+        if (!confirm(`確定要刪除整張收據「${PE()[ids[0]].rgName || ''}」的 ${ids.length} 筆個人支出嗎？此動作無法還原。`)) return;
+        xref(true).update(Object.fromEntries(ids.map((id) => [id, null]))).then(() => { delete S.rgOpen[rid]; toast('已刪除'); }).catch(fail);
+    }
+    // 同一張收據的品項在列表收成一列，點開才展開
+    function stackHtml(items, ti) {
+        const seen = {}, ro = S.rgOpen || (S.rgOpen = {});
+        return items.map(([id, e]) => {
+            if (!e.rg) return itemHtml(id, e, ti);
+            if (seen[e.rg]) return '';
+            seen[e.rg] = 1;
+            const mem = items.filter(([, x]) => x.rg === e.rg), open = !!ro[e.rg];
+            const base = mem.reduce((a, [, x]) => a + (Number.isInteger(x.baseAmt) ? x.baseAmt : 0), 0), jpy = mem.reduce((a, [, x]) => a + (x.cur === 'JPY' && Number.isInteger(x.amount) ? x.amount : 0), 0);
+            return `<div class="card lg-item lg-rg ${open ? 'open' : ''}"><button type="button" class="lg-item-h" data-act="rg-open" data-id="${esc(e.rg)}"><span class="lg-item-l"><b>🧾 ${esc(e.rgName || '收據')}</b><small>${esc(e.date || '')}・🔒 個人・${mem.length} 項${open ? '' : '（點開展開）'}</small></span><span class="lg-item-r"><b>${jpy ? money(jpy, 'JPY') : money(base, BASE)}</b>${jpy ? `<small>≈ ${money(base, BASE)}</small>` : ''}</span></button>${open ? `<div class="lg-stack sm lg-mt">${mem.map(([i, x]) => itemHtml(i, x, ti)).join('')}</div><div class="lg-actions"><button type="button" class="lg-btn sm danger" data-act="rg-del" data-id="${esc(e.rg)}">🗑️ 刪除整張收據</button></div>` : ''}</div>`;
+        }).join('');
+    }
     function flApply() { renderFilterOpts(); renderItems(); renderDeleted(); }
     const src = () => (S.filter.scope === 'personal' ? PE() : E());
     function filtered(anyMember) {
@@ -875,7 +917,7 @@
     }
     function renderItems() {
         const box = $('lg-items'), all = Object.keys(src()).length, list = filtered();
-        const impBtn = S.filter.scope === 'personal' ? '<button type="button" class="lg-btn sm lg-import" data-act="imp-open">⬇️ 從團體匯入我的分攤</button>' : '';
+        const impBtn = S.filter.scope === 'personal' ? '<button type="button" class="lg-btn sm lg-import" data-act="imp-open">⬇️ 從團體匯入我的分攤</button><button type="button" class="lg-btn sm lg-import" data-act="rcpt-open">🧾 匯入收據（逐品項）</button>' : '';
         if (!all) { box.innerHTML = impBtn + '<div class="card lg-card lg-center"><p class="lg-muted">還沒有' + (S.filter.scope === 'personal' ? '個人' : '') + '支出紀錄，到「記帳」新增第一筆吧。</p></div>'; return; }
         const total = list.reduce((s, [, e]) => s + (Number.isInteger(e.baseAmt) ? e.baseAmt : 0), 0);
         const jpyOf = (e) => (e.cur === 'JPY' && Number.isInteger(e.amount) ? e.amount : 0), baseOf = (e) => (Number.isInteger(e.baseAmt) ? e.baseAmt : 0);
@@ -898,7 +940,7 @@
         h += groups.map((g) => {
             const shut = !!S.listShut[g.d];
             const label = /^\d{4}-\d{2}-\d{2}$/.test(g.d) ? `${+g.d.slice(5, 7)}/${+g.d.slice(8, 10)}` : g.d;
-            return `<div class="lg-grp"><button type="button" class="lg-grp-h" data-act="grp" data-d="${esc(g.d)}"><span>${esc(label)}<small>${g.items.length} 筆</small></span><span class="lg-grp-r"><span class="lg-grp-v">${pair(g.sum, g.jpy).filter(Boolean).map((x) => `<span>${x}</span>`).join('')}</span><em>${shut ? '▼' : '▲'}</em></span></button>${shut ? '' : `<div class="lg-stack sm lg-mt">${g.items.map(([id, e]) => itemHtml(id, e, ti)).join('')}</div>`}</div>`;
+            return `<div class="lg-grp"><button type="button" class="lg-grp-h" data-act="grp" data-d="${esc(g.d)}"><span>${esc(label)}<small>${g.items.length} 筆</small></span><span class="lg-grp-r"><span class="lg-grp-v">${pair(g.sum, g.jpy).filter(Boolean).map((x) => `<span>${x}</span>`).join('')}</span><em>${shut ? '▼' : '▲'}</em></span></button>${shut ? '' : `<div class="lg-stack sm lg-mt">${stackHtml(g.items, ti)}</div>`}</div>`;
         }).join('');
         box.innerHTML = impBtn + `<div class="lg-items-box">${h}</div>` + exportBtn;
     }
@@ -1637,6 +1679,9 @@
             else if (act === 'exp-del') delExpense(id);
             else if (act === 'exp-restore') restoreExpense(id);
             else if (act === 'imp-open') openImport();
+            else if (act === 'rcpt-open') openReceiptImport();
+            else if (act === 'rg-open') { const ro = S.rgOpen || (S.rgOpen = {}); ro[id] = !ro[id]; renderItems(); }
+            else if (act === 'rg-del') delReceipt(id);
             else if (act === 'del-toggle') { S.showDel = !S.showDel; renderDeleted(); }
             else if (act === 'export') exportCsv();
             else if (act === 'fl-clear') { S.filter = { scope: 'group', sort: S.filter.sort, dates: [], cats: [], payer: '', members: [], cur: '', q: '' }; $('lg-q').value = ''; renderFilterOpts(); renderItems(); }

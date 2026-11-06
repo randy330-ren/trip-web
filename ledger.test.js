@@ -236,6 +236,17 @@ t('明細分帳：退稅額核對與手動改稅率基準值', () => {
     r.items[1].star = true;
     assert.ok(LD.checkReceipt(r).some((x) => x.includes('退稅額對不上')));
 });
+t('個人逐品項：分類欄位、提示詞帶分類、金額對齊收據合計', () => {
+    const r = LD.parseReceipt(JSON.stringify({ receipt: { receiptTotal: 2200, items: [{ jp: 'A', unit: 1000, qty: 1, rate: 10, cat: ' 餐飲 ' }, { jp: 'B', unit: 1000, qty: 1, rate: 10 }] } })).receipt;
+    assert.deepStrictEqual([r.items[0].cat, r.items[1].cat], ['餐飲', '']);
+    assert.ok(LD.buildPrompt(['餐飲', '購物']).includes('「餐飲」「購物」') && LD.buildPrompt(['餐飲']).includes('"cat"'));
+    assert.ok(!LD.buildPrompt().includes('"cat"'));
+    const a = LD.itemAmounts(r, true, 'before');
+    assert.strictEqual(a.reduce((x, y) => x + y, 0), 2200);
+    const r2 = { ...r, total: 9999 };
+    assert.deepStrictEqual(LD.itemAmounts(r2, true, 'before'), [1100, 1100]);
+    assert.deepStrictEqual(LD.itemAmounts(r, true, 'after'), [1000, 1000]);
+});
 t('退稅分配：依預計退稅比例拆開，加總等於實際退稅', () => {
     const r = C.allocate(1500, [54, 120, 30]);
     assert.strictEqual(r.reduce((x, y) => x + y, 0), 1500);

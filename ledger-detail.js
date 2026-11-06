@@ -74,7 +74,7 @@
             if (!(qty >= 1) || Math.floor(qty) !== qty) { errs.push(`第 ${i + 1} 筆（${label}）的 qty 必須是 1 以上的整數`); return; }
             if (!(rate >= 0 && rate <= 100)) { errs.push(`第 ${i + 1} 筆（${label}）的 rate 不是有效稅率`); return; }
             idMap[String(it.id != null ? it.id : i + 1)] = items.length + 1;
-            items.push({ id: items.length + 1, jp: String(it.jp || it.zh || '品項 ' + (i + 1)), zh: String(it.zh || it.jp || ''), unit, qty, rate, star: toBool(it.star, true), rate0: rate, star0: toBool(it.star, true) });
+            items.push({ id: items.length + 1, jp: String(it.jp || it.zh || '品項 ' + (i + 1)), zh: String(it.zh || it.jp || ''), unit, qty, rate, star: toBool(it.star, true), rate0: rate, star0: toBool(it.star, true), cat: String(it.cat || '').trim().slice(0, 20) });
         });
         if (errs.length) return { error: errs.slice(0, 4).join('；') + (errs.length > 4 ? `…（共 ${errs.length} 處）` : '') };
         const cp = parseNum(raw.couponPercent), total = parseNum(raw.receiptTotal !== undefined ? raw.receiptTotal : raw.total);
@@ -90,6 +90,16 @@
                 couponPercent: cp >= 0 && cp <= 100 ? cp : 0, total: total > 0 ? total : null, refund: refund >= 0 ? refund : null, itemCount: ic > 0 ? Math.floor(ic) : null, items
             }
         };
+    }
+    // 個人記帳用：每個品項各自的日圓金額；品項全收、與收據合計差 5 円內時，用最大餘數法對齊合計
+    function itemAmounts(r, coupon, basis) {
+        const disc = coupon && r.couponPercent > 0 ? 1 - r.couponPercent / 100 : 1;
+        const cs = r.items.map((item) => calcPerson([{ item, n: item.qty }], { basis, taxMode: r.taxMode, disc }));
+        if (basis !== 'after' && r.total > 0 && (coupon || !(r.couponPercent > 0))) {
+            const raws = cs.map((c) => c.raw);
+            if (Math.abs(Math.round(raws.reduce((a, b) => a + b, 0)) - r.total) <= 5) return alignTotals(raws, r.total);
+        }
+        return cs.map((c) => c.amount);
     }
     // 完整性檢查：回傳警告文字陣列（漏拍／混入別張／缺合計）；applyCoupon 為是否套用收據折扣
     function checkReceipt(r, applyCoupon) {
@@ -148,12 +158,13 @@
         res.coupon = so.coupon !== false;
         return res;
     }
-    function buildPrompt() {
+    function buildPrompt(cats) {
+        const withCat = Array.isArray(cats) && cats.length;
         return [
             '你是收據資料整理助手。我會附上日本購物收據的照片（可能有多張，是同一張收據的不同段落）。請把所有品項整理成下面格式的 JSON。請只輸出一個 json 程式碼區塊，欄位名稱不要改。',
             '', 'JSON 格式：', '{', '  "receipt": {', '    "name": "店名 日期（例如：唐吉訶德米子店 2026-11-05）",', '    "store": "店名",', '    "date": "YYYY-MM-DD",',
             '    "taxMode": "excl",', '    "couponPercent": 0,', '    "receiptTotal": 0,', '    "receiptRefund": null,', '    "itemCount": 0,', '    "items": [',
-            '      {"jp": "收據上的原文品名", "zh": "簡短中文品名（可推測）", "unit": 249, "qty": 1, "star": true, "rate": 8}', '    ]', '  }', '}', '',
+            '      {"jp": "收據上的原文品名", "zh": "簡短中文品名（可推測）", "unit": 249, "qty": 1, "star": true, "rate": 8' + (withCat ? ', "cat": "餐飲"' : '') + '}', '    ]', '  }', '}', '',
             '欄位規則：',
             '1. items：每個品項一筆。收據寫「3コ×単227 ¥681」就是 unit=227、qty=3。同名但條碼不同的品項要分成兩筆。',
             '2. unit：收據上的單價數字，不要自己換算或加減稅。',
@@ -166,7 +177,7 @@
             '9. 看不清楚的品名請用最接近的文字，並在 JSON 外面標註。',
             '10. itemCount：收據上印的總點數／總件數（例如「点数 12」填 12），沒印就填 0。',
             '11. 若照片只拍到收據的一部分（缺上半或下半、沒看到合計），或混入不屬於同一張收據的照片，請先在 JSON 外面說明並詢問我，不要硬湊；多張照片重疊的品項只列一次。'
-        ].join('\n');
+        ].concat(withCat ? [`12. cat：每個品項的分類，只能從這些選一個：${cats.map((c) => `「${c}」`).join('')}。判斷不出來填「其他」。`] : []).join('\n');
     }
 
     // ---------- 介面（只在瀏覽器執行） ----------
@@ -195,6 +206,148 @@
     function remove(id) { delete DB.drafts[id]; flush(); }
     let cur = null, curOpts = null;
 
+    // ---------- 加速 AI 流程（複製並開啟、分享照片、貼上匯入） ----------
+    const AI_URL = { 'ai-claude': 'https://claude.ai/new?q=', 'ai-gpt': 'https://chatgpt.com/?q=' };
+    function copyText(t) {
+        try { if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t).then(() => true, () => false); } catch (e) { }
+        try { const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return Promise.resolve(!!ok); } catch (e) { return Promise.resolve(false); }
+    }
+    function canShareFiles() {
+        try { return typeof navigator !== 'undefined' && !!navigator.share && !!navigator.canShare && navigator.canShare({ files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] }); } catch (e) { return false; }
+    }
+    function aiToolsHtml() {
+        return `<div class="ld-btns"><button type="button" class="lg-btn sm" data-a="ai-claude">✨ 複製提示詞並開啟 Claude</button><button type="button" class="lg-btn sm" data-a="ai-gpt">✨ 複製提示詞並開啟 ChatGPT</button>${canShareFiles() ? '<label class="lg-btn sm ghost" for="ld-aipick">📤 選照片分享給 AI App</label><input type="file" id="ld-aipick" hidden multiple accept="image/*"><button type="button" class="lg-btn sm" data-a="ai-share-go" style="display:none"></button>' : ''}<button type="button" class="lg-btn sm ghost" data-a="ai-paste">📋 貼上並匯入</button></div>
+            <p class="lg-muted lg-mt">照片無法透過網址帶入，開啟 AI 後請自行上傳收據照片（或用「分享」一次帶照片＋提示詞）。AI 回覆後複製 JSON，回來按「貼上並匯入」。</p>`;
+    }
+    // o: {prompt: () => 提示詞, onText(text, 來源), say(文字, 是否錯誤)}
+    function wireAi(root, o) {
+        let files = [];
+        root.addEventListener('click', (ev) => {
+            const b = ev.target.closest && ev.target.closest('[data-a^="ai-"]');
+            if (!b) return;
+            const a = b.dataset.a, t = o.prompt();
+            if (AI_URL[a]) {
+                copyText(t);
+                window.open(AI_URL[a] + encodeURIComponent(t), '_blank');
+                o.say('已複製提示詞並開啟 AI；若沒有自動帶入，請在輸入框長按貼上。上傳收據照片後，把 AI 回傳的 JSON 複製起來，再回來按「貼上並匯入」。');
+            } else if (a === 'ai-share-go') {
+                if (!files.length) return;
+                copyText(t);
+                navigator.share({ files, text: t, title: '收據整理' }).then(() => o.say('已送出。若 AI 沒帶入提示詞，提示詞已複製，請長按貼上。AI 回覆後複製 JSON，回來按「貼上並匯入」。'),
+                    (e) => { if (!e || e.name !== 'AbortError') o.say('此裝置無法分享照片，請改用「複製提示詞並開啟」。', true); });
+            } else if (a === 'ai-paste') {
+                if (!navigator.clipboard || !navigator.clipboard.readText) return o.say('此瀏覽器不能自動讀取剪貼簿，請把 JSON 貼到下方文字框再按匯入。', true);
+                navigator.clipboard.readText().then((x) => o.onText(x, '剪貼簿'), () => o.say('沒有取得剪貼簿權限，請把 JSON 貼到下方文字框再按匯入。', true));
+            }
+        });
+        root.addEventListener('change', (ev) => {
+            if (!ev.target || ev.target.id !== 'ld-aipick') return;
+            files = Array.from(ev.target.files || []); ev.target.value = '';
+            const go = root.querySelector('[data-a="ai-share-go"]');
+            if (go) { go.style.display = files.length ? '' : 'none'; go.textContent = `📤 分享 ${files.length} 張照片＋提示詞`; }
+        });
+    }
+
+    // ---------- 個人記帳：逐品項匯入 ----------
+    function closePersonal() {
+        const el = typeof document !== 'undefined' && document.getElementById('ldp-root');
+        if (el) { el.remove(); document.body.style.overflow = ''; }
+    }
+    function openPersonal(opts) {
+        closePersonal();
+        const cats = opts.cats || [], pays = opts.pays || [], dflt = cats.includes('其他') ? '其他' : cats[0];
+        const st = { receipt: null, name: '', date: opts.today || '', pay: '', basis: 'before', coupon: true, cat: {}, flag: {}, off: {} };
+        const el = document.createElement('div');
+        el.id = 'ldp-root'; el.className = 'ld';
+        el.innerHTML = `<div class="ld-head"><b>🧾 逐品項匯入個人記帳</b><button type="button" data-a="p-close" aria-label="關閉">✕</button></div>
+            <div class="ld-scroll">
+                <details class="ld-card" id="ldp-imp" open><summary>匯入收據（AI 整理的 JSON）</summary>
+                    <p class="lg-muted lg-mt">每個品項會各記一筆個人支出（日圓），並由 AI 先分好類，匯入後可逐項修改。</p>
+                    ${aiToolsHtml()}
+                    <div class="ld-btns"><button type="button" class="lg-btn sm ghost" data-a="p-prompt">只複製提示詞</button><label class="lg-btn sm ghost" for="ldp-file">選擇檔案匯入</label><input type="file" id="ldp-file" hidden accept=".json,.txt,application/json,text/plain"></div>
+                    <textarea id="ldp-paste" class="lg-in lg-mt" rows="4" placeholder="把 AI 回傳的 JSON 貼在這裡"></textarea>
+                    <button type="button" class="lg-btn sm lg-mt" data-a="p-import">匯入貼上的內容</button>
+                </details>
+                <p class="ld-msg" id="ldp-msg" role="status"></p>
+                <div class="ld-card" id="ldp-main"></div>
+            </div>
+            <div class="ld-foot"><button type="button" class="lg-btn wide" id="ldp-apply" data-a="p-apply" disabled>寫入個人記帳</button></div>`;
+        document.body.appendChild(el);
+        document.body.style.overflow = 'hidden';
+        const $ = (q) => el.querySelector(q);
+        const say = (t, bad) => { const m = $('#ldp-msg'); m.textContent = t; m.className = 'ld-msg' + (bad ? ' bad' : ''); };
+        const amts = () => itemAmounts(st.receipt, st.coupon, st.basis);
+        const picked = () => { const am = amts(); return st.receipt.items.map((it, i) => ({ it, amount: am[i] })).filter((x) => !st.off[x.it.id] && x.amount > 0); };
+        function renderFoot() {
+            const b = $('#ldp-apply');
+            if (!st.receipt) { b.disabled = true; b.textContent = '寫入個人記帳'; return; }
+            const ps = picked(), sum = ps.reduce((a, x) => a + x.amount, 0), okDate = /^\d{4}-\d{2}-\d{2}$/.test(st.date);
+            b.disabled = !ps.length || !st.pay || !okDate;
+            b.textContent = !st.pay ? '請先選擇支付方式' : !okDate ? '請選擇日期' : !ps.length ? '沒有可寫入的品項' : `寫入個人記帳（${ps.length} 筆・${yen(sum)}）`;
+        }
+        function renderMain() {
+            const r = st.receipt, box = $('#ldp-main');
+            if (!r) { box.innerHTML = '<p class="lg-muted">還沒有收據。請先匯入。</p>'; renderFoot(); return; }
+            const am = amts(), q = r.items.reduce((a, i) => a + i.qty, 0), warns = checkReceipt(r, st.coupon);
+            const cp = r.couponPercent > 0 ? `<label class="ld-chk"><input type="checkbox" data-a="p-coupon" ${st.coupon ? 'checked' : ''}> 套用收據上的 ${r.couponPercent}% 折扣</label>` : '';
+            box.innerHTML = `<p class="lg-h">${esc(r.name)}<small>　${r.items.length} 項／${q} 件・價格為${r.taxMode === 'incl' ? '含稅' : '未稅'}${r.total ? '・收據合計 ' + yen(r.total) : ''}</small></p>
+                <label class="lg-lbl" for="ldp-name">收據名稱（列表群組標題）</label><input id="ldp-name" class="lg-in" maxlength="50" value="${esc(st.name)}">
+                <label class="lg-lbl" for="ldp-date">日期</label><input id="ldp-date" type="date" class="lg-in" value="${esc(st.date)}">
+                <label class="lg-lbl">支付方式</label><div class="lg-seg sm">${pays.map(([k, l]) => `<button type="button" data-a="p-pay" data-v="${esc(k)}" class="${st.pay === k ? 'on' : ''}">${esc(l)}</button>`).join('')}</div>
+                <div class="lg-seg sm lg-mt">${[['before', '免稅前（含稅價）'], ['after', '免稅後（扣預計退稅）']].map(([k, l]) => `<button type="button" data-a="p-basis" data-v="${k}" class="${st.basis === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+                ${cp}
+                ${warns.map((x) => `<p class="ld-note warn">⚠️ ${esc(x)}</p>`).join('')}
+                <p class="ld-sec">各品項分類（取消勾選＝不記這一項）</p>
+                <div class="ld-items">${r.items.map((it, i) => `<div class="ld-item"><input type="checkbox" data-a="p-on" data-i="${it.id}" ${st.off[it.id] ? '' : 'checked'} aria-label="記入"><div class="ld-i"><b>${esc(it.zh && it.zh !== it.jp ? it.zh : it.jp)}</b><small class="ld-meta">${yen(it.unit)} × ${it.qty}</small>${st.flag[it.id] ? `<small class="ld-flag">AI 填「${esc(st.flag[it.id])}」不在分類清單，已先歸「${esc(dflt)}」</small>` : ''}</div><div class="ldp-r"><b>${yen(am[i])}</b><select class="lg-in ldp-cat" data-a="p-cat" data-i="${it.id}">${cats.map((c) => `<option value="${esc(c)}" ${st.cat[it.id] === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div></div>`).join('')}</div>`;
+            renderFoot();
+        }
+        function doImport(text, from) {
+            const p = parseReceipt(text);
+            if (p.error) { say(`匯入失敗${from ? '（' + from + '）' : ''}：${p.error}`, true); return; }
+            const r = p.receipt;
+            st.receipt = r; st.name = r.name; st.date = r.date || opts.today || ''; st.coupon = true; st.cat = {}; st.flag = {}; st.off = {};
+            r.items.forEach((it) => { if (cats.includes(it.cat)) st.cat[it.id] = it.cat; else { st.cat[it.id] = dflt; if (it.cat) st.flag[it.id] = it.cat; } });
+            const warns = checkReceipt(r, true), nf = Object.keys(st.flag).length;
+            renderMain();
+            say([`已匯入「${r.name}」，共 ${r.items.length} 項。`, nf ? `${nf} 項的分類不在清單內，已先歸「${dflt}」，請確認。` : '', warns.length ? '⚠️ 收據可能不完整，請看下方警告（仍可繼續）。' : ''].filter(Boolean).join('\n'), warns.length > 0 || nf > 0);
+            $('#ldp-imp').open = false;
+            $('#ldp-paste').value = '';
+        }
+        wireAi(el, { prompt: () => buildPrompt(cats), onText: doImport, say });
+        el.addEventListener('click', (ev) => {
+            const b = ev.target.closest && ev.target.closest('[data-a^="p-"]');
+            if (!b) return;
+            const a = b.dataset.a;
+            if (a === 'p-close') closePersonal();
+            else if (a === 'p-prompt') copyText(buildPrompt(cats)).then((ok) => { if (ok) say('已複製提示詞。貼給 AI 並附上收據照片，再把回傳的 JSON 貼到下方匯入。'); else { $('#ldp-paste').value = buildPrompt(cats); $('#ldp-paste').select(); say('無法自動複製，提示詞已放進下方文字框，請全選複製。', true); } });
+            else if (a === 'p-import') doImport($('#ldp-paste').value);
+            else if (a === 'p-pay') { st.pay = b.dataset.v; renderMain(); }
+            else if (a === 'p-basis') { st.basis = b.dataset.v; renderMain(); }
+            else if (a === 'p-apply') {
+                if (b.disabled) return;
+                const rows = picked().map((x) => ({ title: (x.it.zh && x.it.zh !== x.it.jp ? x.it.zh : x.it.jp) + (x.it.qty > 1 ? ` ×${x.it.qty}` : ''), jp: x.it.jp, amount: x.amount, cat: st.cat[x.it.id] || dflt }));
+                b.disabled = true;
+                Promise.resolve(opts.onApply({ rid: 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name: st.name.trim() || st.receipt.name, date: st.date, pay: st.pay, rows })).then((ok) => { if (ok !== false) closePersonal(); else renderFoot(); }, () => renderFoot());
+            }
+        });
+        el.addEventListener('change', (ev) => {
+            const t = ev.target;
+            if (t.id === 'ldp-file') {
+                const f = t.files && t.files[0]; if (!f) return;
+                const rd = new FileReader();
+                rd.onload = () => doImport(String(rd.result), f.name);
+                rd.onerror = () => say('讀取檔案失敗', true);
+                rd.readAsText(f); t.value = '';
+            } else if (t.dataset && t.dataset.a === 'p-cat') st.cat[+t.dataset.i] = t.value;
+            else if (t.dataset && t.dataset.a === 'p-on') { if (t.checked) delete st.off[+t.dataset.i]; else st.off[+t.dataset.i] = true; renderFoot(); }
+            else if (t.dataset && t.dataset.a === 'p-coupon') { st.coupon = t.checked; renderMain(); }
+            else if (t.id === 'ldp-date') { st.date = t.value; renderFoot(); }
+        });
+        el.addEventListener('input', (ev) => { if (ev.target.id === 'ldp-name') st.name = ev.target.value; });
+        renderMain();
+    }
+
+
     function open(opts) {
         close();
         const people = opts.people || [];
@@ -214,7 +367,8 @@
                     <label class="lg-lbl" for="ld-payer">付款人</label><select id="ld-payer" class="lg-in"><option value="">請選擇付款人</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>
                 </div>
                 <details class="ld-card" id="ld-imp"><summary>匯入收據（AI 整理的 JSON，或舊版匯出檔）</summary>
-                    <p class="lg-muted lg-mt">新收據：① 複製提示詞 ② 連同收據照片丟給 AI ③ 把回傳的 JSON 貼到下面。舊版匯出檔（含朋友與分配）會依名字對應到團員。匯入會清空目前的品項分配。</p>
+                    <p class="lg-muted lg-mt">新收據：用下方按鈕把提示詞帶去 AI、上傳收據照片，再把回傳的 JSON 貼回來。舊版匯出檔（含朋友與分配）會依名字對應到團員。匯入會清空目前的品項分配。</p>
+                    ${aiToolsHtml()}
                     <div class="ld-btns"><button type="button" class="lg-btn sm ghost" data-a="prompt">複製 AI 提示詞</button><label class="lg-btn sm ghost" for="ld-file">選擇檔案匯入</label><input type="file" id="ld-file" hidden accept=".json,.txt,application/json,text/plain"></div>
                     <textarea id="ld-paste" class="lg-in lg-mt" rows="4" placeholder="把 AI 回傳的 JSON 貼在這裡（含 \`\`\`json 也沒關係）"></textarea>
                     <button type="button" class="lg-btn sm lg-mt" data-a="import">匯入貼上的內容</button>
@@ -388,6 +542,7 @@
                 rd.readAsText(f); t.value = '';
             }
         });
+        wireAi(el, { prompt: () => buildPrompt(), onText: doImport, say });
         $('#ld-imp').open = !st.receipt;
         renderAll();
     }
@@ -399,5 +554,5 @@
         const o = curOpts; cur = curOpts = null;
         if (o && o.onClose) o.onClose();
     }
-    return { open, close, list, remove, calcPerson, alignTotals, buildNote, parseReceipt, parseImport, buildPrompt, parseNum, checkReceipt };
+    return { open, close, openPersonal, closePersonal, itemAmounts, list, remove, calcPerson, alignTotals, buildNote, parseReceipt, parseImport, buildPrompt, parseNum, checkReceipt };
 });
