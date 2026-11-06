@@ -215,9 +215,13 @@
     function canShareFiles() {
         try { return typeof navigator !== 'undefined' && !!navigator.share && !!navigator.canShare && navigator.canShare({ files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] }); } catch (e) { return false; }
     }
-    function aiToolsHtml() {
-        return `<div class="ld-btns"><button type="button" class="lg-btn sm" data-a="ai-claude">✨ 複製提示詞並開啟 Claude</button><button type="button" class="lg-btn sm" data-a="ai-gpt">✨ 複製提示詞並開啟 ChatGPT</button>${canShareFiles() ? '<label class="lg-btn sm ghost" for="ld-aipick">📤 選照片分享給 AI App</label><input type="file" id="ld-aipick" hidden multiple accept="image/*"><button type="button" class="lg-btn sm" data-a="ai-share-go" style="display:none"></button>' : ''}<button type="button" class="lg-btn sm ghost" data-a="ai-paste">📋 貼上並匯入</button></div>
-            <p class="lg-muted lg-mt">照片無法透過網址帶入，開啟 AI 後請自行上傳收據照片（或用「分享」一次帶照片＋提示詞）。AI 回覆後複製 JSON，回來按「貼上並匯入」。</p>`;
+    function aiToolsHtml(fileId) {
+        return `<p class="ld-sec">① 送去 AI</p>
+            <div class="ld-btns"><button type="button" class="lg-btn sm" data-a="ai-claude">✨ 開啟 Claude</button><button type="button" class="lg-btn sm" data-a="ai-gpt">✨ 開啟 ChatGPT</button>${canShareFiles() ? '<label class="lg-btn sm ghost" for="ld-aipick">📤 選照片分享</label><input type="file" id="ld-aipick" hidden multiple accept="image/*"><button type="button" class="lg-btn sm" data-a="ai-share-go" style="display:none"></button>' : ''}<button type="button" class="lg-btn sm ghost" data-a="ai-copy">只複製提示詞</button></div>
+            <p class="lg-muted">開啟時會自動複製提示詞，到 AI 後自行上傳收據照片；「選照片分享」可一次把照片＋提示詞送給手機上的 AI App。</p>
+            <p class="ld-sec">② 帶回結果</p>
+            <div class="ld-btns"><button type="button" class="lg-btn sm" data-a="ai-paste">📋 貼上並匯入</button><label class="lg-btn sm ghost" for="${fileId}">選擇檔案匯入</label><input type="file" id="${fileId}" hidden accept=".json,.txt,application/json,text/plain"></div>
+            <p class="lg-muted">AI 回覆後複製 JSON，回來按「貼上並匯入」；也可貼到下方文字框。</p>`;
     }
     // o: {prompt: () => 提示詞, onText(text, 來源), say(文字, 是否錯誤)}
     function wireAi(root, o) {
@@ -230,6 +234,8 @@
                 copyText(t);
                 window.open(AI_URL[a] + encodeURIComponent(t), '_blank');
                 o.say('已複製提示詞並開啟 AI；若沒有自動帶入，請在輸入框長按貼上。上傳收據照片後，把 AI 回傳的 JSON 複製起來，再回來按「貼上並匯入」。');
+            } else if (a === 'ai-copy') {
+                copyText(t).then((ok) => (ok ? o.say('已複製提示詞。貼給 AI 並附上收據照片，再把回傳的 JSON 帶回來。') : o.say('無法自動複製，請改用「開啟 Claude／ChatGPT」。', true)));
             } else if (a === 'ai-share-go') {
                 if (!files.length) return;
                 copyText(t);
@@ -263,8 +269,7 @@
             <div class="ld-scroll">
                 <details class="ld-card" id="ldp-imp" open><summary>匯入收據（AI 整理的 JSON）</summary>
                     <p class="lg-muted lg-mt">每個品項會各記一筆個人支出（日圓），並由 AI 先分好類，匯入後可逐項修改。</p>
-                    ${aiToolsHtml()}
-                    <div class="ld-btns"><button type="button" class="lg-btn sm ghost" data-a="p-prompt">只複製提示詞</button><label class="lg-btn sm ghost" for="ldp-file">選擇檔案匯入</label><input type="file" id="ldp-file" hidden accept=".json,.txt,application/json,text/plain"></div>
+                    ${aiToolsHtml('ldp-file')}
                     <textarea id="ldp-paste" class="lg-in lg-mt" rows="4" placeholder="把 AI 回傳的 JSON 貼在這裡"></textarea>
                     <button type="button" class="lg-btn sm lg-mt" data-a="p-import">匯入貼上的內容</button>
                 </details>
@@ -319,7 +324,6 @@
             if (!b) return;
             const a = b.dataset.a;
             if (a === 'p-close') closePersonal();
-            else if (a === 'p-prompt') copyText(buildPrompt(cats)).then((ok) => { if (ok) say('已複製提示詞。貼給 AI 並附上收據照片，再把回傳的 JSON 貼到下方匯入。'); else { $('#ldp-paste').value = buildPrompt(cats); $('#ldp-paste').select(); say('無法自動複製，提示詞已放進下方文字框，請全選複製。', true); } });
             else if (a === 'p-import') doImport($('#ldp-paste').value);
             else if (a === 'p-pay') { st.pay = b.dataset.v; renderMain(); }
             else if (a === 'p-basis') { st.basis = b.dataset.v; renderMain(); }
@@ -368,8 +372,7 @@
                 </div>
                 <details class="ld-card" id="ld-imp"><summary>匯入收據（AI 整理的 JSON，或舊版匯出檔）</summary>
                     <p class="lg-muted lg-mt">新收據：用下方按鈕把提示詞帶去 AI、上傳收據照片，再把回傳的 JSON 貼回來。舊版匯出檔（含朋友與分配）會依名字對應到團員。匯入會清空目前的品項分配。</p>
-                    ${aiToolsHtml()}
-                    <div class="ld-btns"><button type="button" class="lg-btn sm ghost" data-a="prompt">複製 AI 提示詞</button><label class="lg-btn sm ghost" for="ld-file">選擇檔案匯入</label><input type="file" id="ld-file" hidden accept=".json,.txt,application/json,text/plain"></div>
+                    ${aiToolsHtml('ld-file')}
                     <textarea id="ld-paste" class="lg-in lg-mt" rows="4" placeholder="把 AI 回傳的 JSON 貼在這裡（含 \`\`\`json 也沒關係）"></textarea>
                     <button type="button" class="lg-btn sm lg-mt" data-a="import">匯入貼上的內容</button>
                 </details>
@@ -506,7 +509,6 @@
             else if (a === 'takeall') { items().forEach((it) => { const rem = it.qty - tot(it.id); if (rem > 0) setQty(it.id, st.active, asg(it.id, st.active) + rem); }); renderAll(); }
             else if (a === 'clearp') { items().forEach((it) => setQty(it.id, st.active, 0)); renderAll(); }
             else if (a === 'resetall') { if (confirm('清除所有人的品項分配？')) { st.assign = {}; renderAll(); } }
-            else if (a === 'prompt') copy(buildPrompt()).then((ok) => { if (ok) say('已複製 AI 提示詞。貼給 AI 並附上收據照片，再把回傳的 JSON 貼到下方匯入。'); else { $('#ld-paste').value = buildPrompt(); $('#ld-paste').select(); say('無法自動複製，提示詞已放進下方文字框，請全選複製。', true); } });
             else if (a === 'import') doImport($('#ld-paste').value);
             else if (a === 'apply') {
                 const S = cfg(), parts = {}, rf = {}, members = [];
