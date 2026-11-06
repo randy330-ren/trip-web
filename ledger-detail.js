@@ -74,11 +74,12 @@
             if (!(qty >= 1) || Math.floor(qty) !== qty) { errs.push(`第 ${i + 1} 筆（${label}）的 qty 必須是 1 以上的整數`); return; }
             if (!(rate >= 0 && rate <= 100)) { errs.push(`第 ${i + 1} 筆（${label}）的 rate 不是有效稅率`); return; }
             idMap[String(it.id != null ? it.id : i + 1)] = items.length + 1;
-            items.push({ id: items.length + 1, jp: String(it.jp || it.zh || '品項 ' + (i + 1)), zh: String(it.zh || it.jp || ''), unit, qty, rate, star: toBool(it.star, true) });
+            items.push({ id: items.length + 1, jp: String(it.jp || it.zh || '品項 ' + (i + 1)), zh: String(it.zh || it.jp || ''), unit, qty, rate, star: toBool(it.star, true), rate0: rate, star0: toBool(it.star, true) });
         });
         if (errs.length) return { error: errs.slice(0, 4).join('；') + (errs.length > 4 ? `…（共 ${errs.length} 處）` : '') };
         const cp = parseNum(raw.couponPercent), total = parseNum(raw.receiptTotal !== undefined ? raw.receiptTotal : raw.total);
         const refund = parseNum(raw.receiptRefund !== undefined ? raw.receiptRefund : raw.refund);
+        const ic = parseNum(raw.itemCount);
         const ds = String(raw.date || '').replace(/\//g, '-');
         const date = /^\d{4}-\d{2}-\d{2}$/.test(ds) ? ds : '', store = String(raw.store || '');
         return {
@@ -86,9 +87,32 @@
             receipt: {
                 name: (String(raw.name || '').trim() || [store, date].filter(Boolean).join(' ') || '未命名收據').slice(0, 50),
                 store, date, taxMode: raw.taxMode === 'incl' || raw.taxMode === 'included' ? 'incl' : 'excl',
-                couponPercent: cp >= 0 && cp <= 100 ? cp : 0, total: total > 0 ? total : null, refund: refund >= 0 ? refund : null, items
+                couponPercent: cp >= 0 && cp <= 100 ? cp : 0, total: total > 0 ? total : null, refund: refund >= 0 ? refund : null, itemCount: ic > 0 ? Math.floor(ic) : null, items
             }
         };
+    }
+    // 完整性檢查：回傳警告文字陣列（漏拍／混入別張／缺合計）；applyCoupon 為是否套用收據折扣
+    function checkReceipt(r, applyCoupon) {
+        const w = [], items = r.items || [];
+        const disc = applyCoupon !== false && r.couponPercent > 0 ? 1 - r.couponPercent / 100 : 1;
+        const qty = items.reduce((a, i) => a + i.qty, 0);
+        if (r.itemCount && r.itemCount !== qty) w.push(`件數對不上：收據點數 ${r.itemCount} 件，匯入 ${qty} 件（${qty < r.itemCount ? `少 ${r.itemCount - qty} 件，可能漏拍或 AI 漏列` : `多 ${qty - r.itemCount} 件，可能混入別張或重複`}）`);
+        let over = !!(r.itemCount && qty > r.itemCount);
+        if (!(r.total > 0)) w.push('沒有收據合計，無法核對是否漏拍或混入別張');
+        else if (disc < 1 || !(r.couponPercent > 0)) {
+            const gross = calcPerson(items.map((item) => ({ item, n: item.qty })), { basis: 'before', taxMode: r.taxMode, disc }).gross, diff = gross - r.total;
+            if (Math.abs(diff) > 5) { over = over || diff > 0; w.push(`金額對不上：品項加總 ¥${gross.toLocaleString('en-US')}，收據 ¥${r.total.toLocaleString('en-US')}（${diff < 0 ? `少 ¥${-diff}，可能漏拍上／下半部` : `多 ¥${diff}，可能混入別張或重複拍到`}）`); }
+        }
+        if (r.refund != null) {
+            const rf = calcPerson(items.map((item) => ({ item, n: item.qty })), { basis: 'before', taxMode: r.taxMode, disc }).refund, d = rf - r.refund;
+            if (Math.abs(d) > 5) w.push(`退稅額對不上：預計退稅 ¥${rf.toLocaleString('en-US')}，收據 ¥${r.refund.toLocaleString('en-US')}（${d < 0 ? '少' : '多'} ¥${Math.abs(d)}，請檢查 ★ 退稅標記與稅率）`);
+        }
+        if (over) {
+            const seen = {}, dup = [];
+            items.forEach((i) => { const k = [i.jp, i.unit, i.qty].join('|'); if (seen[k] && !dup.includes(i.jp)) dup.push(i.jp); seen[k] = 1; });
+            if (dup.length) w.push(`疑似重複品項：${dup.slice(0, 5).join('、')}${dup.length > 5 ? '…' : ''}（多張照片重疊拍到時常見）`);
+        }
+        return w;
     }
     // 匯入檔若含舊版的朋友與分配（朋友名單 people、分配 assign），依名字對應到目前的團員
     function parseImport(text, people) {
@@ -128,7 +152,7 @@
         return [
             '你是收據資料整理助手。我會附上日本購物收據的照片（可能有多張，是同一張收據的不同段落）。請把所有品項整理成下面格式的 JSON。請只輸出一個 json 程式碼區塊，欄位名稱不要改。',
             '', 'JSON 格式：', '{', '  "receipt": {', '    "name": "店名 日期（例如：唐吉訶德米子店 2026-11-05）",', '    "store": "店名",', '    "date": "YYYY-MM-DD",',
-            '    "taxMode": "excl",', '    "couponPercent": 0,', '    "receiptTotal": 0,', '    "receiptRefund": null,', '    "items": [',
+            '    "taxMode": "excl",', '    "couponPercent": 0,', '    "receiptTotal": 0,', '    "receiptRefund": null,', '    "itemCount": 0,', '    "items": [',
             '      {"jp": "收據上的原文品名", "zh": "簡短中文品名（可推測）", "unit": 249, "qty": 1, "star": true, "rate": 8}', '    ]', '  }', '}', '',
             '欄位規則：',
             '1. items：每個品項一筆。收據寫「3コ×単227 ¥681」就是 unit=227、qty=3。同名但條碼不同的品項要分成兩筆。',
@@ -139,7 +163,9 @@
             '6. couponPercent：收據上的整單折扣百分比（例如「クーポン割引 5%」填 5），沒有填 0。若折扣是固定金額而不是百分比，填 0，並在 JSON 外面告訴我金額。',
             '7. receiptTotal：收據最終合計（含稅總額，日圓整數）。receiptRefund：收據上的免稅返金額／退稅額，沒有就填 null。',
             '8. 請自行核對：所有品項 unit × qty 加總要等於收據的折扣前小計，總件數要等於收據的點數。不一致時，請在 JSON 外面列出可能漏掉或看錯的品項。',
-            '9. 看不清楚的品名請用最接近的文字，並在 JSON 外面標註。'
+            '9. 看不清楚的品名請用最接近的文字，並在 JSON 外面標註。',
+            '10. itemCount：收據上印的總點數／總件數（例如「点数 12」填 12），沒印就填 0。',
+            '11. 若照片只拍到收據的一部分（缺上半或下半、沒看到合計），或混入不屬於同一張收據的照片，請先在 JSON 外面說明並詢問我，不要硬湊；多張照片重疊的品項只列一次。'
         ].join('\n');
     }
 
@@ -208,6 +234,7 @@
         const cnt = (pid) => items().reduce((a, it) => a + asg(it.id, pid), 0);
         const linesFor = (pid) => items().map((item) => ({ item, n: asg(item.id, pid) })).filter((l) => l.n > 0);
         const cfg = () => { const r = st.receipt; return { basis: st.basis, taxMode: r.taxMode, disc: st.coupon && r.couponPercent > 0 ? 1 - r.couponPercent / 100 : 1 }; };
+        const edited = (it) => { const m = []; if (it.rate0 != null && it.rate !== it.rate0) m.push(`稅率原 ${it.rate0}%`); if (it.star0 != null && it.star !== it.star0) m.push(`退稅原${it.star0 ? '為 ★' : '為不退稅'}`); return m.length ? `<span class="ld-edt">✎ 已手動改（${m.join('、')}）</span>` : ''; };
         const shut = {};
         let itemsShut = false;
         // 每人結果；品項全部分完、收據有合計、折扣設定一致、差距在 5 円內時，把每人金額對齊收據合計
@@ -249,7 +276,7 @@
                     const mine = asg(it.id, st.active), rem = it.qty - tot(it.id);
                     const badges = people.map((p) => (asg(it.id, p.id) ? `<span class="ld-bdg" style="--c:${color(p.id)}">${esc(p.name)}×${asg(it.id, p.id)}</span>` : '')).join('');
                     return `<div class="ld-item ${mine ? 'sel' : ''}"><div class="ld-i"><b>${esc(it.jp)}</b>${it.zh && it.zh !== it.jp ? `<small>${esc(it.zh)}</small>` : ''}
-                        <small class="ld-meta">${yen(it.unit)} × ${it.qty}<button type="button" class="ld-tg ${it.star ? 'on' : ''}" data-a="star" data-i="${it.id}">${it.star ? '★ 退稅' : '不退稅'}</button><button type="button" class="ld-tg" data-a="rate" data-i="${it.id}">${it.rate}%</button>${it.qty > 1 ? `剩 ${rem}` : ''}</small>${badges ? `<span class="ld-bdgs">${badges}</span>` : ''}</div>
+                        <small class="ld-meta">${yen(it.unit)} × ${it.qty}<button type="button" class="ld-tg ${it.star ? 'on' : ''}" data-a="star" data-i="${it.id}">${it.star ? '★ 退稅' : '不退稅'}</button><button type="button" class="ld-tg" data-a="rate" data-i="${it.id}">${it.rate}%</button>${edited(it)}${it.qty > 1 ? `剩 ${rem}` : ''}</small>${badges ? `<span class="ld-bdgs">${badges}</span>` : ''}</div>
                         <div class="ld-step"><button type="button" data-a="dec" data-i="${it.id}" ${mine ? '' : 'disabled'} aria-label="減少">−</button><span>${mine}</span><button type="button" data-a="inc" data-i="${it.id}" ${rem > 0 ? '' : 'disabled'} aria-label="增加">＋</button></div></div>`;
                 }).join('')}</div>`;
         }
@@ -270,6 +297,7 @@
                         <input class="lg-in ld-pn" data-pn="${esc(p.id)}" maxlength="60" placeholder="${esc(p.name)} 的備註（選填）" value="${esc(st.notes[p.id] || '')}">` : '') + '</div>';
             });
             if (!any) html += '<p class="lg-muted">尚未分配任何品項。</p>';
+            checkReceipt(r, st.coupon).forEach((x) => { html += `<p class="ld-note warn">⚠️ ${esc(x)}</p>`; });
             const left = items().map((item) => ({ item, n: item.qty - tot(item.id) })).filter((l) => l.n > 0);
             if (left.length) {
                 const c = calcPerson(left, S);
@@ -294,11 +322,13 @@
             if (p.assign) { st.basis = p.basis; st.coupon = p.coupon; } else st.coupon = true;
             if (!st.name) { st.name = p.receipt.name; $('#ld-name').value = st.name; }
             if (!st.date && p.receipt.date) { st.date = p.receipt.date; $('#ld-date').value = st.date; }
+            const warns = checkReceipt(p.receipt, st.coupon);
             renderAll();
             say([`已匯入「${p.receipt.name}」，共 ${p.receipt.items.length} 項。`,
                 p.assign ? (p.matched.length ? `已依名字帶入分配：${p.matched.join('、')}` : '檔案裡的朋友名字都和團員名單對不上，分配沒有帶入。') : '',
-                p.missing.length ? `找不到對應團員，這些人的分配沒帶入：${p.missing.join('、')}（請先在團員名單用相同名字新增，再重新匯入）` : ''].filter(Boolean).join('\n'), p.missing.length > 0);
-            $('#ld-imp').open = !!p.missing.length;
+                p.missing.length ? `找不到對應團員，這些人的分配沒帶入：${p.missing.join('、')}（請先在團員名單用相同名字新增，再重新匯入）` : '',
+                warns.length ? '⚠️ 收據可能不完整：\n' + warns.map((x) => '・' + x).join('\n') + '\n請確認照片是否完整、有無混入別張收據；仍可繼續，也可修正後重新匯入。' : ''].filter(Boolean).join('\n'), p.missing.length > 0 || warns.length > 0);
+            $('#ld-imp').open = !!p.missing.length || warns.length > 0;
             $('#ld-paste').value = '';
         }
         function copy(t) {
@@ -369,5 +399,5 @@
         const o = curOpts; cur = curOpts = null;
         if (o && o.onClose) o.onClose();
     }
-    return { open, close, list, remove, calcPerson, alignTotals, buildNote, parseReceipt, parseImport, buildPrompt, parseNum };
+    return { open, close, list, remove, calcPerson, alignTotals, buildNote, parseReceipt, parseImport, buildPrompt, parseNum, checkReceipt };
 });
