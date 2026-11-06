@@ -314,3 +314,7 @@ textarea.lg-in { resize: vertical; }
 .ld-flag { display: block; color: #92400e; font-size: 11px; }
 .lg-rg.open > .lg-stack { margin-top: 8px; }
 .lg-rg .lg-actions { margin-top: 8px; }
+
+.ldp-rec { margin-top: 12px; }
+.ldp-rh { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.ldp-rh .lg-h { flex: 1; }

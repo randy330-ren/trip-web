@@ -61,7 +61,23 @@
     function parseReceipt(text) {
         const j = extractJSON(text);
         if (j.error) return { error: j.error };
-        const obj = j.value, raw = obj && (obj.receipt || (Array.isArray(obj.items) ? obj : null));
+        return parseReceiptObj(j.value);
+    }
+    // 個人記帳可一次匯入多張：{"receipts":[…]}；單張格式也照樣接受
+    function parseReceipts(text) {
+        const j = extractJSON(text);
+        if (j.error) return { error: j.error };
+        const v = j.value;
+        if (v && Array.isArray(v.receipts)) {
+            const list = [], errs = [];
+            v.receipts.forEach((x, i) => { const p = parseReceiptObj(x && (x.receipt || x)); if (p.error) errs.push(`第 ${i + 1} 張：${p.error}`); else list.push(p.receipt); });
+            return list.length ? { receipts: list, errs } : { error: errs.join('；') || 'receipts 是空的' };
+        }
+        const p = parseReceiptObj(v);
+        return p.error ? { error: p.error } : { receipts: [p.receipt], errs: [] };
+    }
+    function parseReceiptObj(obj) {
+        const raw = obj && (obj.receipt || (Array.isArray(obj.items) ? obj : null));
         if (!raw || !Array.isArray(raw.items) || !raw.items.length) return { error: '缺少 items（品項清單），或清單是空的' };
         const items = [], errs = [], idMap = {};
         raw.items.forEach((it, i) => {
@@ -158,7 +174,7 @@
         res.coupon = so.coupon !== false;
         return res;
     }
-    function buildPrompt(cats) {
+    function buildPrompt(cats, multi) {
         const withCat = Array.isArray(cats) && cats.length;
         return [
             '你是收據資料整理助手。我會附上日本購物收據的照片（可能有多張，是同一張收據的不同段落）。請把所有品項整理成下面格式的 JSON。請只輸出一個 json 程式碼區塊，欄位名稱不要改。',
@@ -176,8 +192,9 @@
             '8. 請自行核對：所有品項 unit × qty 加總要等於收據的折扣前小計，總件數要等於收據的點數。不一致時，請在 JSON 外面列出可能漏掉或看錯的品項。',
             '9. 看不清楚的品名請用最接近的文字，並在 JSON 外面標註。',
             '10. itemCount：收據上印的總點數／總件數（例如「点数 12」填 12），沒印就填 0。',
-            '11. 若照片只拍到收據的一部分（缺上半或下半、沒看到合計），或混入不屬於同一張收據的照片，請先在 JSON 外面說明並詢問我，不要硬湊；多張照片重疊的品項只列一次。'
-        ].concat(withCat ? [`12. cat：每個品項的分類，只能從這些選一個：${cats.map((c) => `「${c}」`).join('')}。判斷不出來填「其他」。`] : []).join('\n');
+            (multi ? '11. 若照片只拍到收據的一部分（缺上半或下半、沒看到合計），請先在 JSON 外面說明並詢問我，不要硬湊；多張照片重疊的品項只列一次。' : '11. 若照片只拍到收據的一部分（缺上半或下半、沒看到合計），或混入不屬於同一張收據的照片，請先在 JSON 外面說明並詢問我，不要硬湊；多張照片重疊的品項只列一次。')
+        ].concat(withCat ? [`12. cat：每個品項的分類，只能從這些選一個：${cats.map((c) => `「${c}」`).join('')}。判斷不出來填「其他」。`] : [],
+            multi ? ['13. 我可能一次附上好幾張「不同的收據」。每張收據各整理成一包（就是上面 receipt 裡面的那包欄位），全部放進陣列，輸出成 {"receipts": [第一張收據, 第二張收據, …]}；同一張收據拍成多張照片（上半、下半）請合併成一包。每張收據的 name、date、receiptTotal、itemCount 要分開填。無法判斷某張照片屬於哪一張收據時，請先在 JSON 外面詢問我。'] : []).join('\n');
     }
 
     // ---------- 介面（只在瀏覽器執行） ----------
@@ -240,15 +257,26 @@
         });
     }
 
-    // ---------- 個人記帳：逐品項匯入 ----------
+    // ---------- 個人記帳：逐品項匯入（可多張收據，每張各自的支付方式） ----------
     // 待處理草稿：只存在本機（與團體的明細分帳分開存），每次變動都會暫存，按 ✕ 不會刪除，寫入個人記帳成功才清掉
     const PKEY = 'ledger_dp';
+    const rk = () => 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    // 舊版草稿（單張收據）轉成收據清單
+    function migrateP(d) {
+        if (d && d.receipt && !Array.isArray(d.receipts)) {
+            d.receipts = [{ key: rk(), receipt: d.receipt, name: d.name || '', date: d.date || '', pay: d.pay || '', basis: d.basis || 'before', coupon: d.coupon !== false, cat: d.cat || {}, flag: d.flag || {}, off: d.off || {} }];
+        }
+        if (d) { delete d.receipt; delete d.name; delete d.date; delete d.pay; delete d.basis; delete d.coupon; delete d.cat; delete d.flag; delete d.off; if (!Array.isArray(d.receipts)) d.receipts = []; }
+        return d;
+    }
     let PDB = { drafts: {} };
-    try { const v = typeof cacheLoad === 'function' && cacheLoad(PKEY); if (v && v.drafts && typeof v.drafts === 'object') PDB = { drafts: v.drafts }; } catch (e) { }
+    try { const v = typeof cacheLoad === 'function' && cacheLoad(PKEY); if (v && v.drafts && typeof v.drafts === 'object') { PDB = { drafts: v.drafts }; Object.values(PDB.drafts).forEach(migrateP); } } catch (e) { }
     const flushP = () => { try { if (typeof cacheSave === 'function') cacheSave(PKEY, PDB); } catch (e) { } };
     function listPersonal() {
-        return Object.values(PDB.drafts).filter((d) => d && d.receipt && Array.isArray(d.receipt.items)).sort((a, b) => b.ts - a.ts)
-            .map((d) => ({ id: d.id, title: d.name || d.receipt.name || '未命名收據', date: d.date || '', count: d.receipt.items.length }));
+        return Object.values(PDB.drafts).filter((d) => d && d.receipts && d.receipts.length).sort((a, b) => b.ts - a.ts).map((d) => {
+            const f = d.receipts[0], n = d.receipts.length;
+            return { id: d.id, title: (f.name || f.receipt.name || '未命名收據') + (n > 1 ? `　等 ${n} 張` : ''), date: f.date || '', count: d.receipts.reduce((a, x) => a + x.receipt.items.length, 0) };
+        });
     }
     function removePersonal(id) { delete PDB.drafts[id]; flushP(); }
     let curPOpts = null;
@@ -263,99 +291,121 @@
         closePersonal();
         const cats = opts.cats || [], pays = opts.pays || [], dflt = cats.includes('其他') ? '其他' : cats[0];
         curPOpts = opts;
-        const st = { id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), ts: Date.now(), receipt: null, name: '', date: opts.today || '', pay: '', basis: 'before', coupon: true, cat: {}, flag: {}, off: {}, ...((opts.id && PDB.drafts[opts.id]) || {}) };
-        if (st.receipt) st.receipt.items.forEach((it) => { if (!cats.includes(st.cat[it.id])) st.cat[it.id] = dflt; });
-        const keepP = () => { if (st.receipt) { st.ts = Date.now(); PDB.drafts[st.id] = st; flushP(); } };
+        const fresh = () => ({ id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), ts: Date.now(), receipts: [], target: 'add' });
+        const st = Object.assign(fresh(), migrateP((opts.id && PDB.drafts[opts.id]) || {}));
+        st.receipts.forEach((x) => x.receipt.items.forEach((it) => { if (!cats.includes(x.cat[it.id])) x.cat[it.id] = dflt; }));
+        const keepP = () => { if (st.receipts.length) { st.ts = Date.now(); PDB.drafts[st.id] = { ...st }; flushP(); } };
         const el = document.createElement('div');
         el.id = 'ldp-root'; el.className = 'ld';
         el.innerHTML = `<div class="ld-head"><b>🧾 逐品項匯入個人記帳</b><button type="button" data-a="p-close" aria-label="關閉">✕</button></div>
             <div class="ld-scroll">
-                <details class="ld-card" id="ldp-imp" open><summary>匯入收據（AI 整理的 JSON）</summary>
-                    <p class="lg-muted lg-mt">每個品項會各記一筆個人支出（日圓），並由 AI 先分好類，匯入後可逐項修改。</p>
+                <details class="ld-card" id="ldp-imp" open><summary>匯入收據（AI 整理的 JSON，可一次多張）</summary>
+                    <p class="lg-muted lg-mt">每個品項會各記一筆個人支出（日圓），並由 AI 先分好類，匯入後可逐項修改。可一次匯入多張收據，每張各自選支付方式。</p>
+                    <div id="ldp-target"></div>
                     ${aiToolsHtml('ldp-file')}
                     <textarea id="ldp-paste" class="lg-in lg-mt" rows="4" placeholder="把 AI 回傳的 JSON 貼在這裡"></textarea>
                     <button type="button" class="lg-btn sm lg-mt" data-a="p-import">匯入貼上的內容</button>
                 </details>
                 <p class="ld-msg" id="ldp-msg" role="status"></p>
-                <div class="ld-card" id="ldp-main"></div>
+                <div id="ldp-main"></div>
             </div>
             <div class="ld-foot"><button type="button" class="lg-btn wide" id="ldp-apply" data-a="p-apply" disabled>寫入個人記帳</button></div>`;
         document.body.appendChild(el);
         document.body.style.overflow = 'hidden';
         const $ = (q) => el.querySelector(q);
         const say = (t, bad) => { const m = $('#ldp-msg'); m.textContent = t; m.className = 'ld-msg' + (bad ? ' bad' : ''); };
-        const amts = () => itemAmounts(st.receipt, st.coupon, st.basis);
-        const picked = () => { const am = amts(); return st.receipt.items.map((it, i) => ({ it, amount: am[i] })).filter((x) => !st.off[x.it.id] && x.amount > 0); };
+        const byKey = (k) => st.receipts.find((x) => x.key === k);
+        const amts = (x) => itemAmounts(x.receipt, x.coupon, x.basis);
+        const picked = (x) => { const am = amts(x); return x.receipt.items.map((it, i) => ({ it, amount: am[i] })).filter((y) => !x.off[y.it.id] && y.amount > 0); };
+        const okDate = (x) => /^\d{4}-\d{2}-\d{2}$/.test(x.date);
+        function renderTarget() {
+            $('#ldp-target').innerHTML = st.receipts.length ? `<p class="ld-sec">這次匯入的收據要放在</p><div class="lg-seg sm">${[['add', '加入目前這份草稿'], ['new', '另存為新草稿']].map(([k, l]) => `<button type="button" data-a="p-target" data-v="${k}" class="${st.target === k ? 'on' : ''}">${l}</button>`).join('')}</div>` : '';
+        }
         function renderFoot() {
-            const b = $('#ldp-apply');
-            if (!st.receipt) { b.disabled = true; b.textContent = '寫入個人記帳'; return; }
-            const ps = picked(), sum = ps.reduce((a, x) => a + x.amount, 0), okDate = /^\d{4}-\d{2}-\d{2}$/.test(st.date);
-            b.disabled = !ps.length || !st.pay || !okDate;
-            b.textContent = !st.pay ? '請先選擇支付方式' : !okDate ? '請選擇日期' : !ps.length ? '沒有可寫入的品項' : `寫入個人記帳（${ps.length} 筆・${yen(sum)}）`;
+            const b = $('#ldp-apply'), act = st.receipts.map((x) => ({ x, ps: picked(x) })).filter((y) => y.ps.length);
+            if (!st.receipts.length) { b.disabled = true; b.textContent = '寫入個人記帳'; return; }
+            const n = act.reduce((a, y) => a + y.ps.length, 0), sum = act.reduce((a, y) => a + y.ps.reduce((u, v) => u + v.amount, 0), 0);
+            const noPay = act.some((y) => !y.x.pay), noDate = act.some((y) => !okDate(y.x));
+            b.disabled = !act.length || noPay || noDate;
+            b.textContent = !act.length ? '沒有可寫入的品項' : noPay ? '請先為每張收據選擇支付方式' : noDate ? '請為每張收據選擇日期' : `寫入個人記帳（${act.length} 張・${n} 筆・${yen(sum)}）`;
+        }
+        function recHtml(x, idx) {
+            const r = x.receipt, am = amts(x), q = r.items.reduce((a, i) => a + i.qty, 0), warns = checkReceipt(r, x.coupon), k = esc(x.key);
+            const cp = r.couponPercent > 0 ? `<label class="ld-chk"><input type="checkbox" data-a="p-coupon" data-k="${k}" ${x.coupon ? 'checked' : ''}> 套用收據上的 ${r.couponPercent}% 折扣</label>` : '';
+            return `<div class="ld-card ldp-rec"><div class="ldp-rh"><p class="lg-h">${st.receipts.length > 1 ? `第 ${idx + 1} 張　` : ''}${esc(r.name)}<small>　${r.items.length} 項／${q} 件・價格為${r.taxMode === 'incl' ? '含稅' : '未稅'}${r.total ? '・收據合計 ' + yen(r.total) : ''}</small></p><button type="button" class="lg-btn sm ghost danger" data-a="p-rm" data-k="${k}">移除這張</button></div>
+                <label class="lg-lbl">收據名稱（列表群組標題）</label><input class="lg-in" data-a="p-name" data-k="${k}" maxlength="50" value="${esc(x.name)}">
+                <label class="lg-lbl">日期</label><input type="date" class="lg-in" data-a="p-date" data-k="${k}" value="${esc(x.date)}">
+                <label class="lg-lbl">支付方式</label><div class="lg-seg sm">${pays.map(([pk, l]) => `<button type="button" data-a="p-pay" data-k="${k}" data-v="${esc(pk)}" class="${x.pay === pk ? 'on' : ''}">${esc(l)}</button>`).join('')}</div>
+                <div class="lg-seg sm lg-mt">${[['before', '免稅前（含稅價）'], ['after', '免稅後（扣預計退稅）']].map(([bk, l]) => `<button type="button" data-a="p-basis" data-k="${k}" data-v="${bk}" class="${x.basis === bk ? 'on' : ''}">${l}</button>`).join('')}</div>
+                ${cp}
+                ${warns.map((w) => `<p class="ld-note warn">⚠️ ${esc(w)}</p>`).join('')}
+                <p class="ld-sec">各品項分類（取消勾選＝不記這一項）</p>
+                <div class="ld-items">${r.items.map((it, i) => `<div class="ld-item"><input type="checkbox" data-a="p-on" data-k="${k}" data-i="${it.id}" ${x.off[it.id] ? '' : 'checked'} aria-label="記入"><div class="ld-i"><b>${esc(it.zh && it.zh !== it.jp ? it.zh : it.jp)}</b><small class="ld-meta">${yen(it.unit)} × ${it.qty}</small>${x.flag[it.id] ? `<small class="ld-flag">AI 填「${esc(x.flag[it.id])}」不在分類清單，已先歸「${esc(dflt)}」</small>` : ''}</div><div class="ldp-r"><b>${yen(am[i])}</b><select class="lg-in ldp-cat" data-a="p-cat" data-k="${k}" data-i="${it.id}">${cats.map((c) => `<option value="${esc(c)}" ${x.cat[it.id] === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div></div>`).join('')}</div></div>`;
         }
         function renderMain() {
-            const r = st.receipt, box = $('#ldp-main');
-            if (!r) { box.innerHTML = '<p class="lg-muted">還沒有收據。請先匯入。</p>'; renderFoot(); return; }
-            const am = amts(), q = r.items.reduce((a, i) => a + i.qty, 0), warns = checkReceipt(r, st.coupon);
-            const cp = r.couponPercent > 0 ? `<label class="ld-chk"><input type="checkbox" data-a="p-coupon" ${st.coupon ? 'checked' : ''}> 套用收據上的 ${r.couponPercent}% 折扣</label>` : '';
-            box.innerHTML = `<p class="lg-h">${esc(r.name)}<small>　${r.items.length} 項／${q} 件・價格為${r.taxMode === 'incl' ? '含稅' : '未稅'}${r.total ? '・收據合計 ' + yen(r.total) : ''}</small></p>
-                <label class="lg-lbl" for="ldp-name">收據名稱（列表群組標題）</label><input id="ldp-name" class="lg-in" maxlength="50" value="${esc(st.name)}">
-                <label class="lg-lbl" for="ldp-date">日期</label><input id="ldp-date" type="date" class="lg-in" value="${esc(st.date)}">
-                <label class="lg-lbl">支付方式</label><div class="lg-seg sm">${pays.map(([k, l]) => `<button type="button" data-a="p-pay" data-v="${esc(k)}" class="${st.pay === k ? 'on' : ''}">${esc(l)}</button>`).join('')}</div>
-                <div class="lg-seg sm lg-mt">${[['before', '免稅前（含稅價）'], ['after', '免稅後（扣預計退稅）']].map(([k, l]) => `<button type="button" data-a="p-basis" data-v="${k}" class="${st.basis === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-                ${cp}
-                ${warns.map((x) => `<p class="ld-note warn">⚠️ ${esc(x)}</p>`).join('')}
-                <p class="ld-sec">各品項分類（取消勾選＝不記這一項）</p>
-                <div class="ld-items">${r.items.map((it, i) => `<div class="ld-item"><input type="checkbox" data-a="p-on" data-i="${it.id}" ${st.off[it.id] ? '' : 'checked'} aria-label="記入"><div class="ld-i"><b>${esc(it.zh && it.zh !== it.jp ? it.zh : it.jp)}</b><small class="ld-meta">${yen(it.unit)} × ${it.qty}</small>${st.flag[it.id] ? `<small class="ld-flag">AI 填「${esc(st.flag[it.id])}」不在分類清單，已先歸「${esc(dflt)}」</small>` : ''}</div><div class="ldp-r"><b>${yen(am[i])}</b><select class="lg-in ldp-cat" data-a="p-cat" data-i="${it.id}">${cats.map((c) => `<option value="${esc(c)}" ${st.cat[it.id] === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div></div>`).join('')}</div>`;
-            renderFoot();
+            $('#ldp-main').innerHTML = st.receipts.length ? st.receipts.map(recHtml).join('') : '<div class="ld-card"><p class="lg-muted">還沒有收據。請先匯入。</p></div>';
+            renderTarget(); renderFoot();
         }
         function doImport(text, from) {
-            const p = parseReceipt(text);
+            const p = parseReceipts(text);
             if (p.error) { say(`匯入失敗${from ? '（' + from + '）' : ''}：${p.error}`, true); return; }
-            const r = p.receipt;
-            st.receipt = r; st.name = r.name; st.date = r.date || opts.today || ''; st.coupon = true; st.cat = {}; st.flag = {}; st.off = {};
-            r.items.forEach((it) => { if (cats.includes(it.cat)) st.cat[it.id] = it.cat; else { st.cat[it.id] = dflt; if (it.cat) st.flag[it.id] = it.cat; } });
-            const warns = checkReceipt(r, true), nf = Object.keys(st.flag).length;
+            if (st.receipts.length && st.target === 'new') { keepP(); Object.assign(st, fresh()); }
+            let nf = 0, nw = 0;
+            p.receipts.forEach((r) => {
+                const x = { key: rk(), receipt: r, name: r.name, date: r.date || opts.today || '', pay: (st.receipts[st.receipts.length - 1] || {}).pay || '', basis: 'before', coupon: true, cat: {}, flag: {}, off: {} };
+                r.items.forEach((it) => { if (cats.includes(it.cat)) x.cat[it.id] = it.cat; else { x.cat[it.id] = dflt; if (it.cat) x.flag[it.id] = it.cat; } });
+                nf += Object.keys(x.flag).length; nw += checkReceipt(r, true).length;
+                st.receipts.push(x);
+            });
+            st.target = 'add';
             renderMain();
-            say([`已匯入「${r.name}」，共 ${r.items.length} 項。`, nf ? `${nf} 項的分類不在清單內，已先歸「${dflt}」，請確認。` : '', warns.length ? '⚠️ 收據可能不完整，請看下方警告（仍可繼續）。' : ''].filter(Boolean).join('\n'), warns.length > 0 || nf > 0);
+            say([`已匯入 ${p.receipts.length} 張收據：${p.receipts.map((r) => `「${r.name}」${r.items.length} 項`).join('、')}。`, p.errs.length ? `有 ${p.errs.length} 張無法匯入：${p.errs.join('；')}` : '', nf ? `${nf} 項的分類不在清單內，已先歸「${dflt}」，請確認。` : '', nw ? '⚠️ 有收據可能不完整，請看各張收據下方的警告（仍可繼續）。' : ''].filter(Boolean).join('\n'), p.errs.length > 0 || nf > 0 || nw > 0);
             keepP();
             $('#ldp-imp').open = false;
             $('#ldp-paste').value = '';
         }
-        wireAi(el, { prompt: () => buildPrompt(cats), onText: doImport, say });
+        wireAi(el, { prompt: () => buildPrompt(cats, true), onText: doImport, say });
         el.addEventListener('click', (ev) => {
             const b = ev.target.closest && ev.target.closest('[data-a^="p-"]');
             if (!b) return;
-            const a = b.dataset.a;
+            const a = b.dataset.a, x = b.dataset.k && byKey(b.dataset.k);
             if (a === 'p-close') closePersonal();
             else if (a === 'p-import') doImport($('#ldp-paste').value);
-            else if (a === 'p-pay') { st.pay = b.dataset.v; keepP(); renderMain(); }
-            else if (a === 'p-basis') { st.basis = b.dataset.v; keepP(); renderMain(); }
+            else if (a === 'p-target') { st.target = b.dataset.v; renderTarget(); }
+            else if (a === 'p-pay' && x) { x.pay = b.dataset.v; keepP(); renderMain(); }
+            else if (a === 'p-basis' && x) { x.basis = b.dataset.v; keepP(); renderMain(); }
+            else if (a === 'p-rm' && x) {
+                if (!confirm(`移除「${x.name || x.receipt.name}」這張收據？`)) return;
+                st.receipts = st.receipts.filter((y) => y !== x);
+                if (st.receipts.length) keepP(); else { removePersonal(st.id); }
+                renderMain();
+            }
             else if (a === 'p-apply') {
                 if (b.disabled) return;
-                const rows = picked().map((x) => ({ title: (x.it.zh && x.it.zh !== x.it.jp ? x.it.zh : x.it.jp) + (x.it.qty > 1 ? ` ×${x.it.qty}` : ''), jp: x.it.jp, amount: x.amount, cat: st.cat[x.it.id] || dflt }));
+                const receipts = st.receipts.map((y) => ({ rid: 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name: y.name.trim() || y.receipt.name, date: y.date, pay: y.pay,
+                    rows: picked(y).map((z) => ({ title: (z.it.zh && z.it.zh !== z.it.jp ? z.it.zh : z.it.jp) + (z.it.qty > 1 ? ` ×${z.it.qty}` : ''), jp: z.it.jp, amount: z.amount, cat: y.cat[z.it.id] || dflt })) })).filter((y) => y.rows.length);
                 b.disabled = true;
-                Promise.resolve(opts.onApply({ rid: 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name: st.name.trim() || st.receipt.name, date: st.date, pay: st.pay, rows })).then((ok) => { if (ok !== false) { removePersonal(st.id); closePersonal(); } else renderFoot(); }, () => renderFoot());
+                Promise.resolve(opts.onApply({ receipts })).then((ok) => { if (ok !== false) { removePersonal(st.id); closePersonal(); } else renderFoot(); }, () => renderFoot());
             }
         });
         el.addEventListener('change', (ev) => {
-            const t = ev.target;
+            const t = ev.target, d = t.dataset || {}, x = d.k && byKey(d.k);
             if (t.id === 'ldp-file') {
                 const f = t.files && t.files[0]; if (!f) return;
                 const rd = new FileReader();
                 rd.onload = () => doImport(String(rd.result), f.name);
                 rd.onerror = () => say('讀取檔案失敗', true);
                 rd.readAsText(f); t.value = '';
-            } else if (t.dataset && t.dataset.a === 'p-cat') { st.cat[+t.dataset.i] = t.value; keepP(); }
-            else if (t.dataset && t.dataset.a === 'p-on') { if (t.checked) delete st.off[+t.dataset.i]; else st.off[+t.dataset.i] = true; keepP(); renderFoot(); }
-            else if (t.dataset && t.dataset.a === 'p-coupon') { st.coupon = t.checked; keepP(); renderMain(); }
-            else if (t.id === 'ldp-date') { st.date = t.value; keepP(); renderFoot(); }
+            } else if (!x) return;
+            else if (d.a === 'p-cat') { x.cat[+d.i] = t.value; keepP(); }
+            else if (d.a === 'p-on') { if (t.checked) delete x.off[+d.i]; else x.off[+d.i] = true; keepP(); renderFoot(); }
+            else if (d.a === 'p-coupon') { x.coupon = t.checked; keepP(); renderMain(); }
+            else if (d.a === 'p-date') { x.date = t.value; keepP(); renderFoot(); }
         });
-        el.addEventListener('input', (ev) => { if (ev.target.id === 'ldp-name') { st.name = ev.target.value; keepP(); } });
+        el.addEventListener('input', (ev) => { const t = ev.target, x = t.dataset && t.dataset.a === 'p-name' && byKey(t.dataset.k); if (x) { x.name = t.value; keepP(); } });
         renderMain();
-        if (st.receipt) $('#ldp-imp').open = false;
+        if (st.receipts.length) $('#ldp-imp').open = false;
     }
-
 
     function open(opts) {
         close();
@@ -561,5 +611,5 @@
         const o = curOpts; cur = curOpts = null;
         if (o && o.onClose) o.onClose();
     }
-    return { open, close, openPersonal, closePersonal, listPersonal, removePersonal, itemAmounts, list, remove, calcPerson, alignTotals, buildNote, parseReceipt, parseImport, buildPrompt, parseNum, checkReceipt };
+    return { open, close, openPersonal, closePersonal, listPersonal, removePersonal, itemAmounts, parseReceipts, list, remove, calcPerson, alignTotals, buildNote, parseReceipt, parseImport, buildPrompt, parseNum, checkReceipt };
 });

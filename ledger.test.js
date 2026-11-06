@@ -247,6 +247,17 @@ t('個人逐品項：分類欄位、提示詞帶分類、金額對齊收據合�
     assert.deepStrictEqual(LD.itemAmounts(r2, true, 'before'), [1100, 1100]);
     assert.deepStrictEqual(LD.itemAmounts(r, true, 'after'), [1000, 1000]);
 });
+t('個人逐品項：一次匯入多張收據、單張格式相容、壞的那張被略過', () => {
+    const one = { name: 'A店', date: '2026-11-05', items: [{ jp: 'x', unit: 100, qty: 1 }] };
+    const m = LD.parseReceipts(JSON.stringify({ receipts: [one, { receipt: { ...one, name: 'B店' } }, { items: [] }] }));
+    assert.deepStrictEqual(m.receipts.map((r) => r.name), ['A店', 'B店']);
+    assert.strictEqual(m.errs.length, 1);
+    assert.ok(m.errs[0].startsWith('第 3 張'));
+    assert.strictEqual(LD.parseReceipts(JSON.stringify({ receipt: one })).receipts.length, 1);
+    assert.strictEqual(LD.parseReceipts(JSON.stringify(one)).receipts.length, 1);
+    assert.ok(LD.parseReceipts(JSON.stringify({ receipts: [{ items: [] }] })).error);
+    assert.ok(LD.buildPrompt(['餐飲'], true).includes('"receipts"') && !LD.buildPrompt(['餐飲']).includes('"receipts"'));
+});
 t('退稅分配：依預計退稅比例拆開，加總等於實際退稅', () => {
     const r = C.allocate(1500, [54, 120, 30]);
     assert.strictEqual(r.reduce((x, y) => x + y, 0), 1500);

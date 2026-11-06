@@ -861,17 +861,21 @@
         if (!guard()) return false;
         const t = R().JPY, r = C.parseRate(t && t.rate), m = me(), ref = xref(true), up = {}, dec = decOf('JPY');
         if (!r.ok) { alert('JPY 匯率無效，請先到「匯率」頁確認。'); return false; }
-        for (const x of p.rows) {
-            const sp = C.computeSplit({ amount: x.amount, dec, mode: 'equal', members: ['me'], rate: r.s, baseDec: BASE_DEC, seed: 0, bias: [0] });
-            if (!sp.ok) { alert(`「${x.title}」無法換算：${sp.errors.join('、')}`); return false; }
-            up[ref.push().key] = {
-                title: x.title.slice(0, 50), amount: x.amount, cur: 'JPY', dec, rate: r.s, rateRef: `table:JPY@${t.ts || 0}`, base: BASE, baseAmt: sp.baseAmt,
-                date: p.date, pay: p.pay, payer: 'me', mode: 'equal', unit: null, parts: null, rf: null, shares: sp.shares, seed: 0, cat: x.cat,
-                note: x.jp && x.jp !== x.title ? `${p.name}｜${x.jp}` : p.name, rg: p.rid, rgName: p.name.slice(0, 50),
-                by: m.uid, byName: m.name, ts: TS(), updBy: m.uid, updName: m.name, uts: TS()
-            };
+        let n = 0;
+        for (const rc of p.receipts) {
+            for (const x of rc.rows) {
+                const sp = C.computeSplit({ amount: x.amount, dec, mode: 'equal', members: ['me'], rate: r.s, baseDec: BASE_DEC, seed: 0, bias: [0] });
+                if (!sp.ok) { alert(`「${x.title}」無法換算：${sp.errors.join('、')}`); return false; }
+                up[ref.push().key] = {
+                    title: x.title.slice(0, 50), amount: x.amount, cur: 'JPY', dec, rate: r.s, rateRef: `table:JPY@${t.ts || 0}`, base: BASE, baseAmt: sp.baseAmt,
+                    date: rc.date, pay: rc.pay, payer: 'me', mode: 'equal', unit: null, parts: null, rf: null, shares: sp.shares, seed: 0, cat: x.cat,
+                    note: x.jp && x.jp !== x.title ? `${rc.name}｜${x.jp}` : rc.name, rg: rc.rid, rgName: rc.name.slice(0, 50),
+                    by: m.uid, byName: m.name, ts: TS(), updBy: m.uid, updName: m.name, uts: TS()
+                };
+                n++;
+            }
         }
-        return ref.update(up).then(() => { toast(`已新增 ${p.rows.length} 筆個人支出`); S.filter.scope = 'personal'; return true; }).catch((e) => { fail(e); return false; });
+        return ref.update(up).then(() => { toast(`已新增 ${p.receipts.length} 張收據、${n} 筆個人支出`); S.filter.scope = 'personal'; return true; }).catch((e) => { fail(e); return false; });
     }
     function delReceipt(rid) {
         const ids = Object.entries(PE()).filter(([, e]) => e && e.rg === rid).map(([id]) => id);
