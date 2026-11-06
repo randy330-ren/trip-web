@@ -206,51 +206,37 @@
     function remove(id) { delete DB.drafts[id]; flush(); }
     let cur = null, curOpts = null;
 
-    // ---------- 加速 AI 流程（複製並開啟、分享照片、貼上匯入） ----------
-    const AI_URL = { 'ai-claude': 'https://claude.ai/new?q=', 'ai-gpt': 'https://chatgpt.com/?q=' };
+    // ---------- 加速 AI 流程（複製並開啟 AI、貼上匯入） ----------
+    const AI_URL = { 'ai-claude': 'https://claude.ai/new?q=', 'ai-gpt': 'https://chatgpt.com/?q=', 'ai-gemini': 'https://gemini.google.com/app' };
     function copyText(t) {
         try { if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t).then(() => true, () => false); } catch (e) { }
         try { const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return Promise.resolve(!!ok); } catch (e) { return Promise.resolve(false); }
     }
-    function canShareFiles() {
-        try { return typeof navigator !== 'undefined' && !!navigator.share && !!navigator.canShare && navigator.canShare({ files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] }); } catch (e) { return false; }
-    }
     function aiToolsHtml(fileId) {
-        return `<p class="ld-sec">① 送去 AI</p>
-            <div class="ld-btns"><button type="button" class="lg-btn sm" data-a="ai-claude">✨ 開啟 Claude</button><button type="button" class="lg-btn sm" data-a="ai-gpt">✨ 開啟 ChatGPT</button>${canShareFiles() ? '<label class="lg-btn sm ghost" for="ld-aipick">📤 選照片分享</label><input type="file" id="ld-aipick" hidden multiple accept="image/*"><button type="button" class="lg-btn sm" data-a="ai-share-go" style="display:none"></button>' : ''}<button type="button" class="lg-btn sm ghost" data-a="ai-copy">只複製提示詞</button></div>
-            <p class="lg-muted">開啟時會自動複製提示詞，到 AI 後自行上傳收據照片；「選照片分享」可一次把照片＋提示詞送給手機上的 AI App。</p>
-            <p class="ld-sec">② 帶回結果</p>
+        return `<p class="ld-sec">① 把提示詞送去 AI</p>
+            <div class="ld-btns"><button type="button" class="lg-btn sm" data-a="ai-claude">開啟 Claude</button><button type="button" class="lg-btn sm" data-a="ai-gpt">開啟 ChatGPT</button><button type="button" class="lg-btn sm" data-a="ai-gemini">開啟 Gemini</button><button type="button" class="lg-btn sm ghost" data-a="ai-copy">只複製提示詞</button></div>
+            <p class="lg-muted">按下按鈕會先複製提示詞，再開啟該 AI。Claude、ChatGPT 會自動帶入提示詞；Gemini 需要在輸入框長按貼上。收據照片要在 AI 裡手動選擇上傳，再送出。</p>
+            <p class="ld-sec">② 把 AI 的回覆帶回來</p>
             <div class="ld-btns"><button type="button" class="lg-btn sm" data-a="ai-paste">📋 貼上並匯入</button><label class="lg-btn sm ghost" for="${fileId}">選擇檔案匯入</label><input type="file" id="${fileId}" hidden accept=".json,.txt,application/json,text/plain"></div>
-            <p class="lg-muted">AI 回覆後複製 JSON，回來按「貼上並匯入」；也可貼到下方文字框。</p>`;
+            <p class="lg-muted">AI 回覆後，複製它給的 JSON，回到這裡按「貼上並匯入」；也可以貼到下方文字框。</p>`;
     }
     // o: {prompt: () => 提示詞, onText(text, 來源), say(文字, 是否錯誤)}
     function wireAi(root, o) {
-        let files = [];
         root.addEventListener('click', (ev) => {
             const b = ev.target.closest && ev.target.closest('[data-a^="ai-"]');
             if (!b) return;
             const a = b.dataset.a, t = o.prompt();
             if (AI_URL[a]) {
                 copyText(t);
-                window.open(AI_URL[a] + encodeURIComponent(t), '_blank');
-                o.say('已複製提示詞並開啟 AI；若沒有自動帶入，請在輸入框長按貼上。上傳收據照片後，把 AI 回傳的 JSON 複製起來，再回來按「貼上並匯入」。');
+                window.open(a === 'ai-gemini' ? AI_URL[a] : AI_URL[a] + encodeURIComponent(t), '_blank');
+                o.say(a === 'ai-gemini' ? '已複製提示詞並開啟 Gemini。請在輸入框長按貼上提示詞，手動上傳收據照片後送出；AI 回覆後複製 JSON，再回來按「貼上並匯入」。'
+                    : '已複製提示詞並開啟 AI；若沒有自動帶入，請在輸入框長按貼上。請手動上傳收據照片後送出；AI 回覆後複製 JSON，再回來按「貼上並匯入」。');
             } else if (a === 'ai-copy') {
-                copyText(t).then((ok) => (ok ? o.say('已複製提示詞。貼給 AI 並附上收據照片，再把回傳的 JSON 帶回來。') : o.say('無法自動複製，請改用「開啟 Claude／ChatGPT」。', true)));
-            } else if (a === 'ai-share-go') {
-                if (!files.length) return;
-                copyText(t);
-                navigator.share({ files, text: t, title: '收據整理' }).then(() => o.say('已送出。若 AI 沒帶入提示詞，提示詞已複製，請長按貼上。AI 回覆後複製 JSON，回來按「貼上並匯入」。'),
-                    (e) => { if (!e || e.name !== 'AbortError') o.say('此裝置無法分享照片，請改用「複製提示詞並開啟」。', true); });
+                copyText(t).then((ok) => (ok ? o.say('已複製提示詞。貼給 AI 並手動上傳收據照片，再把回傳的 JSON 帶回來。') : o.say('無法自動複製，請改用「開啟 Claude／ChatGPT」。', true)));
             } else if (a === 'ai-paste') {
                 if (!navigator.clipboard || !navigator.clipboard.readText) return o.say('此瀏覽器不能自動讀取剪貼簿，請把 JSON 貼到下方文字框再按匯入。', true);
                 navigator.clipboard.readText().then((x) => o.onText(x, '剪貼簿'), () => o.say('沒有取得剪貼簿權限，請把 JSON 貼到下方文字框再按匯入。', true));
             }
-        });
-        root.addEventListener('change', (ev) => {
-            if (!ev.target || ev.target.id !== 'ld-aipick') return;
-            files = Array.from(ev.target.files || []); ev.target.value = '';
-            const go = root.querySelector('[data-a="ai-share-go"]');
-            if (go) { go.style.display = files.length ? '' : 'none'; go.textContent = `📤 分享 ${files.length} 張照片＋提示詞`; }
         });
     }
 
