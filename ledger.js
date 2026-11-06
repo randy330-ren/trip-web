@@ -39,6 +39,11 @@
     const XE = (id) => E()[id] || PE()[id];
     const xref = (personal) => wdb().ref(personal ? 'ledger_personal/' + currentUserUid + '/expenses' : 'ledger/expenses');
     const T = () => D().transfers || {};
+    const trCut = (p) => Object.values(T()).reduce((m, t) => (t && (t.status === 'paid' || t.status === 'done') && (t.from === p || t.to === p) ? Math.max(m, t.paidTs || 0) : m), 0);
+    const isSettled = (e, p) => !!e && (e.ts || 0) <= trCut(p);
+    const settledExp = (e) => !!e && [e.payer, ...Object.keys(e.shares || {})].some((p) => p && isSettled(e, p));
+    const sameShares = (a, b) => { const x = a || {}, y = b || {}, k = Object.keys(x); return k.length === Object.keys(y).length && k.every((q) => y[q] && x[q].o === y[q].o && x[q].b === y[q].b); };
+    const SETTLED_MSG = '這筆支出已有人完成轉帳，不能修改金額、幣別、付款人、分攤成員或分帳方式，也不能刪除。';
     const R = () => D().rates || {};
     const order = () => Object.keys(P()).sort();
     const activeIds = () => order().filter((id) => P()[id].active !== false);
@@ -425,6 +430,8 @@
             sp = C.computeSplit({ amount: amt.v, dec, mode: each ? 'amount' : mode, members, parts: each ? Object.fromEntries(members.map((p) => [p, f.amount])) : f.parts, rate: r.s, baseDec: BASE_DEC, seed, bias: members.map((p) => tb[p] || 0) });
             errs.push(...sp.errors);
         } else if (!members.length) errs.push('請至少選擇一位分攤成員');
+        const o = S.editOrig;
+        if (S.editId && o && !pe && sp && settledExp(o) && (amt.v !== o.amount || f.cur !== o.cur || r.s !== o.rate || f.payer !== o.payer || !sameShares(sp.shares, o.shares))) errs.push(SETTLED_MSG);
         return { errs, amt, dec, rate: r.ok ? r.s : '', sp, seed, members, pe };
     }
     function renderPreview() {
@@ -948,6 +955,7 @@
             return xref(true).child(id).remove().then(() => { toast('已刪除'); if (S.editId === id) cancelEdit(); }).catch(fail);
         }
         if (planLocked()) return alert(LOCK_MSG);
+        if (settledExp(e)) return alert(SETTLED_MSG);
         const im = C.deleteImpact(order(), E(), T(), id, unitOpts()), UC = unitCur();
         const net = (v) => (v > 0 ? `應收 ${money(v, UC)}` : v < 0 ? `應付 ${money(-v, UC)}` : '平衡');
         const warn = im.warn ? `\n\n⚠️ 已有轉帳紀錄，刪除後清帳會失衡：\n未結清 ${money(im.open0, UC)} → ${money(im.open1, UC)}\n${im.changes.slice(0, 8).map((c) => `${pname(c.p)}：${net(c.from)} → ${net(c.to)}`).join('\n')}${im.eidTr ? '\n（已有人依這筆支出先轉帳）' : ''}\n已記錄的轉帳不會被刪除，需要另外補轉或退回。` : '';
@@ -1013,7 +1021,7 @@
         const li = (a, b) => `<div class="lg-bd-r"><span>${a}</span><span>${b}</span></div>`;
         const eLbl = (e) => `${esc(e.title || '')}${e.date ? `（${mdLabel(e.date)}）` : ''}`;
         const bd = (p, m) => {
-            const hide = m === 'open', x = B[p], ex = Object.values(exps).filter((e) => e && e.shares && Number.isInteger(e.baseAmt)).sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.ts || 0) - (a.ts || 0));
+            const hide = m === 'open', cut = hide ? trCut(p) : 0, x = B[p], ex = Object.values(exps).filter((e) => e && e.shares && Number.isInteger(e.baseAmt))            .filter((e) => !hide || (e.ts || 0) > cut).sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.ts || 0) - (a.ts || 0));
             const sec = (t, rows) => (rows.length ? `<p class="lg-bd-h">${t}</p>${rows.join('')}` : '');
             const live = Object.values(trs).filter((t) => t && (t.status === 'paid' || t.status === 'done') && Number.isInteger(t.amt)).sort((a, b) => (b.paidTs || 0) - (a.paidTs || 0));
             const paidV = (e) => { const v = C.unitView(e, U).total; return two(sameCur(e) && Number.isInteger(e.amount) ? e.amount : conv(v), v); };
@@ -1021,8 +1029,8 @@
             const trV = (t) => { const v = C.transferAmount(t, U); return two(conv(v), v); };
             const f = (k) => money(conv(x[k]), dc);
             return `<div class="lg-bd"><p class="lg-bd-n">${esc(pname(p))}</p>`
-                + sec(`墊付 ${tt(x.paid)}`, ex.filter((e) => e.payer === p).map((e) => li(eLbl(e), paidV(e))))
-                + sec(`應負擔 ${tt(x.owe)}`, ex.filter((e) => e.shares[p] && e.shares[p].b > 0).map((e) => li(`${eLbl(e)}${e.payer === p ? '（自己付）' : ''}`, oweV(e))))
+                + sec(`墊付 ${hide ? tt(ex.filter((e) => e.payer === p).reduce((a, e) => a + C.unitView(e, U).total, 0)) : tt(x.paid)}`, ex.filter((e) => e.payer === p).map((e) => li(eLbl(e), paidV(e))))
+                + sec(`應負擔 ${hide ? tt(ex.filter((e) => e.shares[p] && e.shares[p].b > 0).reduce((a, e) => a + C.unitView(e, U).sh[p], 0)) : tt(x.owe)}`, ex.filter((e) => e.shares[p] && e.shares[p].b > 0).map((e) => li(`${eLbl(e)}${e.payer === p ? '（自己付）' : ''}`, oweV(e))))
                 + (hide ? `<p class="lg-bd-h">已轉出 ${tt(0)}</p><p class="lg-bd-h">已收到 ${tt(0)}</p>`
                     : sec(`已轉出 ${tt(x.sent)}`, live.filter((t) => t.from === p).map((t) => li(`給 ${esc(pname(t.to))}`, trV(t))))
                     + sec(`已收到 ${tt(x.recv)}`, live.filter((t) => t.to === p).map((t) => li(`來自 ${esc(pname(t.from))}`, trV(t)))))
