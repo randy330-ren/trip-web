@@ -271,11 +271,13 @@
     }
 
     // ---------- 記帳表單 ----------
+    const PAYS = [['cash', '現金'], ['card', '信用卡']];
+    const payL = (k) => (PAYS.find(([x]) => x === k) || [, ''])[1];
     function blankForm(keep) {
         const k = keep || {};
         return {
             title: '', amount: '', note: '', parts: {}, rate: null, rf: null, dtId: null,
-            cur: k.cur || (curs().includes('JPY') ? 'JPY' : BASE), date: k.date || today(),
+            cur: k.cur || (curs().includes('JPY') ? 'JPY' : BASE), date: k.date || today(), pay: '',
             scope: k.scope || 'group', payer: k.payer || '', members: k.members ? k.members.slice() : [], mode: k.mode || 'equal', cat: k.cat || '餐飲'
         };
     }
@@ -288,8 +290,8 @@
             <input id="lg-f-title" class="lg-in" maxlength="50" placeholder="例：午餐 迴轉壽司">
             <label id="lg-f-amount-l" class="lg-lbl" for="lg-f-amount">金額</label>
             <div class="lg-row"><input id="lg-f-amount" class="lg-in lg-amt" inputmode="none" readonly placeholder="0"><input id="lg-f-cur" class="lg-in lg-cur" data-pick="f-cur" readonly autocomplete="off"></div>
-            <label class="lg-lbl" for="lg-f-date">日期</label>
-            <input id="lg-f-date" type="date" class="lg-in">
+            <div class="lg-dp"><div><label class="lg-lbl" for="lg-f-date">日期</label><input id="lg-f-date" type="date" class="lg-in"></div>
+            <div><label class="lg-lbl">支付方式</label><div id="lg-f-pay" class="lg-seg sm"></div></div></div>
             <div id="lg-f-grp">
             <label class="lg-lbl" for="lg-f-payer">付款人</label>
             <select id="lg-f-payer" class="lg-in"></select>
@@ -327,6 +329,7 @@
         if (S.editId) $('lg-f-etitle').textContent = f.title || (XE(S.editId) || {}).title || '';
         $('lg-f-scope').classList.toggle('hidden', !!S.editId);
         $('lg-f-scope').innerHTML = [['group', '團體記帳'], ['personal', '個人記帳']].map(([k, l]) => `<button type="button" data-act="scope" data-v="${k}" class="${f.scope === k ? 'on' : ''}">${l}</button>`).join('');
+        $('lg-f-pay').innerHTML = PAYS.map(([k, l]) => `<button type="button" data-act="pay" data-v="${k}" class="${f.pay === k ? 'on' : ''}">${l}</button>`).join('');
         $('lg-f-grp').classList.toggle('hidden', f.scope === 'personal');
         $('lg-f-dtbox').classList.toggle('hidden', f.scope === 'personal');
         renderPending();
@@ -414,6 +417,7 @@
         else if (!r.ok) errs.push('匯率' + r.err);
         if (!pe && (!f.payer || !P()[f.payer])) errs.push('請選擇付款人');
         if (!/^\d{4}-\d{2}-\d{2}$/.test(f.date)) errs.push('請選擇日期');
+        if (!f.pay && (!S.editId || (S.editOrig && S.editOrig.pay))) errs.push('請選擇支付方式（現金或信用卡）');
         const seed = pe ? 0 : S.editId ? ((S.editOrig && S.editOrig.seed) | 0) : Object.keys(E()).length;
         const tb = pe ? {} : C.tailBias(E(), S.editId || undefined);
         let sp = null;
@@ -457,7 +461,7 @@
             : (t && t.rate === c.rate) ? `table:${f.cur}@${t.ts || 0}` : 'manual';
         const rec = {
             title: f.title.trim(), amount: c.amt.v, cur: f.cur, dec: c.dec, rate: c.rate, rateRef,
-            base: BASE, baseAmt: c.sp.baseAmt, date: f.date, payer: c.pe ? 'me' : f.payer, mode: c.pe ? 'equal' : f.mode,
+            base: BASE, baseAmt: c.sp.baseAmt, date: f.date, pay: f.pay || null, payer: c.pe ? 'me' : f.payer, mode: c.pe ? 'equal' : f.mode,
             unit: !c.pe && f.mode === 'each' ? f.amount.trim() : null,
             parts: c.pe || f.mode === 'equal' || f.mode === 'each' ? null : Object.fromEntries(f.members.map((p) => [p, String(f.parts[p] || '0').trim()])),
             rf: !c.pe && f.mode === 'amount' && f.rf ? Object.fromEntries(Object.entries(f.rf).filter(([p, v]) => f.members.includes(p) && v > 0)) : null,
@@ -487,7 +491,7 @@
         S.editId = id;
         S.editOrig = e;
         S.form = {
-            title: e.title || '', amount: e.mode === 'each' && e.unit ? e.unit : C.toPlain(e.amount, Number.isInteger(e.dec) ? e.dec : decOf(e.cur)), cur: e.cur, date: e.date || today(),
+            title: e.title || '', amount: e.mode === 'each' && e.unit ? e.unit : C.toPlain(e.amount, Number.isInteger(e.dec) ? e.dec : decOf(e.cur)), cur: e.cur, date: e.date || today(), pay: e.pay || '',
             scope: pe ? 'personal' : 'group', payer: pe ? '' : e.payer, members: pe ? [] : order().filter((p) => e.shares && e.shares[p]), mode: e.mode || 'equal',
             parts: { ...(e.parts || {}) }, cat: e.cat || '其他', note: e.note || '', rate: e.cur === BASE ? null : e.rate, rf: e.rf ? { ...e.rf } : null
         };
@@ -884,7 +888,7 @@
         const fx = e.cur !== BASE, n = Object.keys(e.shares || {}).length, open = S.open === id, pe = isP(id);
         let h = `<div class="card lg-item ${open ? 'open' : ''}">
             <button type="button" class="lg-item-h" data-act="exp-open" data-id="${id}">
-                <span class="lg-item-l"><b>${esc(e.title || '')}</b><small>${esc(e.date || '')}・${pe ? `🔒 個人${e.src ? '・來自團體' : ''}` : `${esc(pname(e.payer))} 付款・${n} 人分攤`}${e.cat ? '・' + esc(e.cat) : ''}</small></span>
+                <span class="lg-item-l"><b>${esc(e.title || '')}</b><small>${esc(e.date || '')}・${pe ? `🔒 個人${e.src ? '・來自團體' : ''}` : `${esc(pname(e.payer))} 付款・${n} 人分攤`}${e.cat ? '・' + esc(e.cat) : ''}${e.pay ? '・' + payL(e.pay) : ''}</small></span>
                 <span class="lg-item-r"><b>${money(e.amount, e.cur)}</b>${fx ? `<small>≈ ${money(e.baseAmt, BASE)}</small>` : ''}</span>
             </button>`;
         if (open) {
@@ -919,13 +923,13 @@
         };
         const modeL = (m) => (MODES.find(([k]) => k === m) || [, m || ''])[1];
         const shareOf = (e, p) => (e.shares && e.shares[p] && Number.isInteger(e.shares[p].b) ? e.shares[p].b : null);
-        const head = ['日期', '名稱', '類別', '付款人', '幣別', '原始金額', `匯率（1 外幣 = ? ${BASE}）`, `${BASE} 金額`, '分帳方式',
+        const head = ['日期', '名稱', '類別', '支付方式', '付款人', '幣別', '原始金額', `匯率（1 外幣 = ? ${BASE}）`, `${BASE} 金額`, '分帳方式',
             ...ppl.map((p) => `${pname(p)} 分攤（${BASE}）`), '備註', '建立者', '最後修改者'];
-        const rows = list.map(([, e]) => [e.date, e.title, e.cat || '', pname(e.payer), e.cur,
+        const rows = list.map(([, e]) => [e.date, e.title, e.cat || '', payL(e.pay), pname(e.payer), e.cur,
             C.toPlain(e.amount, Number.isInteger(e.dec) ? e.dec : decOf(e.cur)), e.rate, C.toPlain(e.baseAmt || 0, BASE_DEC), S.filter.scope === 'personal' ? '個人' : modeL(e.mode),
             ...ppl.map((p) => { const b = shareOf(e, p); return b === null ? '' : C.toPlain(b, BASE_DEC); }),
             e.note || '', e.byName || '', e.updName || '']);
-        rows.push(['', '合計', '', '', '', '', '', C.toPlain(list.reduce((s, [, e]) => s + (e.baseAmt || 0), 0), BASE_DEC), '',
+        rows.push(['', '合計', '', '', '', '', '', '', C.toPlain(list.reduce((s, [, e]) => s + (e.baseAmt || 0), 0), BASE_DEC), '',
             ...ppl.map((p) => C.toPlain(list.reduce((s, [, e]) => s + (shareOf(e, p) || 0), 0), BASE_DEC)), '', '', '']);
         const csv = '\ufeff' + [head, ...rows].map((r) => r.map(cell).join(',')).join('\r\n');
         const a = document.createElement('a');
@@ -1559,6 +1563,7 @@
                 refreshForm();
             } else if (act === 'mode') { if (f.mode !== v) { f.mode = v; f.parts = {}; f.rf = null; $('lg-f-amount').value = f.amount; refreshForm(); } }
             else if (act === 'scope') { if (f.scope !== v) { f.scope = v; refreshForm(); } }
+            else if (act === 'pay') { f.pay = f.pay === v ? '' : v; refreshForm(); }
             else if (act === 'cat') { f.cat = v; refreshForm(); }
             else if (act === 'cat-add') addCat();
             else if (act === 'cat-del') delCat(f.cat);
