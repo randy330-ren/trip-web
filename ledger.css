@@ -305,3 +305,4 @@ textarea.lg-in { resize: vertical; }
 .lg-dp .lg-in { height: 42px; }
 .lg-dp .lg-seg.sm { height: 42px; border-radius: 10px; box-sizing: border-box; }
 .lg-dp .lg-seg.sm button { padding: 0; white-space: nowrap; font-size: 14px; border-radius: 7px; }
+.lg-seg.tg { margin-bottom: 12px; }
