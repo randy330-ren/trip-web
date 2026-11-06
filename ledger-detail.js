@@ -369,18 +369,18 @@
         el.id = 'ld-root'; el.className = 'ld';
         el.innerHTML = `<div class="ld-head"><b>🧾 明細分帳</b><button type="button" data-a="close" aria-label="關閉">✕</button></div>
             <div class="ld-scroll">
-                <div class="ld-card">
-                    <p class="lg-h">這筆記帳資料<small>　獨立暫存，按 ✕ 不會刪除，可從記帳頁「待處理」繼續</small></p>
-                    <label class="lg-lbl" for="ld-name">名稱</label><input id="ld-name" class="lg-in" maxlength="50" placeholder="例：唐吉訶德 米子店">
-                    <label class="lg-lbl" for="ld-date">日期</label><input id="ld-date" type="date" class="lg-in">
-                    <label class="lg-lbl" for="ld-payer">付款人</label><select id="ld-payer" class="lg-in"><option value="">請選擇付款人</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>
-                </div>
                 <details class="ld-card" id="ld-imp"><summary>匯入收據（AI 整理的 JSON，或舊版匯出檔）</summary>
                     <p class="lg-muted lg-mt">新收據：用下方按鈕把提示詞帶去 AI、上傳收據照片，再把回傳的 JSON 貼回來。舊版匯出檔（含朋友與分配）會依名字對應到團員。匯入會清空目前的品項分配。</p>
                     ${aiToolsHtml('ld-file')}
                     <textarea id="ld-paste" class="lg-in lg-mt" rows="4" placeholder="把 AI 回傳的 JSON 貼在這裡（含 \`\`\`json 也沒關係）"></textarea>
                     <button type="button" class="lg-btn sm lg-mt" data-a="import">匯入貼上的內容</button>
                 </details>
+                <div class="ld-card">
+                    <p class="lg-h">這筆記帳資料<small>　獨立暫存，按 ✕ 不會刪除，可從記帳頁「待處理」繼續</small></p>
+                    <label class="lg-lbl" for="ld-name">名稱</label><input id="ld-name" class="lg-in" maxlength="50" placeholder="例：唐吉訶德 米子店">
+                    <label class="lg-lbl" for="ld-date">日期</label><input id="ld-date" type="date" class="lg-in">
+                    <label class="lg-lbl" for="ld-payer">付款人</label><select id="ld-payer" class="lg-in"><option value="">請選擇付款人</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>
+                </div>
                 <p class="ld-msg" id="ld-msg" role="status"></p>
                 <div class="ld-card" id="ld-main"></div>
                 <div class="ld-card" id="ld-res"></div>
