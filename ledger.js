@@ -18,7 +18,7 @@
         tab: 'add', sub: 'list', data: null, err: null, ref: null, cb: null, key: '', built: false,
         form: null, editId: null, editOrig: null, editSig: '', partsSig: null, rateSig: null, saving: false,
         rosterOpen: false, open: null, showVoid: false, showDel: false,
-        stMode: 'all', stDays: [], stCats: [], stCur: 'JPY', pdata: null, pref: null, pcb: null, fold: { bal: false, sug: false, tr: false },
+        stMode: 'all', stBal: 'all', stSug: 'all', stDays: [], stCats: [], stCur: 'JPY', pdata: null, pref: null, pcb: null, fold: { bal: false, sug: false, tr: false },
         listShut: (cacheLoad('ledger_fold') || {}).days || {}, fs: null,
         stOpen: {}, filter: { scope: 'group', sort: 'desc', dates: [], cats: [], payer: '', members: [], cur: '', q: '' },
         fx: cacheLoad('fx'), fxBusy: false, fxErr: ''
@@ -39,6 +39,34 @@
     const XE = (id) => E()[id] || PE()[id];
     const xref = (personal) => wdb().ref(personal ? 'ledger_personal/' + currentUserUid + '/expenses' : 'ledger/expenses');
     const T = () => D().transfers || {};
+    // 每位成員各自的「平衡時間點」：依時間累計他的淨額，最後一次歸零（且至少有一筆轉帳）的時刻
+    function cpMap() {
+        const U = unitOpts(), ev = {}, out = {};
+        const add = (p, t, d, k) => { if (p) (ev[p] || (ev[p] = [])).push([t, d, k]); };
+        Object.values(E()).forEach((e) => {
+            if (!e || !e.shares || !Number.isInteger(e.baseAmt)) return;
+            const v = C.unitView(e, U), t = e.ts || 0;
+            add(e.payer, t, v.total, 0);
+            Object.entries(v.sh).forEach(([p, n]) => add(p, t, -n, 0));
+        });
+        Object.values(T()).forEach((t) => {
+            if (!t || (t.status !== 'paid' && t.status !== 'done') || !Number.isInteger(t.amt)) return;
+            const a = C.transferAmount(t, U);
+            if (!Number.isInteger(a)) return;
+            add(t.from, t.paidTs || 0, a, 1);
+            add(t.to, t.paidTs || 0, -a, 1);
+        });
+        Object.entries(ev).forEach(([p, l]) => {
+            l.sort((x, y) => x[0] - y[0] || x[2] - y[2]);
+            let net = 0, tr = false, cp = 0;
+            l.forEach(([t, d, k]) => { net += d; if (k) tr = true; if (tr && net === 0) cp = t; });
+            if (cp) out[p] = cp;
+        });
+        return out;
+    }
+    const settledExp = (e, cps) => !!e && [e.payer, ...Object.keys(e.shares || {})].some((p) => p && cps[p] !== undefined && (e.ts || 0) <= cps[p]);
+    const sameShares = (a, b) => { const x = a || {}, y = b || {}, k = Object.keys(x); return k.length === Object.keys(y).length && k.every((q) => y[q] && x[q].o === y[q].o && x[q].b === y[q].b); };
+    const SETTLED_MSG = '這筆支出相關的成員已經結清（淨額歸零），不能修改金額、幣別、付款人、分攤成員或分帳方式，也不能刪除。';
     const R = () => D().rates || {};
     const order = () => Object.keys(P()).sort();
     const activeIds = () => order().filter((id) => P()[id].active !== false);
@@ -271,11 +299,13 @@
     }
 
     // ---------- 記帳表單 ----------
+    const PAYS = [['cash', '現金'], ['card', '信用卡']];
+    const payL = (k) => (PAYS.find(([x]) => x === k) || [, ''])[1];
     function blankForm(keep) {
         const k = keep || {};
         return {
             title: '', amount: '', note: '', parts: {}, rate: null, rf: null, dtId: null,
-            cur: k.cur || (curs().includes('JPY') ? 'JPY' : BASE), date: k.date || today(),
+            cur: k.cur || (curs().includes('JPY') ? 'JPY' : BASE), date: k.date || today(), pay: '',
             scope: k.scope || 'group', payer: k.payer || '', members: k.members ? k.members.slice() : [], mode: k.mode || 'equal', cat: k.cat || '餐飲'
         };
     }
@@ -288,8 +318,8 @@
             <input id="lg-f-title" class="lg-in" maxlength="50" placeholder="例：午餐 迴轉壽司">
             <label id="lg-f-amount-l" class="lg-lbl" for="lg-f-amount">金額</label>
             <div class="lg-row"><input id="lg-f-amount" class="lg-in lg-amt" inputmode="none" readonly placeholder="0"><input id="lg-f-cur" class="lg-in lg-cur" data-pick="f-cur" readonly autocomplete="off"></div>
-            <label class="lg-lbl" for="lg-f-date">日期</label>
-            <input id="lg-f-date" type="date" class="lg-in">
+            <div class="lg-dp"><div><label class="lg-lbl" for="lg-f-date">日期</label><input id="lg-f-date" type="date" class="lg-in"></div>
+            <div><label class="lg-lbl">支付方式</label><div id="lg-f-pay" class="lg-seg sm"></div></div></div>
             <div id="lg-f-grp">
             <label class="lg-lbl" for="lg-f-payer">付款人</label>
             <select id="lg-f-payer" class="lg-in"></select>
@@ -327,6 +357,7 @@
         if (S.editId) $('lg-f-etitle').textContent = f.title || (XE(S.editId) || {}).title || '';
         $('lg-f-scope').classList.toggle('hidden', !!S.editId);
         $('lg-f-scope').innerHTML = [['group', '團體記帳'], ['personal', '個人記帳']].map(([k, l]) => `<button type="button" data-act="scope" data-v="${k}" class="${f.scope === k ? 'on' : ''}">${l}</button>`).join('');
+        $('lg-f-pay').innerHTML = PAYS.map(([k, l]) => `<button type="button" data-act="pay" data-v="${k}" class="${f.pay === k ? 'on' : ''}">${l}</button>`).join('');
         $('lg-f-grp').classList.toggle('hidden', f.scope === 'personal');
         $('lg-f-dtbox').classList.toggle('hidden', f.scope === 'personal');
         renderPending();
@@ -414,6 +445,7 @@
         else if (!r.ok) errs.push('匯率' + r.err);
         if (!pe && (!f.payer || !P()[f.payer])) errs.push('請選擇付款人');
         if (!/^\d{4}-\d{2}-\d{2}$/.test(f.date)) errs.push('請選擇日期');
+        if (!f.pay && (!S.editId || (S.editOrig && S.editOrig.pay))) errs.push('請選擇支付方式（現金或信用卡）');
         const seed = pe ? 0 : S.editId ? ((S.editOrig && S.editOrig.seed) | 0) : Object.keys(E()).length;
         const tb = pe ? {} : C.tailBias(E(), S.editId || undefined);
         let sp = null;
@@ -421,6 +453,8 @@
             sp = C.computeSplit({ amount: amt.v, dec, mode: each ? 'amount' : mode, members, parts: each ? Object.fromEntries(members.map((p) => [p, f.amount])) : f.parts, rate: r.s, baseDec: BASE_DEC, seed, bias: members.map((p) => tb[p] || 0) });
             errs.push(...sp.errors);
         } else if (!members.length) errs.push('請至少選擇一位分攤成員');
+        const o = S.editOrig;
+        if (S.editId && o && !pe && sp && settledExp(o, cpMap()) && (amt.v !== o.amount || f.cur !== o.cur || r.s !== o.rate || f.payer !== o.payer || !sameShares(sp.shares, o.shares))) errs.push(SETTLED_MSG);
         return { errs, amt, dec, rate: r.ok ? r.s : '', sp, seed, members, pe };
     }
     function renderPreview() {
@@ -457,7 +491,7 @@
             : (t && t.rate === c.rate) ? `table:${f.cur}@${t.ts || 0}` : 'manual';
         const rec = {
             title: f.title.trim(), amount: c.amt.v, cur: f.cur, dec: c.dec, rate: c.rate, rateRef,
-            base: BASE, baseAmt: c.sp.baseAmt, date: f.date, payer: c.pe ? 'me' : f.payer, mode: c.pe ? 'equal' : f.mode,
+            base: BASE, baseAmt: c.sp.baseAmt, date: f.date, pay: f.pay || null, payer: c.pe ? 'me' : f.payer, mode: c.pe ? 'equal' : f.mode,
             unit: !c.pe && f.mode === 'each' ? f.amount.trim() : null,
             parts: c.pe || f.mode === 'equal' || f.mode === 'each' ? null : Object.fromEntries(f.members.map((p) => [p, String(f.parts[p] || '0').trim()])),
             rf: !c.pe && f.mode === 'amount' && f.rf ? Object.fromEntries(Object.entries(f.rf).filter(([p, v]) => f.members.includes(p) && v > 0)) : null,
@@ -487,7 +521,7 @@
         S.editId = id;
         S.editOrig = e;
         S.form = {
-            title: e.title || '', amount: e.mode === 'each' && e.unit ? e.unit : C.toPlain(e.amount, Number.isInteger(e.dec) ? e.dec : decOf(e.cur)), cur: e.cur, date: e.date || today(),
+            title: e.title || '', amount: e.mode === 'each' && e.unit ? e.unit : C.toPlain(e.amount, Number.isInteger(e.dec) ? e.dec : decOf(e.cur)), cur: e.cur, date: e.date || today(), pay: e.pay || '',
             scope: pe ? 'personal' : 'group', payer: pe ? '' : e.payer, members: pe ? [] : order().filter((p) => e.shares && e.shares[p]), mode: e.mode || 'equal',
             parts: { ...(e.parts || {}) }, cat: e.cat || '其他', note: e.note || '', rate: e.cur === BASE ? null : e.rate, rf: e.rf ? { ...e.rf } : null
         };
@@ -884,7 +918,7 @@
         const fx = e.cur !== BASE, n = Object.keys(e.shares || {}).length, open = S.open === id, pe = isP(id);
         let h = `<div class="card lg-item ${open ? 'open' : ''}">
             <button type="button" class="lg-item-h" data-act="exp-open" data-id="${id}">
-                <span class="lg-item-l"><b>${esc(e.title || '')}</b><small>${esc(e.date || '')}・${pe ? `🔒 個人${e.src ? '・來自團體' : ''}` : `${esc(pname(e.payer))} 付款・${n} 人分攤`}${e.cat ? '・' + esc(e.cat) : ''}</small></span>
+                <span class="lg-item-l"><b>${esc(e.title || '')}</b><small>${esc(e.date || '')}・${pe ? `🔒 個人${e.src ? '・來自團體' : ''}` : `${esc(pname(e.payer))} 付款・${n} 人分攤`}${e.cat ? '・' + esc(e.cat) : ''}${e.pay ? '・' + payL(e.pay) : ''}</small></span>
                 <span class="lg-item-r"><b>${money(e.amount, e.cur)}</b>${fx ? `<small>≈ ${money(e.baseAmt, BASE)}</small>` : ''}</span>
             </button>`;
         if (open) {
@@ -919,13 +953,13 @@
         };
         const modeL = (m) => (MODES.find(([k]) => k === m) || [, m || ''])[1];
         const shareOf = (e, p) => (e.shares && e.shares[p] && Number.isInteger(e.shares[p].b) ? e.shares[p].b : null);
-        const head = ['日期', '名稱', '類別', '付款人', '幣別', '原始金額', `匯率（1 外幣 = ? ${BASE}）`, `${BASE} 金額`, '分帳方式',
+        const head = ['日期', '名稱', '類別', '支付方式', '付款人', '幣別', '原始金額', `匯率（1 外幣 = ? ${BASE}）`, `${BASE} 金額`, '分帳方式',
             ...ppl.map((p) => `${pname(p)} 分攤（${BASE}）`), '備註', '建立者', '最後修改者'];
-        const rows = list.map(([, e]) => [e.date, e.title, e.cat || '', pname(e.payer), e.cur,
+        const rows = list.map(([, e]) => [e.date, e.title, e.cat || '', payL(e.pay), pname(e.payer), e.cur,
             C.toPlain(e.amount, Number.isInteger(e.dec) ? e.dec : decOf(e.cur)), e.rate, C.toPlain(e.baseAmt || 0, BASE_DEC), S.filter.scope === 'personal' ? '個人' : modeL(e.mode),
             ...ppl.map((p) => { const b = shareOf(e, p); return b === null ? '' : C.toPlain(b, BASE_DEC); }),
             e.note || '', e.byName || '', e.updName || '']);
-        rows.push(['', '合計', '', '', '', '', '', C.toPlain(list.reduce((s, [, e]) => s + (e.baseAmt || 0), 0), BASE_DEC), '',
+        rows.push(['', '合計', '', '', '', '', '', '', C.toPlain(list.reduce((s, [, e]) => s + (e.baseAmt || 0), 0), BASE_DEC), '',
             ...ppl.map((p) => C.toPlain(list.reduce((s, [, e]) => s + (shareOf(e, p) || 0), 0), BASE_DEC)), '', '', '']);
         const csv = '\ufeff' + [head, ...rows].map((r) => r.map(cell).join(',')).join('\r\n');
         const a = document.createElement('a');
@@ -944,6 +978,7 @@
             return xref(true).child(id).remove().then(() => { toast('已刪除'); if (S.editId === id) cancelEdit(); }).catch(fail);
         }
         if (planLocked()) return alert(LOCK_MSG);
+        if (settledExp(e, cpMap())) return alert(SETTLED_MSG);
         const im = C.deleteImpact(order(), E(), T(), id, unitOpts()), UC = unitCur();
         const net = (v) => (v > 0 ? `應收 ${money(v, UC)}` : v < 0 ? `應付 ${money(-v, UC)}` : '平衡');
         const warn = im.warn ? `\n\n⚠️ 已有轉帳紀錄，刪除後清帳會失衡：\n未結清 ${money(im.open0, UC)} → ${money(im.open1, UC)}\n${im.changes.slice(0, 8).map((c) => `${pname(c.p)}：${net(c.from)} → ${net(c.to)}`).join('\n')}${im.eidTr ? '\n（已有人依這筆支出先轉帳）' : ''}\n已記錄的轉帳不會被刪除，需要另外補轉或退回。` : '';
@@ -1008,22 +1043,29 @@
         const trE = (t) => { if (!t.eid) return ''; const x = E()[t.eid]; return `<small class="lg-tr-e">📌 依「${esc(x ? x.title : '已刪除的支出')}」${x && x.date ? `（${mdLabel(x.date)}）` : ''}先轉帳</small>`; };
         const li = (a, b) => `<div class="lg-bd-r"><span>${a}</span><span>${b}</span></div>`;
         const eLbl = (e) => `${esc(e.title || '')}${e.date ? `（${mdLabel(e.date)}）` : ''}`;
-        const bd = (p) => {
-            const x = B[p], ex = Object.values(exps).filter((e) => e && e.shares && Number.isInteger(e.baseAmt));
+        const cps = cpMap(), anyCp = Object.keys(cps).length > 0;
+        if (!anyCp) S.stBal = S.stSug = 'all';
+        const bd = (p, m) => {
+            const hide = m === 'open' && cps[p] !== undefined, cut = cps[p] || 0, x = B[p], ex = Object.values(exps).filter((e) => e && e.shares && Number.isInteger(e.baseAmt))            .filter((e) => !hide || (e.ts || 0) > cut).sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.ts || 0) - (a.ts || 0));
             const sec = (t, rows) => (rows.length ? `<p class="lg-bd-h">${t}</p>${rows.join('')}` : '');
-            const live = Object.values(trs).filter((t) => t && (t.status === 'paid' || t.status === 'done') && Number.isInteger(t.amt));
+            const live = Object.values(trs).filter((t) => t && (t.status === 'paid' || t.status === 'done') && Number.isInteger(t.amt)).sort((a, b) => (b.paidTs || 0) - (a.paidTs || 0));
             const paidV = (e) => { const v = C.unitView(e, U).total; return two(sameCur(e) && Number.isInteger(e.amount) ? e.amount : conv(v), v); };
             const oweV = (e) => { const v = C.unitView(e, U).sh[p], o = e.shares[p].o; return two(sameCur(e) && Number.isInteger(o) ? o : conv(v), v); };
             const trV = (t) => { const v = C.transferAmount(t, U); return two(conv(v), v); };
             const f = (k) => money(conv(x[k]), dc);
             return `<div class="lg-bd"><p class="lg-bd-n">${esc(pname(p))}</p>`
-                + sec(`墊付 ${tt(x.paid)}`, ex.filter((e) => e.payer === p).map((e) => li(eLbl(e), paidV(e))))
-                + sec(`應負擔 ${tt(x.owe)}`, ex.filter((e) => e.shares[p] && e.shares[p].b > 0).map((e) => li(`${eLbl(e)}${e.payer === p ? '（自己付）' : ''}`, oweV(e))))
-                + sec(`已轉出 ${tt(x.sent)}`, live.filter((t) => t.from === p).map((t) => li(`給 ${esc(pname(t.to))}`, trV(t))))
-                + sec(`已收到 ${tt(x.recv)}`, live.filter((t) => t.to === p).map((t) => li(`來自 ${esc(pname(t.from))}`, trV(t))))
-                + `<p class="lg-bd-s">淨額 ＝ ${f('paid')} − ${f('owe')} ＋ ${f('sent')} − ${f('recv')} ＝ <b>${money(conv(x.net), dc)}</b></p></div>`;
+                + sec(`墊付 ${hide ? tt(ex.filter((e) => e.payer === p).reduce((a, e) => a + C.unitView(e, U).total, 0)) : tt(x.paid)}`, ex.filter((e) => e.payer === p).map((e) => li(eLbl(e), paidV(e))))
+                + sec(`應負擔 ${hide ? tt(ex.filter((e) => e.shares[p] && e.shares[p].b > 0).reduce((a, e) => a + C.unitView(e, U).sh[p], 0)) : tt(x.owe)}`, ex.filter((e) => e.shares[p] && e.shares[p].b > 0).map((e) => li(`${eLbl(e)}${e.payer === p ? '（自己付）' : ''}`, oweV(e))))
+                + (hide ? `<p class="lg-bd-h">已轉出 ${tt(0)}</p><p class="lg-bd-h">已收到 ${tt(0)}</p>`
+                    : sec(`已轉出 ${tt(x.sent)}`, live.filter((t) => t.from === p).map((t) => li(`給 ${esc(pname(t.to))}`, trV(t))))
+                    + sec(`已收到 ${tt(x.recv)}`, live.filter((t) => t.to === p).map((t) => li(`來自 ${esc(pname(t.from))}`, trV(t)))))
+                + (hide ? '' : `<p class="lg-bd-s">淨額 ＝ ${f('paid')} − ${f('owe')} ＋ ${f('sent')} − ${f('recv')} ＝ <b>${money(conv(x.net), dc)}</b></p>`) + '</div>';
         };
-        const trLine = ([, t], btns) => `<div class="lg-tr"><p><b>${esc(pname(t.from))}</b> → <b>${esc(pname(t.to))}</b><span>${amt(C.transferAmount(t, U))}</span></p>${trE(t)}${btns}</div>`;
+        const trLine = ([id, t], btns) => {
+            const k = 't:' + id, op = !!S.stOpen[k];
+            return `<div class="lg-tr"><p class="lg-tap" data-act="st-open" data-k="${esc(k)}"><b>${esc(pname(t.from))}</b> → <b>${esc(pname(t.to))}</b><i class="lg-chev">${op ? '▲' : '▼'}</i><span>${amt(C.transferAmount(t, U))}</span></p>${trE(t)}${op && B[t.from] && B[t.to] ? bd(t.from) + bd(t.to) : ''}${btns}</div>`;
+        };
+        const tog = (k) => !anyCp ? '' : `<div class="lg-seg sm tg">${[['all', '全部'], ['open', '未結清']].map(([v, l]) => `<button type="button" data-act="st-flt" data-k="${k}" data-v="${v}" class="${S[k] === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
 
         let h = `<div class="card lg-card">
             <div class="lg-seg sm">${[['all', '總和'], ['day', '依日期類別']].map(([k, l]) => `<button type="button" data-act="st-mode" data-v="${k}" class="${S.stMode === k ? 'on' : ''}">${l}</button>`).join('')}</div>
@@ -1036,11 +1078,11 @@
         if (day && !dates.length) { $('lg-s-settle').innerHTML = h + '<div class="card lg-card lg-center"><p class="lg-muted">還沒有支出紀錄。</p></div>'; return; }
 
         h += foldCard('bal', `📊 每人帳務 <small>（${esc(dc)}${day ? `・${esc(flt)}` : ''}）</small>`,
-            (rows.length ? `<div class="lg-bal"><div class="lg-bal-r h"><span>成員</span><span>墊付</span><span class="op">−</span><span>應負擔</span><span class="op">＋</span><span>已轉出</span><span class="op">−</span><span>已收到</span><span class="op">＝</span><span>應付(淨額)</span></div>
+            tog('stBal') + (rows.length ? `<div class="lg-bal"><div class="lg-bal-r h"><span>成員</span><span>墊付</span><span class="op">−</span><span>應負擔</span><span class="op">＋</span><span>已轉出</span><span class="op">−</span><span>已收到</span><span class="op">＝</span><span>應付(淨額)</span></div>
             ${rows.map((p) => {
                 const x = B[p];
                 const k = 'b:' + p, op = !!S.stOpen[k];
-                return `<div class="lg-bal-r lg-tap" data-act="st-open" data-k="${esc(k)}"><span>${esc(pname(p))}<i class="lg-chev">${op ? '▲' : '▼'}</i></span><span>${num(x.paid)}</span><span class="op"></span><span>${num(x.owe)}</span><span class="op"></span><span>${num(x.sent)}</span><span class="op"></span><span>${num(x.recv)}</span><span class="op"></span><span>${netCell(x.net)}</span></div>${op ? bd(p) : ''}`;
+                return `<div class="lg-bal-r lg-tap" data-act="st-open" data-k="${esc(k)}"><span>${esc(pname(p))}<i class="lg-chev">${op ? '▲' : '▼'}</i></span><span>${num(x.paid)}</span><span class="op"></span><span>${num(x.owe)}</span><span class="op"></span><span>${num(x.sent)}</span><span class="op"></span><span>${num(x.recv)}</span><span class="op"></span><span>${netCell(x.net)}</span></div>${op ? bd(p, S.stBal) : ''}`;
             }).join('')}</div>` : '<p class="lg-muted">還沒有團員。</p>') +
             `<p class="lg-sum lg-mt">${day ? '篩選範圍未平衡' : '尚未結清'}：<b>${amt(open)}</b></p>
             <p class="lg-muted">淨額 ＝ 墊付 − 應負擔 ＋ 已轉出 − 已收到；已標記轉帳的金額會立即計入${day ? '（只算指定這些支出的先轉帳）' : ''}。</p>`);
@@ -1049,21 +1091,23 @@
             const pl = D().plan, fin = ps.items.filter((x) => x.status === 'done').length;
             let b = `<p class="lg-muted">${esc(pl.byName || '管理員')} 於 ${when(pl.ts)} 鎖定・已完成 ${fin} / ${ps.items.length} 筆</p>`;
             if (ps.stale) b += ps.curMismatch ? '<p class="lg-warn">⚠️ 結算幣別已改變，這份舊方案已失效，暫時不能標記轉帳，請管理員重新鎖定。</p>' : '<p class="lg-warn">⚠️ 鎖定後帳務有變動（可能新增、修改或刪除了支出），這份方案已過期，暫時不能標記轉帳，請管理員重新鎖定。</p>';
-            b += ps.items.map((x) => {
+            b = tog('stSug') + b;
+            b += ps.items.filter((x) => S.stSug !== 'open' || x.status !== 'done').map((x) => {
                 const st = x.status === 'done' ? '<em class="ok">✅ 已完成</em>'
                     : x.status === 'paid' ? `<em>付款：已轉帳</em><em class="wait">收款：待 ${esc(pname(x.to))} 確認</em>${canAct(x.to) ? `<button type="button" class="lg-btn sm" data-act="tr-done" data-id="${x.tid}">確認收款</button><button type="button" class="lg-btn sm ghost" data-act="tr-void" data-id="${x.tid}">退回</button>` : canAct(x.from) ? `<button type="button" class="lg-btn sm ghost" data-act="tr-void" data-id="${x.tid}">取消</button>` : ''}`
                         : `<em>付款：未轉帳</em><em>收款：未確認</em>${ps.stale ? '<small>方案已過期</small>' : canAct(x.from)
                             ? `<button type="button" class="lg-btn sm" data-act="st-pay" data-from="${x.from}" data-to="${x.to}" data-amt="${x.amt}" data-pk="${x.key}">標記已轉帳</button>`
                             : `<small>由 ${esc(pname(x.from))} 本人或管理員標記</small>`}`;
-                return `<div class="lg-tr"><p><b>${esc(pname(x.from))}</b> → <b>${esc(pname(x.to))}</b><span>${amt(x.amt)}</span></p><div class="lg-st">${st}</div></div>`;
+                const k = 'p:' + x.key, op = !!S.stOpen[k];
+                return `<div class="lg-tr"><p class="lg-tap" data-act="st-open" data-k="${esc(k)}"><b>${esc(pname(x.from))}</b> → <b>${esc(pname(x.to))}</b><i class="lg-chev">${op ? '▲' : '▼'}</i><span>${amt(x.amt)}</span></p>${op && B[x.from] && B[x.to] ? bd(x.from, S.stSug) + bd(x.to, S.stSug) : ''}<div class="lg-st">${st}</div></div>`;
             }).join('');
             if (isEditor) b += `<div class="lg-actions lg-mt">${ps.stale ? '<button type="button" class="lg-btn sm" data-act="plan-lock">重新鎖定</button>' : ''}<button type="button" class="lg-btn sm ghost" data-act="plan-unlock">解除鎖定</button></div>`;
             return b;
         };
-        const sugBody = () => (sug.length ? sug.map((s) => {
+        const sugBody = () => tog('stSug') + (sug.length ? sug.map((s) => {
             const k = `s:${s.from}>${s.to}`, op = !!S.stOpen[k];
             return `<div class="lg-tr"><p class="lg-tap" data-act="st-open" data-k="${esc(k)}"><b>${esc(pname(s.from))}</b> → <b>${esc(pname(s.to))}</b><i class="lg-chev">${op ? '▲' : '▼'}</i><span>${amt(s.amt)}</span></p>
-            ${op ? `<div class="lg-sg"><div><span>應付｜${esc(pname(s.from))}</span><span>${tt(-B[s.from].net)}</span></div><div><span>應收｜${esc(pname(s.to))}</span><span>${tt(B[s.to].net)}</span></div><div><b>本筆</b><b>${tt(s.amt)}</b></div></div>${bd(s.from)}${bd(s.to)}` : ''}
+            ${op ? `<div class="lg-sg"><div><span>應付｜${esc(pname(s.from))}</span><span>${tt(-B[s.from].net)}</span></div><div><span>應收｜${esc(pname(s.to))}</span><span>${tt(B[s.to].net)}</span></div><div><b>本筆</b><b>${tt(s.amt)}</b></div></div>${bd(s.from, S.stSug)}${bd(s.to, S.stSug)}` : ''}
             <div class="lg-st">${day ? '<small>依日期檢視，僅供參考</small>' : `<em>付款：未轉帳</em><em>收款：未確認</em>${canAct(s.from)
                 ? `<button type="button" class="lg-btn sm" data-act="st-pay" data-from="${s.from}" data-to="${s.to}" data-amt="${s.amt}">標記已轉帳</button>`
                 : `<small>由 ${esc(pname(s.from))} 本人或管理員標記</small>`}`}</div></div>`;
@@ -1559,12 +1603,14 @@
                 refreshForm();
             } else if (act === 'mode') { if (f.mode !== v) { f.mode = v; f.parts = {}; f.rf = null; $('lg-f-amount').value = f.amount; refreshForm(); } }
             else if (act === 'scope') { if (f.scope !== v) { f.scope = v; refreshForm(); } }
+            else if (act === 'pay') { f.pay = f.pay === v ? '' : v; refreshForm(); }
             else if (act === 'cat') { f.cat = v; refreshForm(); }
             else if (act === 'cat-add') addCat();
             else if (act === 'cat-del') delCat(f.cat);
             else if (act === 'cat-edit') editCats();
             else if (act === 'calc-swap' || act === 'calc-del') calcAct(act, +b.dataset.i);
             else if (act === 'st-cat') { S.stCats = !v ? [] : S.stCats.includes(v) ? S.stCats.filter((c) => c !== v) : [...S.stCats, v]; renderSettle(); }
+            else if (act === 'st-flt') { if (b.dataset.k === 'stBal' || b.dataset.k === 'stSug') { S[b.dataset.k] = v; renderSettle(); } }
             else if (act === 'st-mode') { S.stMode = v; renderSettle(); }
             else if (act === 'fold') { S.fold[v] = !S.fold[v]; renderSettle(); }
             else if (act === 'st-open') { S.stOpen[b.dataset.k] = !S.stOpen[b.dataset.k]; renderSettle(); }
