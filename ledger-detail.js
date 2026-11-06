@@ -74,7 +74,7 @@
             if (!(qty >= 1) || Math.floor(qty) !== qty) { errs.push(`第 ${i + 1} 筆（${label}）的 qty 必須是 1 以上的整數`); return; }
             if (!(rate >= 0 && rate <= 100)) { errs.push(`第 ${i + 1} 筆（${label}）的 rate 不是有效稅率`); return; }
             idMap[String(it.id != null ? it.id : i + 1)] = items.length + 1;
-            items.push({ id: items.length + 1, jp: String(it.jp || it.zh || '品項 ' + (i + 1)), zh: String(it.zh || it.jp || ''), unit, qty, rate, star: toBool(it.star, true) });
+            items.push({ id: items.length + 1, jp: String(it.jp || it.zh || '品項 ' + (i + 1)), zh: String(it.zh || it.jp || ''), unit, qty, rate, star: toBool(it.star, true), rate0: rate, star0: toBool(it.star, true) });
         });
         if (errs.length) return { error: errs.slice(0, 4).join('；') + (errs.length > 4 ? `…（共 ${errs.length} 處）` : '') };
         const cp = parseNum(raw.couponPercent), total = parseNum(raw.receiptTotal !== undefined ? raw.receiptTotal : raw.total);
@@ -102,6 +102,10 @@
         else if (disc < 1 || !(r.couponPercent > 0)) {
             const gross = calcPerson(items.map((item) => ({ item, n: item.qty })), { basis: 'before', taxMode: r.taxMode, disc }).gross, diff = gross - r.total;
             if (Math.abs(diff) > 5) { over = over || diff > 0; w.push(`金額對不上：品項加總 ¥${gross.toLocaleString('en-US')}，收據 ¥${r.total.toLocaleString('en-US')}（${diff < 0 ? `少 ¥${-diff}，可能漏拍上／下半部` : `多 ¥${diff}，可能混入別張或重複拍到`}）`); }
+        }
+        if (r.refund != null) {
+            const rf = calcPerson(items.map((item) => ({ item, n: item.qty })), { basis: 'before', taxMode: r.taxMode, disc }).refund, d = rf - r.refund;
+            if (Math.abs(d) > 5) w.push(`退稅額對不上：預計退稅 ¥${rf.toLocaleString('en-US')}，收據 ¥${r.refund.toLocaleString('en-US')}（${d < 0 ? '少' : '多'} ¥${Math.abs(d)}，請檢查 ★ 退稅標記與稅率）`);
         }
         if (over) {
             const seen = {}, dup = [];
@@ -230,6 +234,7 @@
         const cnt = (pid) => items().reduce((a, it) => a + asg(it.id, pid), 0);
         const linesFor = (pid) => items().map((item) => ({ item, n: asg(item.id, pid) })).filter((l) => l.n > 0);
         const cfg = () => { const r = st.receipt; return { basis: st.basis, taxMode: r.taxMode, disc: st.coupon && r.couponPercent > 0 ? 1 - r.couponPercent / 100 : 1 }; };
+        const edited = (it) => { const m = []; if (it.rate0 != null && it.rate !== it.rate0) m.push(`稅率原 ${it.rate0}%`); if (it.star0 != null && it.star !== it.star0) m.push(`退稅原${it.star0 ? '為 ★' : '為不退稅'}`); return m.length ? `<span class="ld-edt">✎ 已手動改（${m.join('、')}）</span>` : ''; };
         const shut = {};
         let itemsShut = false;
         // 每人結果；品項全部分完、收據有合計、折扣設定一致、差距在 5 円內時，把每人金額對齊收據合計
@@ -271,7 +276,7 @@
                     const mine = asg(it.id, st.active), rem = it.qty - tot(it.id);
                     const badges = people.map((p) => (asg(it.id, p.id) ? `<span class="ld-bdg" style="--c:${color(p.id)}">${esc(p.name)}×${asg(it.id, p.id)}</span>` : '')).join('');
                     return `<div class="ld-item ${mine ? 'sel' : ''}"><div class="ld-i"><b>${esc(it.jp)}</b>${it.zh && it.zh !== it.jp ? `<small>${esc(it.zh)}</small>` : ''}
-                        <small class="ld-meta">${yen(it.unit)} × ${it.qty}<button type="button" class="ld-tg ${it.star ? 'on' : ''}" data-a="star" data-i="${it.id}">${it.star ? '★ 退稅' : '不退稅'}</button><button type="button" class="ld-tg" data-a="rate" data-i="${it.id}">${it.rate}%</button>${it.qty > 1 ? `剩 ${rem}` : ''}</small>${badges ? `<span class="ld-bdgs">${badges}</span>` : ''}</div>
+                        <small class="ld-meta">${yen(it.unit)} × ${it.qty}<button type="button" class="ld-tg ${it.star ? 'on' : ''}" data-a="star" data-i="${it.id}">${it.star ? '★ 退稅' : '不退稅'}</button><button type="button" class="ld-tg" data-a="rate" data-i="${it.id}">${it.rate}%</button>${edited(it)}${it.qty > 1 ? `剩 ${rem}` : ''}</small>${badges ? `<span class="ld-bdgs">${badges}</span>` : ''}</div>
                         <div class="ld-step"><button type="button" data-a="dec" data-i="${it.id}" ${mine ? '' : 'disabled'} aria-label="減少">−</button><span>${mine}</span><button type="button" data-a="inc" data-i="${it.id}" ${rem > 0 ? '' : 'disabled'} aria-label="增加">＋</button></div></div>`;
                 }).join('')}</div>`;
         }

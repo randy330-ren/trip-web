@@ -229,6 +229,13 @@ t('明細分帳：匯入完整性檢查（漏拍／混入／缺合計）', () =>
     assert.ok(LD.checkReceipt(mk([A, B], { receiptTotal: null, itemCount: 0 })).some((x) => x.includes('沒有收據合計')));
     assert.deepStrictEqual(LD.checkReceipt(mk([A, B], { couponPercent: 10, receiptTotal: 1980 })), []);
 });
+t('明細分帳：退稅額核對與手動改稅率基準值', () => {
+    const r = LD.parseReceipt(JSON.stringify({ receipt: { receiptTotal: 2200, receiptRefund: 100, items: [{ jp: 'A', unit: 1000, qty: 1, rate: 10 }, { jp: 'B', unit: 1000, qty: 1, rate: 10, star: false }] } })).receipt;
+    assert.deepStrictEqual([r.items[0].rate0, r.items[0].star0, r.items[1].star0], [10, true, false]);
+    assert.deepStrictEqual(LD.checkReceipt(r), []);
+    r.items[1].star = true;
+    assert.ok(LD.checkReceipt(r).some((x) => x.includes('退稅額對不上')));
+});
 t('退稅分配：依預計退稅比例拆開，加總等於實際退稅', () => {
     const r = C.allocate(1500, [54, 120, 30]);
     assert.strictEqual(r.reduce((x, y) => x + y, 0), 1500);
