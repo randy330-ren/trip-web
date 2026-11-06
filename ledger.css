@@ -308,3 +308,9 @@ textarea.lg-in { resize: vertical; }
 .lg-seg.tg { margin-bottom: 12px; }
 
 .ld-edt { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 8px; font-size: 11px; font-weight: 700; color: #b45309; background: rgba(232, 163, 23, .16); }
+
+.ldp-r { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.ldp-cat { width: auto; padding: 4px 6px; font-size: 12px; }
+.ld-flag { display: block; color: #92400e; font-size: 11px; }
+.lg-rg.open > .lg-stack { margin-top: 8px; }
+.lg-rg .lg-actions { margin-top: 8px; }
