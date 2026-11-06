@@ -241,14 +241,31 @@
     }
 
     // ---------- 個人記帳：逐品項匯入 ----------
+    // 待處理草稿：只存在本機（與團體的明細分帳分開存），每次變動都會暫存，按 ✕ 不會刪除，寫入個人記帳成功才清掉
+    const PKEY = 'ledger_dp';
+    let PDB = { drafts: {} };
+    try { const v = typeof cacheLoad === 'function' && cacheLoad(PKEY); if (v && v.drafts && typeof v.drafts === 'object') PDB = { drafts: v.drafts }; } catch (e) { }
+    const flushP = () => { try { if (typeof cacheSave === 'function') cacheSave(PKEY, PDB); } catch (e) { } };
+    function listPersonal() {
+        return Object.values(PDB.drafts).filter((d) => d && d.receipt && Array.isArray(d.receipt.items)).sort((a, b) => b.ts - a.ts)
+            .map((d) => ({ id: d.id, title: d.name || d.receipt.name || '未命名收據', date: d.date || '', count: d.receipt.items.length }));
+    }
+    function removePersonal(id) { delete PDB.drafts[id]; flushP(); }
+    let curPOpts = null;
     function closePersonal() {
         const el = typeof document !== 'undefined' && document.getElementById('ldp-root');
-        if (el) { el.remove(); document.body.style.overflow = ''; }
+        if (!el) return;
+        el.remove(); document.body.style.overflow = '';
+        const o = curPOpts; curPOpts = null;
+        if (o && o.onClose) o.onClose();
     }
     function openPersonal(opts) {
         closePersonal();
         const cats = opts.cats || [], pays = opts.pays || [], dflt = cats.includes('其他') ? '其他' : cats[0];
-        const st = { receipt: null, name: '', date: opts.today || '', pay: '', basis: 'before', coupon: true, cat: {}, flag: {}, off: {} };
+        curPOpts = opts;
+        const st = { id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), ts: Date.now(), receipt: null, name: '', date: opts.today || '', pay: '', basis: 'before', coupon: true, cat: {}, flag: {}, off: {}, ...((opts.id && PDB.drafts[opts.id]) || {}) };
+        if (st.receipt) st.receipt.items.forEach((it) => { if (!cats.includes(st.cat[it.id])) st.cat[it.id] = dflt; });
+        const keepP = () => { if (st.receipt) { st.ts = Date.now(); PDB.drafts[st.id] = st; flushP(); } };
         const el = document.createElement('div');
         el.id = 'ldp-root'; el.className = 'ld';
         el.innerHTML = `<div class="ld-head"><b>🧾 逐品項匯入個人記帳</b><button type="button" data-a="p-close" aria-label="關閉">✕</button></div>
@@ -301,6 +318,7 @@
             const warns = checkReceipt(r, true), nf = Object.keys(st.flag).length;
             renderMain();
             say([`已匯入「${r.name}」，共 ${r.items.length} 項。`, nf ? `${nf} 項的分類不在清單內，已先歸「${dflt}」，請確認。` : '', warns.length ? '⚠️ 收據可能不完整，請看下方警告（仍可繼續）。' : ''].filter(Boolean).join('\n'), warns.length > 0 || nf > 0);
+            keepP();
             $('#ldp-imp').open = false;
             $('#ldp-paste').value = '';
         }
@@ -311,13 +329,13 @@
             const a = b.dataset.a;
             if (a === 'p-close') closePersonal();
             else if (a === 'p-import') doImport($('#ldp-paste').value);
-            else if (a === 'p-pay') { st.pay = b.dataset.v; renderMain(); }
-            else if (a === 'p-basis') { st.basis = b.dataset.v; renderMain(); }
+            else if (a === 'p-pay') { st.pay = b.dataset.v; keepP(); renderMain(); }
+            else if (a === 'p-basis') { st.basis = b.dataset.v; keepP(); renderMain(); }
             else if (a === 'p-apply') {
                 if (b.disabled) return;
                 const rows = picked().map((x) => ({ title: (x.it.zh && x.it.zh !== x.it.jp ? x.it.zh : x.it.jp) + (x.it.qty > 1 ? ` ×${x.it.qty}` : ''), jp: x.it.jp, amount: x.amount, cat: st.cat[x.it.id] || dflt }));
                 b.disabled = true;
-                Promise.resolve(opts.onApply({ rid: 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name: st.name.trim() || st.receipt.name, date: st.date, pay: st.pay, rows })).then((ok) => { if (ok !== false) closePersonal(); else renderFoot(); }, () => renderFoot());
+                Promise.resolve(opts.onApply({ rid: 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name: st.name.trim() || st.receipt.name, date: st.date, pay: st.pay, rows })).then((ok) => { if (ok !== false) { removePersonal(st.id); closePersonal(); } else renderFoot(); }, () => renderFoot());
             }
         });
         el.addEventListener('change', (ev) => {
@@ -328,13 +346,14 @@
                 rd.onload = () => doImport(String(rd.result), f.name);
                 rd.onerror = () => say('讀取檔案失敗', true);
                 rd.readAsText(f); t.value = '';
-            } else if (t.dataset && t.dataset.a === 'p-cat') st.cat[+t.dataset.i] = t.value;
-            else if (t.dataset && t.dataset.a === 'p-on') { if (t.checked) delete st.off[+t.dataset.i]; else st.off[+t.dataset.i] = true; renderFoot(); }
-            else if (t.dataset && t.dataset.a === 'p-coupon') { st.coupon = t.checked; renderMain(); }
-            else if (t.id === 'ldp-date') { st.date = t.value; renderFoot(); }
+            } else if (t.dataset && t.dataset.a === 'p-cat') { st.cat[+t.dataset.i] = t.value; keepP(); }
+            else if (t.dataset && t.dataset.a === 'p-on') { if (t.checked) delete st.off[+t.dataset.i]; else st.off[+t.dataset.i] = true; keepP(); renderFoot(); }
+            else if (t.dataset && t.dataset.a === 'p-coupon') { st.coupon = t.checked; keepP(); renderMain(); }
+            else if (t.id === 'ldp-date') { st.date = t.value; keepP(); renderFoot(); }
         });
-        el.addEventListener('input', (ev) => { if (ev.target.id === 'ldp-name') st.name = ev.target.value; });
+        el.addEventListener('input', (ev) => { if (ev.target.id === 'ldp-name') { st.name = ev.target.value; keepP(); } });
         renderMain();
+        if (st.receipt) $('#ldp-imp').open = false;
     }
 
 
@@ -542,5 +561,5 @@
         const o = curOpts; cur = curOpts = null;
         if (o && o.onClose) o.onClose();
     }
-    return { open, close, openPersonal, closePersonal, itemAmounts, list, remove, calcPerson, alignTotals, buildNote, parseReceipt, parseImport, buildPrompt, parseNum, checkReceipt };
+    return { open, close, openPersonal, closePersonal, listPersonal, removePersonal, itemAmounts, list, remove, calcPerson, alignTotals, buildNote, parseReceipt, parseImport, buildPrompt, parseNum, checkReceipt };
 });

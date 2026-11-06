@@ -336,7 +336,8 @@
             <div id="lg-f-rate"></div>
             <div id="lg-f-preview" class="lg-preview"></div>
             <button type="button" id="lg-f-save" class="lg-btn wide" data-act="save">儲存支出</button>
-            <div id="lg-f-dtbox"><div id="lg-f-pend"></div><button type="button" class="lg-btn wide ld-open" data-act="detail">🧾 明細分帳</button></div>`;
+            <div id="lg-f-dtbox"><div id="lg-f-pend"></div><button type="button" class="lg-btn wide ld-open" data-act="detail">🧾 明細分帳</button></div>
+            <div id="lg-f-pbox"><div id="lg-f-ppend"></div><button type="button" class="lg-btn wide ld-open" data-act="rcpt-open">🧾 匯入收據（逐品項）</button></div>`;
     }
     function writeForm() {
         const f = S.form;
@@ -360,6 +361,7 @@
         $('lg-f-pay').innerHTML = PAYS.map(([k, l]) => `<button type="button" data-act="pay" data-v="${k}" class="${f.pay === k ? 'on' : ''}">${l}</button>`).join('');
         $('lg-f-grp').classList.toggle('hidden', f.scope === 'personal');
         $('lg-f-dtbox').classList.toggle('hidden', f.scope === 'personal');
+        $('lg-f-pbox').classList.toggle('hidden', f.scope !== 'personal');
         renderPending();
         pickSet($('lg-f-cur'), f.cur);
         const auto = f.mode === 'amount' && f.scope !== 'personal';
@@ -558,8 +560,15 @@
     // ---------- 明細分帳與退稅分配 ----------
     function renderPending() {
         const box = $('lg-f-pend'), l = window.LedgerDetail ? LedgerDetail.list() : [];
+        const pb = $('lg-f-ppend'); if (pb) pb.innerHTML = pendPersonalHtml();
         box.innerHTML = l.length ? `<label class="lg-lbl">待處理的明細分帳（${l.length}）</label>` + l.map((d) => `<div class="lg-pend"><span><b>${esc(d.title)}</b><small>${esc(d.date || '未填日期')}・${d.has ? `已分配 ${d.got}／${d.qty} 件` : '尚未匯入收據'}</small></span><span><button type="button" class="lg-btn sm" data-act="detail" data-id="${esc(d.id)}">繼續</button><button type="button" class="lg-btn sm danger" data-act="detail-del" data-id="${esc(d.id)}">刪除</button></span></div>`).join('') : '';
     }
+    // 個人記帳逐品項匯入的待處理清單（本機暫存）
+    function pendPersonalHtml() {
+        const l = window.LedgerDetail && LedgerDetail.listPersonal ? LedgerDetail.listPersonal() : [];
+        return l.length ? `<label class="lg-lbl">待處理的收據匯入（${l.length}）</label>` + l.map((d) => `<div class="lg-pend"><span><b>${esc(d.title)}</b><small>${esc(d.date || '未填日期')}・${d.count} 個品項</small></span><span><button type="button" class="lg-btn sm" data-act="rcpt-open" data-id="${esc(d.id)}">繼續</button><button type="button" class="lg-btn sm danger" data-act="rcpt-del" data-id="${esc(d.id)}">刪除</button></span></div>`).join('') : '';
+    }
+    function refreshPersonalPending() { renderPending(); if (S.filter.scope === 'personal') renderItems(); }
     function openDetail(did) {
         if (!window.LedgerDetail) return toast('明細分帳模組載入中，請稍後再試');
         if (!curs().includes('JPY')) return alert('匯率表沒有 JPY，請管理員先到「匯率」頁新增日圓。');
@@ -840,12 +849,12 @@
         if (!n) return;
         ref.update(up).then(() => toast(`已匯入 ${n} 筆`)).catch(fail);
     }
-    function openReceiptImport() {
+    function openReceiptImport(did) {
         if (!guard()) return;
         if (!window.LedgerDetail || !LedgerDetail.openPersonal) return toast('明細分帳模組載入中，請稍後再試');
         const t = R().JPY, r = t && C.parseRate(t.rate);
         if (!r || !r.ok) return alert('匯率表沒有 JPY，請管理員先到「匯率」頁新增日圓。');
-        LedgerDetail.openPersonal({ cats: cats(), pays: PAYS, today: today(), onApply: saveReceiptItems });
+        LedgerDetail.openPersonal({ id: did || '', cats: cats(), pays: PAYS, today: today(), onApply: saveReceiptItems, onClose: refreshPersonalPending });
     }
     // 一張收據的每個品項各寫一筆個人支出（日圓），以同一個 rg 串成群組；一次批次寫入
     function saveReceiptItems(p) {
@@ -917,7 +926,7 @@
     }
     function renderItems() {
         const box = $('lg-items'), all = Object.keys(src()).length, list = filtered();
-        const impBtn = S.filter.scope === 'personal' ? '<button type="button" class="lg-btn sm lg-import" data-act="imp-open">⬇️ 從團體匯入我的分攤</button><button type="button" class="lg-btn sm lg-import" data-act="rcpt-open">🧾 匯入收據（逐品項）</button>' : '';
+        const impBtn = S.filter.scope === 'personal' ? '<button type="button" class="lg-btn sm lg-import" data-act="imp-open">⬇️ 從團體匯入我的分攤</button><button type="button" class="lg-btn sm lg-import" data-act="rcpt-open">🧾 匯入收據（逐品項）</button>' + pendPersonalHtml() : '';
         if (!all) { box.innerHTML = impBtn + '<div class="card lg-card lg-center"><p class="lg-muted">還沒有' + (S.filter.scope === 'personal' ? '個人' : '') + '支出紀錄，到「記帳」新增第一筆吧。</p></div>'; return; }
         const total = list.reduce((s, [, e]) => s + (Number.isInteger(e.baseAmt) ? e.baseAmt : 0), 0);
         const jpyOf = (e) => (e.cur === 'JPY' && Number.isInteger(e.amount) ? e.amount : 0), baseOf = (e) => (Number.isInteger(e.baseAmt) ? e.baseAmt : 0);
@@ -1679,7 +1688,8 @@
             else if (act === 'exp-del') delExpense(id);
             else if (act === 'exp-restore') restoreExpense(id);
             else if (act === 'imp-open') openImport();
-            else if (act === 'rcpt-open') openReceiptImport();
+            else if (act === 'rcpt-open') openReceiptImport(id);
+            else if (act === 'rcpt-del') { if (confirm('刪除這份待處理的收據匯入？')) { LedgerDetail.removePersonal(id); refreshPersonalPending(); } }
             else if (act === 'rg-open') { const ro = S.rgOpen || (S.rgOpen = {}); ro[id] = !ro[id]; renderItems(); }
             else if (act === 'rg-del') delReceipt(id);
             else if (act === 'del-toggle') { S.showDel = !S.showDel; renderDeleted(); }
