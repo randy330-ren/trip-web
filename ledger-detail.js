@@ -174,6 +174,11 @@
         res.coupon = so.coupon !== false;
         return res;
     }
+    // 把 qty 件平分給 n 人：每人先拿整除的部分，餘數從 start 開始依序多給 1 件
+    function splitEven(qty, n, start) {
+        const base = Math.floor(qty / n), extra = qty % n;
+        return Array.from({ length: n }, (_, k) => base + (((k - (start || 0) % n) + n) % n < extra ? 1 : 0));
+    }
     function buildPrompt(cats, multi) {
         const withCat = Array.isArray(cats) && cats.length;
         return [
@@ -448,7 +453,8 @@
         const cfg = () => { const r = st.receipt; return { basis: st.basis, taxMode: r.taxMode, disc: st.coupon && r.couponPercent > 0 ? 1 - r.couponPercent / 100 : 1 }; };
         const edited = (it) => { const m = []; if (it.rate0 != null && it.rate !== it.rate0) m.push(`稅率原 ${it.rate0}%`); if (it.star0 != null && it.star !== it.star0) m.push(`退稅原${it.star0 ? '為 ★' : '為不退稅'}`); return m.length ? `<span class="ld-edt">✎ 已手動改（${m.join('、')}）</span>` : ''; };
         const shut = {};
-        let itemsShut = false;
+        let itemsShut = false, splitIid = null, rr = 0;
+        const splitSel = new Set();
         // 每人結果；品項全部分完、收據有合計、折扣設定一致、差距在 5 円內時，把每人金額對齊收據合計
         const rows = () => {
             const S = cfg(), r = st.receipt, out = [];
@@ -488,8 +494,10 @@
                     const mine = asg(it.id, st.active), rem = it.qty - tot(it.id);
                     const badges = people.map((p) => (asg(it.id, p.id) ? `<span class="ld-bdg" style="--c:${color(p.id)}">${esc(p.name)}×${asg(it.id, p.id)}</span>` : '')).join('');
                     return `<div class="ld-item ${mine ? 'sel' : ''}"><div class="ld-i"><b>${esc(it.jp)}</b>${it.zh && it.zh !== it.jp ? `<small>${esc(it.zh)}</small>` : ''}
-                        <small class="ld-meta">${yen(it.unit)} × ${it.qty}<button type="button" class="ld-tg ${it.star ? 'on' : ''}" data-a="star" data-i="${it.id}">${it.star ? '★ 退稅' : '不退稅'}</button><button type="button" class="ld-tg" data-a="rate" data-i="${it.id}">${it.rate}%</button>${edited(it)}${it.qty > 1 ? `剩 ${rem}` : ''}</small>${badges ? `<span class="ld-bdgs">${badges}</span>` : ''}</div>
-                        <div class="ld-step"><button type="button" data-a="dec" data-i="${it.id}" ${mine ? '' : 'disabled'} aria-label="減少">−</button><span>${mine}</span><button type="button" data-a="inc" data-i="${it.id}" ${rem > 0 ? '' : 'disabled'} aria-label="增加">＋</button></div></div>`;
+                        <small class="ld-meta">${yen(it.unit)} × ${it.qty}<button type="button" class="ld-tg ${it.star ? 'on' : ''}" data-a="star" data-i="${it.id}">${it.star ? '★ 退稅' : '不退稅'}</button><button type="button" class="ld-tg" data-a="rate" data-i="${it.id}">${it.rate}%</button>${it.qty > 1 ? `<button type="button" class="ld-tg ${splitIid === it.id ? 'on' : ''}" data-a="split" data-i="${it.id}">平分</button>` : ''}${edited(it)}${it.qty > 1 ? `剩 ${rem}` : ''}</small>${badges ? `<span class="ld-bdgs">${badges}</span>` : ''}</div>
+                        <div class="ld-step"><button type="button" data-a="dec" data-i="${it.id}" ${mine ? '' : 'disabled'} aria-label="減少">−</button><span>${mine}</span><button type="button" data-a="inc" data-i="${it.id}" ${rem > 0 ? '' : 'disabled'} aria-label="增加">＋</button></div></div>${splitIid === it.id ? `<div class="ld-split"><p class="lg-muted">選擇要平分「${esc(it.zh || it.jp)}」（${it.qty} 件）的人：</p>
+                        <div class="lg-chips">${people.map((p) => `<button type="button" data-a="splitp" data-id="${esc(p.id)}" class="lg-chip ${splitSel.has(p.id) ? 'on' : ''}" style="--c:${color(p.id)}">${esc(p.name)}</button>`).join('')}</div>
+                        <div class="ld-btns"><button type="button" class="lg-btn sm" data-a="splitgo" data-i="${it.id}">平分（${splitSel.size} 人）</button><button type="button" class="lg-btn sm ghost" data-a="splitall">全選</button><button type="button" class="lg-btn sm ghost" data-a="splitx">取消</button></div></div>` : ''}`;
                 }).join('')}</div>`;
         }
         function renderRes() {
@@ -588,6 +596,20 @@
             else if (a === 'rexp') { shut[b.dataset.id] = !shut[b.dataset.id]; renderRes(); }
             else if (a === 'pick') { st.active = b.dataset.id; renderAll(); }
             else if (a === 'inc' || a === 'dec') { setQty(iid, st.active, asg(iid, st.active) + (a === 'inc' ? 1 : -1)); renderAll(); }
+            else if (a === 'split') { splitSel.clear(); if (splitIid === iid) splitIid = null; else { splitIid = iid; people.forEach((p) => { if (asg(iid, p.id) > 0) splitSel.add(p.id); }); } renderMain(); }
+            else if (a === 'splitp') { const id = b.dataset.id; splitSel.has(id) ? splitSel.delete(id) : splitSel.add(id); renderMain(); }
+            else if (a === 'splitall') { people.forEach((p) => splitSel.add(p.id)); renderMain(); }
+            else if (a === 'splitx') { splitIid = null; splitSel.clear(); renderMain(); }
+            else if (a === 'splitgo') {
+                const it = items().find((x) => x.id === iid), ids = people.filter((p) => splitSel.has(p.id)).map((p) => p.id), n = ids.length;
+                if (!it) return;
+                if (n < 2) return say('請至少選 2 個人來平分。', true);
+                if (it.qty < n) return say(`「${it.zh || it.jp}」只有 ${it.qty} 件，無法分給 ${n} 人，請減少人數或改用手動分配。`, true);
+                const extra = it.qty % n, cnts = splitEven(it.qty, n, extra ? rr++ : 0);
+                st.assign[iid] = {}; ids.forEach((id, k) => { if (cnts[k]) st.assign[iid][id] = cnts[k]; });
+                splitIid = null; splitSel.clear(); renderAll();
+                say(extra ? `已平分，除不盡的 ${extra} 件已輪流多分給部分人。` : '已平分。');
+            }
             else if (a === 'takeall') { items().forEach((it) => { const rem = it.qty - tot(it.id); if (rem > 0) setQty(it.id, st.active, asg(it.id, st.active) + rem); }); renderAll(); }
             else if (a === 'clearp') { items().forEach((it) => setQty(it.id, st.active, 0)); renderAll(); }
             else if (a === 'resetall') { if (confirm('清除所有人的品項分配？')) { st.assign = {}; renderAll(); } }
@@ -638,5 +660,5 @@
         const o = curOpts; cur = curOpts = null;
         if (o && o.onClose) o.onClose();
     }
-    return { open, close, openPersonal, closePersonal, listPersonal, removePersonal, itemAmounts, parseReceipts, list, remove, calcPerson, alignTotals, buildNote, parseReceipt, parseImport, buildPrompt, parseNum, checkReceipt };
+    return { open, close, openPersonal, closePersonal, listPersonal, removePersonal, itemAmounts, parseReceipts, list, remove, calcPerson, alignTotals, splitEven, buildNote, parseReceipt, parseImport, buildPrompt, parseNum, checkReceipt };
 });

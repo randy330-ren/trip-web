@@ -286,4 +286,12 @@ t('明細分帳：每人明細備註文字', () => {
     assert.ok(txt.includes('進位 ¥1') && txt.includes('預計可退 ¥100') && txt.includes('備註：備'));
 });
 
+t('平分：整除平均給、除不盡依序多給 1 件、起點可輪替', () => {
+    assert.deepStrictEqual(LD.splitEven(6, 3, 0), [2, 2, 2]);
+    assert.deepStrictEqual(LD.splitEven(5, 2, 0), [3, 2]);
+    assert.deepStrictEqual(LD.splitEven(5, 2, 1), [2, 3]);
+    assert.deepStrictEqual(LD.splitEven(7, 3, 4), [2, 3, 2]);
+    assert.strictEqual(LD.splitEven(11, 4, 3).reduce((a, b) => a + b, 0), 11);
+});
+
 console.log(`\n全部通過：${pass} 項`);

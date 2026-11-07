@@ -324,3 +324,4 @@ textarea.lg-in { resize: vertical; }
 input[type="date"].lg-in { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; min-height: 42px; text-align: left; font-size: 14px; line-height: 1.2; padding-left: 10px; padding-right: 6px; white-space: nowrap; overflow: hidden; }
 input[type="date"].lg-in::-webkit-date-and-time-value { text-align: left; min-height: 1.2em; white-space: nowrap; }
 input[type="date"].lg-in::-webkit-datetime-edit { padding: 0; white-space: nowrap; }
+.ld-split { padding: 8px 0 10px; border-top: 1px dashed var(--lg-line); }
