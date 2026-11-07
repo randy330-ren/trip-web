@@ -575,7 +575,7 @@
         const people = activeIds().map((id) => ({ id, name: pname(id) }));
         if (!people.length) return toast('請先在上方「團員名單」新增團員');
         LedgerDetail.open({
-            people, id: did || '', onClose: renderPending,
+            people, cats: cats(), id: did || '', onClose: renderPending,
             onApply(r) {
                 const f = S.form;
                 if (f.cur !== 'JPY') f.rate = null;
