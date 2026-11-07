@@ -1105,21 +1105,30 @@
         const eLbl = (e) => `${esc(e.title || '')}${e.date ? `（${mdLabel(e.date)}）` : ''}`;
         const cps = cpMap(), anyCp = Object.keys(cps).length > 0;
         if (!anyCp) S.stBal = S.stSug = 'all';
+        const part = (p, m) => {
+            const hide = m === 'open' && cps[p] !== undefined, cut = cps[p] || 0, x = B[p];
+            const ex = Object.values(exps).filter((e) => e && e.shares && Number.isInteger(e.baseAmt)).filter((e) => !hide || (e.ts || 0) > cut).sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.ts || 0) - (a.ts || 0));
+            const live = Object.values(trs).filter((t) => t && (t.status === 'paid' || t.status === 'done') && Number.isInteger(t.amt) && (!hide || (t.paidTs || 0) > cut)).sort((a, b) => (b.paidTs || 0) - (a.paidTs || 0));
+            if (!hide) return { hide, ex, live, paid: x.paid, owe: x.owe, sent: x.sent, recv: x.recv, net: x.net };
+            const sum = (a, f) => a.reduce((t, e) => t + f(e), 0), tv = (t) => { const a = C.transferAmount(t, U); return Number.isInteger(a) ? a : 0; };
+            return { hide, ex, live, net: x.net,
+                paid: sum(ex.filter((e) => e.payer === p), (e) => C.unitView(e, U).total),
+                owe: sum(ex.filter((e) => e.shares[p] && e.shares[p].b > 0), (e) => C.unitView(e, U).sh[p]),
+                sent: sum(live.filter((t) => t.from === p), tv), recv: sum(live.filter((t) => t.to === p), tv) };
+        };
         const bd = (p, m) => {
-            const hide = m === 'open' && cps[p] !== undefined, cut = cps[p] || 0, x = B[p], ex = Object.values(exps).filter((e) => e && e.shares && Number.isInteger(e.baseAmt))            .filter((e) => !hide || (e.ts || 0) > cut).sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.ts || 0) - (a.ts || 0));
+            const q = part(p, m), { hide, ex, live } = q;
             const sec = (t, rows) => (rows.length ? `<p class="lg-bd-h">${t}</p>${rows.join('')}` : '');
-            const live = Object.values(trs).filter((t) => t && (t.status === 'paid' || t.status === 'done') && Number.isInteger(t.amt)).sort((a, b) => (b.paidTs || 0) - (a.paidTs || 0));
             const paidV = (e) => { const v = C.unitView(e, U).total; return two(sameCur(e) && Number.isInteger(e.amount) ? e.amount : conv(v), v); };
             const oweV = (e) => { const v = C.unitView(e, U).sh[p], o = e.shares[p].o; return two(sameCur(e) && Number.isInteger(o) ? o : conv(v), v); };
             const trV = (t) => { const v = C.transferAmount(t, U); return two(conv(v), v); };
-            const f = (k) => money(conv(x[k]), dc);
+            const f = (k) => money(conv(q[k]), dc);
             return `<div class="lg-bd"><p class="lg-bd-n">${esc(pname(p))}</p>`
-                + sec(`墊付 ${hide ? tt(ex.filter((e) => e.payer === p).reduce((a, e) => a + C.unitView(e, U).total, 0)) : tt(x.paid)}`, ex.filter((e) => e.payer === p).map((e) => li(eLbl(e), paidV(e))))
-                + sec(`應負擔 ${hide ? tt(ex.filter((e) => e.shares[p] && e.shares[p].b > 0).reduce((a, e) => a + C.unitView(e, U).sh[p], 0)) : tt(x.owe)}`, ex.filter((e) => e.shares[p] && e.shares[p].b > 0).map((e) => li(`${eLbl(e)}${e.payer === p ? '（自己付）' : ''}`, oweV(e))))
-                + (hide ? `<p class="lg-bd-h">已轉出 ${tt(0)}</p><p class="lg-bd-h">已收到 ${tt(0)}</p>`
-                    : sec(`已轉出 ${tt(x.sent)}`, live.filter((t) => t.from === p).map((t) => li(`給 ${esc(pname(t.to))}`, trV(t))))
-                    + sec(`已收到 ${tt(x.recv)}`, live.filter((t) => t.to === p).map((t) => li(`來自 ${esc(pname(t.from))}`, trV(t)))))
-                + (hide ? '' : `<p class="lg-bd-s">淨額 ＝ ${f('paid')} − ${f('owe')} ＋ ${f('sent')} − ${f('recv')} ＝ <b>${money(conv(x.net), dc)}</b></p>`) + '</div>';
+                + sec(`墊付 ${tt(q.paid)}`, ex.filter((e) => e.payer === p).map((e) => li(eLbl(e), paidV(e))))
+                + sec(`應負擔 ${tt(q.owe)}`, ex.filter((e) => e.shares[p] && e.shares[p].b > 0).map((e) => li(`${eLbl(e)}${e.payer === p ? '（自己付）' : ''}`, oweV(e))))
+                + sec(`已轉出 ${tt(q.sent)}`, live.filter((t) => t.from === p).map((t) => li(`給 ${esc(pname(t.to))}`, trV(t))))
+                + sec(`已收到 ${tt(q.recv)}`, live.filter((t) => t.to === p).map((t) => li(`來自 ${esc(pname(t.from))}`, trV(t))))
+                + (`<p class="lg-bd-s">淨額 ＝ ${f('paid')} − ${f('owe')} ＋ ${f('sent')} − ${f('recv')} ＝ <b>${money(conv(q.net), dc)}</b></p>`) + '</div>';
         };
         const trLine = ([id, t], btns) => {
             const k = 't:' + id, op = !!S.stOpen[k];
@@ -1141,7 +1150,7 @@
         h += foldCard('bal', `📊 每人帳務 <small>（${esc(dc)}${day ? `・${esc(flt)}` : ''}）</small>`,
             tog('stBal') + (rows.length ? `<div class="lg-bal"><div class="lg-bal-r h"><span>成員</span><span>墊付</span><span class="op">−</span><span>應負擔</span><span class="op">＋</span><span>已轉出</span><span class="op">−</span><span>已收到</span><span class="op">＝</span><span>應付(淨額)</span></div>
             ${rows.map((p) => {
-                const x = B[p];
+                const x = part(p, S.stBal);
                 const k = 'b:' + p, op = !!S.stOpen[k];
                 return `<div class="lg-bal-r lg-tap" data-act="st-open" data-k="${esc(k)}"><span>${esc(pname(p))}<i class="lg-chev">${op ? '▲' : '▼'}</i></span><span>${num(x.paid)}</span><span class="op"></span><span>${num(x.owe)}</span><span class="op"></span><span>${num(x.sent)}</span><span class="op"></span><span>${num(x.recv)}</span><span class="op"></span><span>${netCell(x.net)}</span></div>${op ? bd(p, S.stBal) : ''}`;
             }).join('')}</div>` : '<p class="lg-muted">還沒有團員。</p>') +
