@@ -203,7 +203,16 @@
         #site-header {
             padding-top: .8rem;
             padding-bottom: .65rem;
+            position: relative;
         }
+        #site-header.hc { padding-top: 14px; padding-bottom: 14px; }
+        #site-header.hc #site-eyebrow, #site-header.hc #site-subtitle { display: none; }
+        #site-header.hc #site-title { font-size: .75rem; line-height: 24px; margin-top: 0; }
+        #site-header.hc #nt-bell { top: 7px; }
+        #nt-bell { position: absolute; top: .55rem; right: .7rem; width: 38px; height: 38px; border-radius: 50%; background: rgba(255,255,255,.14); color: #fff; font-size: 18px; line-height: 1; display: flex; align-items: center; justify-content: center; }
+        #nt-bell b { position: absolute; top: -4px; right: -4px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 10px; background: #d97706; color: #fff; font-size: 11px; font-weight: 800; line-height: 19px; }
+        #nt-bell b:empty { display: none; }
+        #nt-bell.fb { animation: ntFlash .9s ease-in-out infinite; }
 
         .date-card {
             padding: 6px 10px;
@@ -392,6 +401,7 @@
         .nt .nt-x { padding: 12px 16px; opacity: .75; color: inherit; font: inherit; }
         @keyframes ntFlash { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
         .nt.fl { animation: ntFlash .45s ease-in-out 2; }
+        .nt.fb { animation: ntFlash .9s ease-in-out infinite; }
         .nt-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: left; padding: 11px 14px; border-radius: 12px; background: #f6ecde; color: #7a5428; font-size: 14px; font-weight: 700; }
         .nt-row i { font-style: normal; opacity: .6; }
         #upd-bar button { color: inherit; font: inherit; white-space: nowrap; }
@@ -448,6 +458,7 @@
     <div id="sticky-wrapper" class="sticky top-0 z-50">
         <div id="offline-bar" class="hidden bg-amber-500 text-white text-[11px] font-bold text-center py-1">⚡ 離線中・顯示最後同步資料</div>
         <header id="site-header" class="bg-[#3b4d43] text-white px-4 text-center shadow-md">
+            <button type="button" id="nt-bell" onclick="NOTI.openList()" aria-label="提醒">🔔<b id="nt-bell-n"></b></button>
             <span id="site-eyebrow" class="block text-[10px] tracking-widest uppercase opacity-70">2026 JAPAN /
                 SAN-IN</span>
             <h1 id="site-title" class="text-lg font-bold tracking-wide mt-1" data-key="title">山陰・秋日紀行</h1>
@@ -1180,7 +1191,7 @@
     <div id="nt-modal" style="display:none;position:fixed;inset:0;z-index:62;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.5)">
         <div style="width:100%;max-width:24rem;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;background:#fff;border-radius:18px;box-shadow:0 8px 28px rgba(0,0,0,.3)">
             <div style="flex:1;min-height:0;overflow-y:auto;padding:18px 18px 8px">
-                <h3 style="font-size:17px;font-weight:800;color:#3b4d43">🔔 你有多項通知</h3>
+                <h3 style="font-size:17px;font-weight:800;color:#3b4d43">🔔 提醒</h3>
                 <p style="font-size:12px;color:#888;margin-top:2px">點選項目前往查看，沒查看的會繼續留在頂端。</p>
                 <div id="nt-list" style="display:flex;flex-direction:column;gap:8px;margin-top:12px"></div>
             </div>
@@ -2402,7 +2413,7 @@
             if (!opts.skipScrollTop) window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        const LEDGER_V = '55';
+        const LEDGER_V = '60';
         let ledgerLoading = null;
         const loadScript = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
         function openLedger() {
@@ -2418,7 +2429,7 @@
             }
             ledgerLoading.then(() => { if (window.LEDGER) LEDGER.open(); });
         }
-        const HL_V = '10';
+        const HL_V = '12';
         let hlLoading = null;
         function loadHL() {
             if (!hlLoading) {
@@ -3986,7 +3997,7 @@
             try { localStorage.setItem('hintsDone', JSON.stringify(hintsDone)); } catch (e) { }
             refreshHints();
         };
-        const TOUR_V = '13';
+        const TOUR_V = '15';
         window.tourOpen = function () {
             document.getElementById('tour-prompt').classList.add('hidden');
             (window.TOUR ? Promise.resolve() : loadScript('tutorial.js?v=' + TOUR_V)).then(() => TOUR.start({ canAdmin: !!adminUser, isRead: readMode, setRead: setReadMode })).catch(() => { });
@@ -5093,6 +5104,26 @@
 
         })();
 
+        // ---------- 捲動時縮小頂端綠色區域：往下捲只剩標題（字 2/3），回到最頂端才展開 ----------
+        (function headerCollapse() {
+            const hd = document.getElementById('site-header'), wrap = document.getElementById('sticky-wrapper');
+            if (!hd || !wrap) return;
+            let on = false, raf = 0;
+            const run = () => {
+                raf = 0;
+                const y = window.scrollY;
+                if (!on && y > 80) {
+                    const h0 = wrap.offsetHeight;
+                    hd.classList.add('hc'); on = true;
+                    wrap.style.marginBottom = Math.max(0, h0 - wrap.offsetHeight) + 'px';
+                } else if (on && y <= 2) {
+                    hd.classList.remove('hc'); on = false;
+                    wrap.style.marginBottom = '';
+                }
+            };
+            window.addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(run); }, { passive: true });
+        })();
+
         // ---------- 全螢幕 ----------
         const fsEl = document.documentElement;
         const fsOk = !!(fsEl.requestFullscreen && document.fullscreenEnabled !== false);
@@ -5500,7 +5531,7 @@
         // ---------- 頂端通知中心：帳務、發文提醒、花絮通知統一顯示；超過上限合併成「多項通知」 ----------
         window.flashEl = flashEl;
         const NOTI = window.NOTI = (() => {
-            const src = {}, fl = new Set(), ORD = ['rem', 'post', 'hl'];
+            const src = {}, fl = new Set(), ORD = ['rem', 'post', 'hl'], INL = 3, MAXN = 10;
             let ent = [], last = '', raf = 0, open = false;
             const $n = (id) => document.getElementById(id);
             function render() {
@@ -5508,28 +5539,30 @@
                 const box = $n('nt-box');
                 if (!box) return;
                 ent = ORD.flatMap(k => src[k] || []);
-                const ub = $n('upd-bar'), multi = ent.length > (ub && ub.classList.contains('show') ? 1 : 2);
+                const ub = $n('upd-bar'), multi = ent.length > (ub && ub.classList.contains('show') ? INL - 1 : INL), over = ent.length > MAXN;
                 const item = (e, i, f) => `<div class="nt${e.dk ? ' dk' : ''}${f}"><button type="button" class="nt-go" data-i="${i}"><span>${escapeHtml(e.txt)}</span><u>點擊查看</u></button><button type="button" class="nt-x" data-x="${i}" aria-label="關閉">✕</button></div>`;
                 const fresh = ent.some(e => !fl.has(e.key));
-                const html = (f) => multi ? `<div class="nt dk nx${f}"><button type="button" class="nt-go" data-m="1"><span>🔔 你有多項通知（${ent.length}）</span><u>點擊查看</u></button></div>` : ent.map((e, i) => item(e, i, fresh && !fl.has(e.key) ? ' fl' : '')).join('');
-                const base = multi ? 'M' + ent.map(e => e.key).join('|') : html('').replace(/ fl"/g, '"');
+                const html = (f) => multi ? `<div class="nt dk nx${f}"><button type="button" class="nt-go" data-m="1"><span>🔔 你有多項提醒${over ? '' : `（${ent.length}）`}</span><u>點擊查看</u></button></div>` : ent.map((e, i) => item(e, i, fresh && !fl.has(e.key) ? ' fl' : '')).join('');
+                const bell = $n('nt-bell');
+                if (bell) { $n('nt-bell-n').textContent = !ent.length ? '' : over ? MAXN + '+' : String(ent.length); bell.classList.toggle('fb', over); }
+                const base = multi ? 'M' + (over ? '!' : '') + ent.map(e => e.key).join('|') : html('').replace(/ fl"/g, '"');
                 if (base !== last) {
                     last = base;
-                    box.innerHTML = multi ? html(fresh ? ' fl' : '') : html('');
+                    box.innerHTML = multi ? html(over ? ' fb' : fresh ? ' fl' : '') : html('');
                     ent.forEach(e => fl.add(e.key));
                 }
-                if (!ent.length) close();
-                else if (open) list();
+                if (open) list();
             }
             function list() {
-                $n('nt-list').innerHTML = ent.map((e, i) => `<button type="button" class="nt-row" data-i="${i}"><span>${escapeHtml(e.txt)}</span><i>›</i></button>`).join('');
+                $n('nt-list').innerHTML = !ent.length ? '<p style="font-size:13px;color:#999;text-align:center;padding:14px 0">目前沒有提醒</p>' : ent.slice(0, MAXN).map((e, i) => `<button type="button" class="nt-row" data-i="${i}"><span>${escapeHtml(e.txt)}</span><i>›</i></button>`).join('') + (ent.length > MAXN ? `<p style="font-size:12px;color:#999;text-align:center;margin-top:4px">還有 ${ent.length - MAXN} 項，處理上面的之後會顯示</p>` : '');
             }
+            function show() { open = true; list(); lockScroll(); $n('nt-modal').style.display = 'flex'; }
             function close() { if (!open) return; open = false; $n('nt-modal').style.display = 'none'; unlockScroll(); }
             function sched() { if (!raf) raf = requestAnimationFrame(render); }
             document.addEventListener('click', (ev) => {
                 const g = ev.target.closest('#nt-box [data-i], #nt-box [data-x], #nt-box [data-m], #nt-list [data-i]');
                 if (!g) return;
-                if (g.dataset.m) { open = true; list(); lockScroll(); $n('nt-modal').style.display = 'flex'; return; }
+                if (g.dataset.m) { show(); return; }
                 const e = ent[+(g.dataset.i != null ? g.dataset.i : g.dataset.x)];
                 if (!e) return;
                 if (g.dataset.x != null) { if (e.close) e.close(); return; }
@@ -5538,7 +5571,7 @@
             });
             const ub = $n('upd-bar');
             if (ub && window.MutationObserver) new MutationObserver(sched).observe(ub, { attributes: true, attributeFilter: ['class'] });
-            return { set(k, v) { src[k] = v || []; sched(); }, close };
+            return { set(k, v) { src[k] = v || []; sched(); }, close, openList() { if (!open) show(); } };
         })();
 
         // ---------- 帳務提醒：有你分攤的新增／修改支出、待你確認的轉帳 ----------

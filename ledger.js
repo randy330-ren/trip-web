@@ -18,9 +18,9 @@
         tab: 'add', sub: 'list', data: null, err: null, ref: null, cb: null, key: '', built: false,
         form: null, editId: null, editOrig: null, editSig: '', partsSig: null, rateSig: null, saving: false,
         rosterOpen: false, open: null, showVoid: false, showDel: false,
-        stMode: 'all', stBal: 'all', stSug: 'all', stDays: [], stCats: [], stCur: 'JPY', pdata: null, pref: null, pcb: null, fold: { bal: false, sug: false, tr: false },
+        stMode: 'all', stBal: 'all', stSug: 'all', stDays: [], stCats: [], stPays: [], stCur: 'JPY', pdata: null, pref: null, pcb: null, fold: { bal: false, sug: false, tr: false },
         listShut: (cacheLoad('ledger_fold') || {}).days || {}, fs: null,
-        stOpen: {}, filter: { scope: 'group', sort: 'desc', dates: [], cats: [], payer: '', members: [], cur: '', q: '' },
+        stOpen: {}, filter: { scope: 'group', sort: 'desc', dates: [], cats: [], pays: [], payer: '', members: [], cur: '', q: '' },
         fx: cacheLoad('fx'), fxBusy: false, fxErr: ''
     };
 
@@ -712,8 +712,8 @@
     }
 
     // ---------- 支出紀錄 ----------
-    const FL_KEYS = ['date', 'cat', 'payer', 'members', 'cur', 'sort'];
-    const FL_T = { imp: '匯入我的分攤（可複選）', date: '日期（可複選）', stdate: '日期（可複選）', cat: '類別（可複選）', payer: '付款人', members: '分攤成員（可複選）', cur: '幣別', sort: '排序' };
+    const FL_KEYS = ['date', 'cat', 'payer', 'members', 'cur', 'pay', 'sort'];
+    const FL_T = { imp: '匯入我的分攤（可複選）', date: '日期（可複選）', stdate: '日期（可複選）', cat: '類別（可複選）', pay: '支付方式（可複選）', stpay: '支付方式（可複選）', payer: '付款人', members: '分攤成員（可複選）', cur: '幣別', sort: '排序' };
     function buildFilters() {
         $('lg-filters').innerHTML = `
             <input id="lg-q" class="lg-in" placeholder="🔍 搜尋名稱或備註">
@@ -723,6 +723,7 @@
                 <button type="button" class="lg-btn sm ghost" data-act="fl-clear">清除篩選</button>
             </div>`;
     }
+    const payName = (v) => (v === 'none' ? '未設定' : payL(v));
     function flLabel(k) {
         const f = S.filter;
         if (k === 'date') return f.dates.length ? f.dates.map(mdLabel).join('、') : '全部日期';
@@ -730,6 +731,7 @@
         if (k === 'payer') return f.payer ? pname(f.payer) : '全部付款人';
         if (k === 'members') return f.members.length ? f.members.map(pname).join('、') : '全部分攤成員';
         if (k === 'cur') return f.cur ? curLabel(f.cur) : '全部幣別';
+        if (k === 'pay') return f.pays.length ? f.pays.map(payName).join('、') : '全部支付方式';
         return f.sort === 'asc' ? '日期：舊 → 新' : '日期：新 → 舊';
     }
     function renderFilterOpts() {
@@ -739,7 +741,7 @@
         FL_KEYS.forEach((k) => {
             const b = $('lg-fl-' + k);
             b.textContent = flLabel(k);
-            b.classList.toggle('on', k === 'members' ? f.members.length > 0 : k === 'cat' ? f.cats.length > 0 : k === 'date' ? f.dates.length > 0 : k !== 'sort' && !!f[k]);
+            b.classList.toggle('on', k === 'members' ? f.members.length > 0 : k === 'cat' ? f.cats.length > 0 : k === 'date' ? f.dates.length > 0 : k === 'pay' ? f.pays.length > 0 : k !== 'sort' && !!f[k]);
             b.classList.toggle('hidden', f.scope === 'personal' && (k === 'payer' || k === 'members'));
         });
     }
@@ -747,6 +749,7 @@
         if (k === 'date') return [...new Set(Object.values(src()).map((e) => e.date).filter(Boolean))].sort().map((d) => [d, mdLabel(d)]);
         if (k === 'stdate') return stDates().map((d) => [d, mdLabel(d)]);
         if (k === 'cat') return [...[...new Set([...cats(), ...Object.values(src()).map((e) => e.cat).filter(Boolean)])].map((c) => [c, c])];
+        if (k === 'pay' || k === 'stpay') return [...PAYS, ['none', '未設定']];
         if (k === 'payer') return [['', '全部付款人'], ...order().map((p) => [p, pname(p)])];
         if (k === 'members') return order().map((p) => [p, pname(p)]);
         if (k === 'imp') { const pid = myPid(); return impCands().map(([id, e]) => [id, `${e.date ? mdLabel(e.date) : ''}｜${e.title || ''}｜${money(e.shares[pid].o, e.cur)}`]); }
@@ -773,7 +776,7 @@
         return b;
     }
     function flOpen(k) {
-        S.fs = { k, sel: k === 'imp' ? [] : k === 'members' ? S.filter.members.slice() : k === 'cat' ? S.filter.cats.slice() : k === 'date' ? S.filter.dates.slice() : k === 'stdate' ? S.stDays.slice() : null };
+        S.fs = { k, sel: k === 'imp' ? [] : k === 'members' ? S.filter.members.slice() : k === 'cat' ? S.filter.cats.slice() : k === 'date' ? S.filter.dates.slice() : k === 'stdate' ? S.stDays.slice() : k === 'pay' ? S.filter.pays.slice() : k === 'stpay' ? S.stPays.slice() : null };
         flBox().classList.remove('hidden');
         lgLock();
         $('lg-fl-t').textContent = FL_T[k];
@@ -803,9 +806,11 @@
         if (k === 'cat') S.filter.cats = sel;
         else if (k === 'date') S.filter.dates = sel.sort();
         else if (k === 'stdate') S.stDays = sel.sort();
+        else if (k === 'pay') S.filter.pays = sel;
+        else if (k === 'stpay') S.stPays = sel;
         else S.filter.members = order().filter((p) => sel.includes(p));
         flClose();
-        if (k === 'stdate') renderSettle(); else flApply();
+        if (k === 'stdate' || k === 'stpay') renderSettle(); else flApply();
     }
     function flClose() { S.fs = null; const b = $('lg-fl'); if (b) b.classList.add('hidden'); lgLock(); }
     const lgBlock = (e) => {
@@ -861,17 +866,21 @@
         if (!guard()) return false;
         const t = R().JPY, r = C.parseRate(t && t.rate), m = me(), ref = xref(true), up = {}, dec = decOf('JPY');
         if (!r.ok) { alert('JPY 匯率無效，請先到「匯率」頁確認。'); return false; }
-        for (const x of p.rows) {
-            const sp = C.computeSplit({ amount: x.amount, dec, mode: 'equal', members: ['me'], rate: r.s, baseDec: BASE_DEC, seed: 0, bias: [0] });
-            if (!sp.ok) { alert(`「${x.title}」無法換算：${sp.errors.join('、')}`); return false; }
-            up[ref.push().key] = {
-                title: x.title.slice(0, 50), amount: x.amount, cur: 'JPY', dec, rate: r.s, rateRef: `table:JPY@${t.ts || 0}`, base: BASE, baseAmt: sp.baseAmt,
-                date: p.date, pay: p.pay, payer: 'me', mode: 'equal', unit: null, parts: null, rf: null, shares: sp.shares, seed: 0, cat: x.cat,
-                note: x.jp && x.jp !== x.title ? `${p.name}｜${x.jp}` : p.name, rg: p.rid, rgName: p.name.slice(0, 50),
-                by: m.uid, byName: m.name, ts: TS(), updBy: m.uid, updName: m.name, uts: TS()
-            };
+        let n = 0;
+        for (const rc of p.receipts) {
+            for (const x of rc.rows) {
+                const sp = C.computeSplit({ amount: x.amount, dec, mode: 'equal', members: ['me'], rate: r.s, baseDec: BASE_DEC, seed: 0, bias: [0] });
+                if (!sp.ok) { alert(`「${x.title}」無法換算：${sp.errors.join('、')}`); return false; }
+                up[ref.push().key] = {
+                    title: x.title.slice(0, 50), amount: x.amount, cur: 'JPY', dec, rate: r.s, rateRef: `table:JPY@${t.ts || 0}`, base: BASE, baseAmt: sp.baseAmt,
+                    date: rc.date, pay: rc.pay, payer: 'me', mode: 'equal', unit: null, parts: null, rf: null, shares: sp.shares, seed: 0, cat: x.cat,
+                    note: x.jp && x.jp !== x.title ? `${rc.name}｜${x.jp}` : rc.name, rg: rc.rid, rgName: rc.name.slice(0, 50),
+                    by: m.uid, byName: m.name, ts: TS(), updBy: m.uid, updName: m.name, uts: TS()
+                };
+                n++;
+            }
         }
-        return ref.update(up).then(() => { toast(`已新增 ${p.rows.length} 筆個人支出`); S.filter.scope = 'personal'; return true; }).catch((e) => { fail(e); return false; });
+        return ref.update(up).then(() => { toast(`已新增 ${p.receipts.length} 張收據、${n} 筆個人支出`); S.filter.scope = 'personal'; return true; }).catch((e) => { fail(e); return false; });
     }
     function delReceipt(rid) {
         const ids = Object.entries(PE()).filter(([, e]) => e && e.rg === rid).map(([id]) => id);
@@ -897,7 +906,7 @@
         const f = S.filter, q = f.q.trim().toLowerCase(), pe = f.scope === 'personal';
         return Object.entries(src())
             .filter(([, e]) => (!f.cats.length || f.cats.includes(e.cat)) && (!f.dates.length || f.dates.includes(e.date)) && (pe || ((!f.payer || e.payer === f.payer) && (anyMember || !f.members.length || f.members.some((p) => e.shares && e.shares[p])))) &&
-                (!f.cur || e.cur === f.cur) && (!q || `${e.title || ''} ${e.note || ''}`.toLowerCase().includes(q)))
+                (!f.cur || e.cur === f.cur) && (!f.pays.length || f.pays.includes(e.pay || 'none')) && (!q || `${e.title || ''} ${e.note || ''}`.toLowerCase().includes(q)))
             .sort(([ia, a], [ib, b]) => {
                 const d = (a.date || '').localeCompare(b.date || '') || ((a.ts || 0) - (b.ts || 0)) || (ia < ib ? -1 : 1);
                 return S.filter.sort === 'asc' ? d : -d;
@@ -1071,10 +1080,10 @@
         const ids = order(), dates = stDates(), day = S.stMode === 'day', allCats = stCats();
         S.stDays = S.stDays.filter((d) => dates.includes(d));
         S.stCats = S.stCats.filter((c) => allCats.includes(c));
-        const hit = (e) => e && (!S.stDays.length || S.stDays.includes(e.date)) && (!S.stCats.length || S.stCats.includes(e.cat || '其他'));
+        const hit = (e) => e && (!S.stDays.length || S.stDays.includes(e.date)) && (!S.stCats.length || S.stCats.includes(e.cat || '其他')) && (!S.stPays.length || S.stPays.includes(e.pay || 'none'));
         const exps = day ? Object.fromEntries(Object.entries(E()).filter(([, e]) => hit(e))) : E();
         const trs = day ? Object.fromEntries(Object.entries(T()).filter(([, t]) => t.eid && hit(E()[t.eid]))) : T();
-        const flt = S.stDays.length || S.stCats.length ? [S.stDays.map(mdLabel).join('、'), S.stCats.join('、')].filter(Boolean).join('・') : '全部';
+        const flt = S.stDays.length || S.stCats.length || S.stPays.length ? [S.stDays.map(mdLabel).join('、'), S.stCats.join('、'), S.stPays.map(payName).join('、')].filter(Boolean).join('・') : '全部';
         const U = unitOpts(), UC = U ? U.cur : BASE, urate = U ? U.rate : '1', udec = U ? U.dec : BASE_DEC;
         const B = C.balances(ids, exps, trs, U), sug = C.settle(ids, B);
         const ps = day ? null : C.planState(ids, E(), T(), D().plan, U), planOn = !!ps && !ps.done;
@@ -1122,9 +1131,10 @@
             <div class="lg-seg sm">${[['all', '總和'], ['day', '依日期類別']].map(([k, l]) => `<button type="button" data-act="st-mode" data-v="${k}" class="${S.stMode === k ? 'on' : ''}">${l}</button>`).join('')}</div>
             <div class="lg-row lg-mt">${day ? `<button type="button" class="lg-in lg-fbtn ${S.stDays.length ? 'on' : ''}" data-act="fl-open" data-v="stdate">${esc(S.stDays.length ? S.stDays.map(mdLabel).join('、') : '全部日期')}</button>` : ''}
                 <input id="lg-st-cur" class="lg-in lg-cur" data-pick="st-cur" data-val="${esc(dc)}" value="${esc(curLabel(dc))}" readonly autocomplete="off"></div>
+            ${day ? `<div class="lg-row lg-mt"><button type="button" class="lg-in lg-fbtn ${S.stPays.length ? 'on' : ''}" data-act="fl-open" data-v="stpay">${esc(S.stPays.length ? S.stPays.map(payName).join('、') : '全部支付方式')}</button></div>` : ''}
             ${day ? `<div class="lg-chips lg-mt">${allCats.map((c) => `<button type="button" data-act="st-cat" data-v="${esc(c)}" class="lg-chip ${S.stCats.includes(c) ? 'on' : ''}">${esc(c)}</button>`).join('')}${S.stCats.length ? '<button type="button" data-act="st-cat" data-v="" class="lg-chip ghost">全部類別</button>' : ''}</div>` : ''}
             ${U ? `<p class="lg-muted lg-mt">${dc === UC ? `清帳以 ${UC} 為單位，台幣依目前匯率 1 ${UC} = ${esc(urate)} ${BASE} 換算，僅供參考，不影響結算金額。` : `其他幣別依目前匯率換算，僅供參考；實際以 ${UC} 結算與記錄轉帳。`}</p>` : (ref ? `<p class="lg-muted lg-mt">以目前匯率換算，僅供參考；實際以 ${BASE} 結算與記錄轉帳。</p>` : '')}
-            ${day ? '<p class="lg-muted lg-mt">依所選日期與類別（都可複選，不選＝全部）計算支出，以及指定這些支出的先轉帳，僅供查看；標記轉帳請切回「總和」。</p>' : ''}
+            ${day ? '<p class="lg-muted lg-mt">依所選日期、類別與支付方式（都可複選，不選＝全部）計算支出，以及指定這些支出的先轉帳，僅供查看；標記轉帳請切回「總和」。</p>' : ''}
         </div>`;
         if (day && !dates.length) { $('lg-s-settle').innerHTML = h + '<div class="card lg-card lg-center"><p class="lg-muted">還沒有支出紀錄。</p></div>'; return; }
 
@@ -1694,7 +1704,7 @@
             else if (act === 'rg-del') delReceipt(id);
             else if (act === 'del-toggle') { S.showDel = !S.showDel; renderDeleted(); }
             else if (act === 'export') exportCsv();
-            else if (act === 'fl-clear') { S.filter = { scope: 'group', sort: S.filter.sort, dates: [], cats: [], payer: '', members: [], cur: '', q: '' }; $('lg-q').value = ''; renderFilterOpts(); renderItems(); }
+            else if (act === 'fl-clear') { S.filter = { scope: 'group', sort: S.filter.sort, dates: [], cats: [], pays: [], payer: '', members: [], cur: '', q: '' }; $('lg-q').value = ''; renderFilterOpts(); renderItems(); }
             else if (act === 'st-pay') markPaid(b.dataset.from, b.dataset.to, +b.dataset.amt, null, b.dataset.pk);
             else if (act === 'plan-lock') lockPlan();
             else if (act === 'plan-unlock') unlockPlan();
