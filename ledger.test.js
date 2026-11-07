@@ -286,12 +286,17 @@ t('明細分帳：每人明細備註文字', () => {
     assert.ok(txt.includes('進位 ¥1') && txt.includes('預計可退 ¥100') && txt.includes('備註：備'));
 });
 
-t('平分：整除平均給、除不盡依序多給 1 件、起點可輪替', () => {
-    assert.deepStrictEqual(LD.splitEven(6, 3, 0), [2, 2, 2]);
-    assert.deepStrictEqual(LD.splitEven(5, 2, 0), [3, 2]);
-    assert.deepStrictEqual(LD.splitEven(5, 2, 1), [2, 3]);
-    assert.deepStrictEqual(LD.splitEven(7, 3, 4), [2, 3, 2]);
-    assert.strictEqual(LD.splitEven(11, 4, 3).reduce((a, b) => a + b, 0), 11);
+t('平分：件數顯示成分數；1 件三人平分，進位後加總等於收據合計', () => {
+    assert.strictEqual(LD.fmtQty(2), '2');
+    assert.strictEqual(LD.fmtQty(1 / 3), '1/3');
+    assert.strictEqual(LD.fmtQty(5 / 2), '2 1/2');
+    assert.strictEqual(LD.fmtQty(0.123456), '0.12');
+    const it = { jp: 'A', zh: '甲', unit: 100, rate: 10, star: true, qty: 1 }, S = { basis: 'before', disc: 1, taxMode: 'excl' };
+    const raws = [1, 2, 3].map(() => LD.calcPerson([{ item: it, n: 1 / 3 }], S).raw);
+    assert.ok(Math.abs(raws.reduce((a, b) => a + b, 0) - 110) < 1e-9);
+    const al = LD.alignTotals(raws, 110);
+    assert.strictEqual(al.reduce((a, b) => a + b, 0), 110);
+    assert.ok(Math.max(...al) - Math.min(...al) <= 1);
 });
 
 console.log(`\n全部通過：${pass} 項`);
