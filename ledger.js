@@ -18,7 +18,7 @@
         tab: 'add', sub: 'list', data: null, err: null, ref: null, cb: null, key: '', built: false,
         form: null, editId: null, editOrig: null, editSig: '', partsSig: null, rateSig: null, saving: false,
         rosterOpen: false, open: null, showVoid: false, showDel: false,
-        stMode: 'all', stBal: 'all', stSug: 'all', stDays: [], stCats: [], stPays: [], stCur: 'JPY', pdata: null, pref: null, pcb: null, fold: { bal: false, sug: false, tr: false },
+        stMode: 'all', stBal: 'all', stSug: 'all', stTr: 'all', stDays: [], stCats: [], stPays: [], stCur: 'JPY', pdata: null, pref: null, pcb: null, fold: { bal: false, sug: false, tr: false },
         listShut: (cacheLoad('ledger_fold') || {}).days || {}, fs: null,
         stOpen: {}, filter: { scope: 'group', sort: 'desc', dates: [], cats: [], pays: [], payer: '', members: [], cur: '', q: '' },
         fx: cacheLoad('fx'), fxBusy: false, fxErr: ''
@@ -1104,7 +1104,7 @@
         const li = (a, b) => `<div class="lg-bd-r"><span>${a}</span><span>${b}</span></div>`;
         const eLbl = (e) => `${esc(e.title || '')}${e.date ? `（${mdLabel(e.date)}）` : ''}`;
         const cps = cpMap(), anyCp = Object.keys(cps).length > 0;
-        if (!anyCp) S.stBal = S.stSug = 'all';
+        if (!anyCp) S.stBal = S.stSug = S.stTr = 'all';
         const part = (p, m) => {
             const hide = m === 'open' && cps[p] !== undefined, cut = cps[p] || 0, x = B[p];
             const ex = Object.values(exps).filter((e) => e && e.shares && Number.isInteger(e.baseAmt)).filter((e) => !hide || (e.ts || 0) > cut).sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.ts || 0) - (a.ts || 0));
@@ -1132,7 +1132,7 @@
         };
         const trLine = ([id, t], btns) => {
             const k = 't:' + id, op = !!S.stOpen[k];
-            return `<div class="lg-tr"><p class="lg-tap" data-act="st-open" data-k="${esc(k)}"><b>${esc(pname(t.from))}</b> → <b>${esc(pname(t.to))}</b><i class="lg-chev">${op ? '▲' : '▼'}</i><span>${amt(C.transferAmount(t, U))}</span></p>${trE(t)}${op && B[t.from] && B[t.to] ? bd(t.from) + bd(t.to) : ''}${btns}</div>`;
+            return `<div class="lg-tr"><p class="lg-tap" data-act="st-open" data-k="${esc(k)}"><b>${esc(pname(t.from))}</b> → <b>${esc(pname(t.to))}</b><i class="lg-chev">${op ? '▲' : '▼'}</i><span>${amt(C.transferAmount(t, U))}</span></p>${trE(t)}${op && B[t.from] && B[t.to] ? bd(t.from, S.stTr) + bd(t.to, S.stTr) : ''}${btns}</div>`;
         };
         const tog = (k) => !anyCp ? '' : `<div class="lg-seg sm tg">${[['all', '全部'], ['open', '未結清']].map(([v, l]) => `<button type="button" data-act="st-flt" data-k="${k}" data-v="${v}" class="${S[k] === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
 
@@ -1186,9 +1186,10 @@
         h += foldCard('sug', planOn ? '🔒 清帳方案（已鎖定）' : '💸 清帳建議', planOn ? planBody() : sugBody());
 
         if (!day) {
-            const tr = Object.entries(T()).sort(([a], [b]) => (a < b ? 1 : -1));
+            const openTr = (t) => { if (S.stTr !== 'open' || t.status === 'paid') return true; const a = cps[t.from], c = cps[t.to]; return a === undefined || c === undefined || (t.paidTs || 0) > Math.min(a, c); };
+            const tr = Object.entries(T()).filter(([, t]) => t && openTr(t)).sort(([a], [b]) => (a < b ? 1 : -1));
             const pend = tr.filter(([, t]) => t.status === 'paid'), done = tr.filter(([, t]) => t.status === 'done'), voids = tr.filter(([, t]) => t.status === 'void');
-            let b = (!pend.length && !done.length) ? '<p class="lg-muted">還沒有轉帳紀錄。</p>' : '';
+            let b = tog('stTr') + ((!pend.length && !done.length) ? `<p class="lg-muted">${S.stTr === 'open' ? '沒有未結清的轉帳。' : '還沒有轉帳紀錄。'}</p>` : '');
             b += pend.map(([id, t]) => trLine([id, t], `<div class="lg-st"><em>付款：已轉帳 ${when(t.paidTs)}</em><em class="wait">收款：待 ${esc(pname(t.to))} 確認</em>
                 ${canAct(t.to) ? `<button type="button" class="lg-btn sm" data-act="tr-done" data-id="${id}">確認收款</button><button type="button" class="lg-btn sm ghost" data-act="tr-void" data-id="${id}">退回</button>`
                     : canAct(t.from) ? `<button type="button" class="lg-btn sm ghost" data-act="tr-void" data-id="${id}">取消</button>` : ''}</div>`)).join('');
@@ -1680,7 +1681,7 @@
             else if (act === 'cat-edit') editCats();
             else if (act === 'calc-swap' || act === 'calc-del') calcAct(act, +b.dataset.i);
             else if (act === 'st-cat') { S.stCats = !v ? [] : S.stCats.includes(v) ? S.stCats.filter((c) => c !== v) : [...S.stCats, v]; renderSettle(); }
-            else if (act === 'st-flt') { if (b.dataset.k === 'stBal' || b.dataset.k === 'stSug') { S[b.dataset.k] = v; renderSettle(); } }
+            else if (act === 'st-flt') { if (b.dataset.k === 'stBal' || b.dataset.k === 'stSug' || b.dataset.k === 'stTr') { S[b.dataset.k] = v; renderSettle(); } }
             else if (act === 'st-mode') { S.stMode = v; renderSettle(); }
             else if (act === 'fold') { S.fold[v] = !S.fold[v]; renderSettle(); }
             else if (act === 'st-open') { S.stOpen[b.dataset.k] = !S.stOpen[b.dataset.k]; renderSettle(); }
