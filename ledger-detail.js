@@ -460,7 +460,7 @@
         const edited = (it) => { const m = []; if (it.rate0 != null && it.rate !== it.rate0) m.push(`稅率原 ${it.rate0}%`); if (it.star0 != null && it.star !== it.star0) m.push(`退稅原${it.star0 ? '為 ★' : '為不退稅'}`); return m.length ? `<span class="ld-edt">✎ 已手動改（${m.join('、')}）</span>` : ''; };
         const shut = {};
         let itemsShut = false, splitIid = null;
-        const splitSel = new Set();
+        const splitSel = new Set(), bulkSel = new Set();
         // 每人結果；品項全部分完、收據有合計、折扣設定一致、差距在 5 円內時，把每人金額對齊收據合計
         const rows = () => {
             const S = cfg(), r = st.receipt, out = [];
@@ -481,6 +481,14 @@
             const row = st.assign[iid] = st.assign[iid] || {};
             if (n > EPS) row[pid] = n; else delete row[pid];
         }
+        function doSplit(iid, ids) {
+            const it = items().find((x) => x.id === iid), n = ids.length;
+            if (!it) return;
+            if (n < 2) return say('請至少選 2 個人來平分。', true);
+            st.assign[iid] = {}; ids.forEach((id) => { st.assign[iid][id] = it.qty / n; });
+            splitIid = null; splitSel.clear(); renderAll();
+            say(`已平分「${it.zh || it.jp}」給 ${n} 人，每人 ${fmtQty(it.qty / n)} 件（依金額平均，最後的進位會自動對齊收據合計）。`);
+        }
         function say(t, bad) { const m = $('#ld-msg'); m.textContent = t; m.className = 'ld-msg' + (bad ? ' bad' : ''); }
 
         function renderMain() {
@@ -495,12 +503,14 @@
                 <p class="lg-muted">品項右邊的「★ 退稅／不退稅」和「8%／10%」可以點一下切換，用來修正 AI 看錯的地方。</p>
                 <p class="ld-sec">分配給誰</p>
                 <div class="lg-chips">${people.map((p) => `<button type="button" data-a="pick" data-id="${esc(p.id)}" class="lg-chip ${p.id === st.active ? 'on' : ''}" style="--c:${color(p.id)}">${esc(p.name)} ${fmtQty(cnt(p.id))}</button>`).join('')}</div>
+                <p class="lg-muted">平分成員：先選人，再按下方品項的「平分 N 人」，一次分給這些人。</p>
+                <div class="lg-chips">${people.map((p) => `<button type="button" data-a="bulkp" data-id="${esc(p.id)}" class="lg-chip ${bulkSel.has(p.id) ? 'on' : ''}" style="--c:${color(p.id)}">${esc(p.name)}</button>`).join('')}<button type="button" class="lg-chip ghost" data-a="bulkall">全選</button>${bulkSel.size ? '<button type="button" class="lg-chip ghost" data-a="bulkclr">清除</button>' : ''}</div>
                 <div class="ld-btns"><button type="button" class="lg-btn sm ghost" data-a="takeall">拿走剩餘</button><button type="button" class="lg-btn sm ghost" data-a="clearp">清除此人</button><button type="button" class="lg-btn sm ghost danger" data-a="resetall">清除全部</button><button type="button" class="lg-btn sm ghost" data-a="items">${itemsShut ? '展開品項' : '全部收合'}</button></div>
                 <div class="ld-items">${itemsShut ? `<p class="lg-muted">品項已收合（共 ${items().length} 項）。</p>` : items().map((it) => {
                     const mine = asg(it.id, st.active), rem = remain(it);
                     const badges = people.map((p) => (asg(it.id, p.id) ? `<span class="ld-bdg" style="--c:${color(p.id)}">${esc(p.name)}×${fmtQty(asg(it.id, p.id))}</span>` : '')).join('');
                     return `<div class="ld-item ${mine ? 'sel' : ''}"><div class="ld-i"><b>${esc(it.jp)}</b>${it.zh && it.zh !== it.jp ? `<small>${esc(it.zh)}</small>` : ''}
-                        <small class="ld-meta">${yen(it.unit)} × ${it.qty}<button type="button" class="ld-tg ${it.star ? 'on' : ''}" data-a="star" data-i="${it.id}">${it.star ? '★ 退稅' : '不退稅'}</button><button type="button" class="ld-tg" data-a="rate" data-i="${it.id}">${it.rate}%</button><button type="button" class="ld-tg ${splitIid === it.id ? 'on' : ''}" data-a="split" data-i="${it.id}">平分</button>${edited(it)}${it.qty > 1 || rem !== it.qty ? `剩 ${fmtQty(rem)}` : ''}</small>${badges ? `<span class="ld-bdgs">${badges}</span>` : ''}</div>
+                        <small class="ld-meta">${yen(it.unit)} × ${it.qty}<button type="button" class="ld-tg ${it.star ? 'on' : ''}" data-a="star" data-i="${it.id}">${it.star ? '★ 退稅' : '不退稅'}</button><button type="button" class="ld-tg" data-a="rate" data-i="${it.id}">${it.rate}%</button><button type="button" class="ld-tg ${splitIid === it.id ? 'on' : ''}" data-a="split" data-i="${it.id}">平分</button>${bulkSel.size >= 2 ? `<button type="button" class="ld-tg on" data-a="splitb" data-i="${it.id}">平分 ${bulkSel.size} 人</button>` : ''}${edited(it)}${it.qty > 1 || rem !== it.qty ? `剩 ${fmtQty(rem)}` : ''}</small>${badges ? `<span class="ld-bdgs">${badges}</span>` : ''}</div>
                         <div class="ld-step"><button type="button" data-a="dec" data-i="${it.id}" ${mine ? '' : 'disabled'} aria-label="減少">−</button><span>${fmtQty(mine)}</span><button type="button" data-a="inc" data-i="${it.id}" ${rem > 0 ? '' : 'disabled'} aria-label="增加">＋</button></div></div>${splitIid === it.id ? `<div class="ld-split"><p class="lg-muted">選擇要平分「${esc(it.zh || it.jp)}」（${it.qty} 件）的人：</p>
                         <div class="lg-chips">${people.map((p) => `<button type="button" data-a="splitp" data-id="${esc(p.id)}" class="lg-chip ${splitSel.has(p.id) ? 'on' : ''}" style="--c:${color(p.id)}">${esc(p.name)}</button>`).join('')}</div>
                         <div class="ld-btns"><button type="button" class="lg-btn sm" data-a="splitgo" data-i="${it.id}">平分（${splitSel.size} 人）</button><button type="button" class="lg-btn sm ghost" data-a="splitall">全選</button><button type="button" class="lg-btn sm ghost" data-a="splitx">取消</button></div></div>` : ''}`;
@@ -606,14 +616,11 @@
             else if (a === 'splitp') { const id = b.dataset.id; splitSel.has(id) ? splitSel.delete(id) : splitSel.add(id); renderMain(); }
             else if (a === 'splitall') { people.forEach((p) => splitSel.add(p.id)); renderMain(); }
             else if (a === 'splitx') { splitIid = null; splitSel.clear(); renderMain(); }
-            else if (a === 'splitgo') {
-                const it = items().find((x) => x.id === iid), ids = people.filter((p) => splitSel.has(p.id)).map((p) => p.id), n = ids.length;
-                if (!it) return;
-                if (n < 2) return say('請至少選 2 個人來平分。', true);
-                st.assign[iid] = {}; ids.forEach((id) => { st.assign[iid][id] = it.qty / n; });
-                splitIid = null; splitSel.clear(); renderAll();
-                say(`已平分「${it.zh || it.jp}」給 ${n} 人，每人 ${fmtQty(it.qty / n)} 件（依金額平均，最後的進位會自動對齊收據合計）。`);
-            }
+            else if (a === 'splitgo') doSplit(iid, people.filter((p) => splitSel.has(p.id)).map((p) => p.id));
+            else if (a === 'splitb') doSplit(iid, people.filter((p) => bulkSel.has(p.id)).map((p) => p.id));
+            else if (a === 'bulkp') { const id = b.dataset.id; bulkSel.has(id) ? bulkSel.delete(id) : bulkSel.add(id); renderMain(); }
+            else if (a === 'bulkall') { people.forEach((p) => bulkSel.add(p.id)); renderMain(); }
+            else if (a === 'bulkclr') { bulkSel.clear(); renderMain(); }
             else if (a === 'takeall') { items().forEach((it) => { const rem = it.qty - tot(it.id); if (rem > 0) setQty(it.id, st.active, asg(it.id, st.active) + rem); }); renderAll(); }
             else if (a === 'clearp') { items().forEach((it) => setQty(it.id, st.active, 0)); renderAll(); }
             else if (a === 'resetall') { if (confirm('清除所有人的品項分配？')) { st.assign = {}; renderAll(); } }
