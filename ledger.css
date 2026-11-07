@@ -321,5 +321,6 @@ textarea.lg-in { resize: vertical; }
 .ldp-rh .lg-h { flex: 1; }
 
 /* iOS Safari 的日期欄位有固有寬度，會把版面撐開：取消原生外觀並限制在欄位內 */
-input[type="date"].lg-in { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; min-height: 42px; text-align: left; }
-input[type="date"].lg-in::-webkit-date-and-time-value { text-align: left; min-height: 1.4em; }
+input[type="date"].lg-in { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; min-height: 42px; text-align: left; font-size: 14px; line-height: 1.2; padding-left: 10px; padding-right: 6px; white-space: nowrap; overflow: hidden; }
+input[type="date"].lg-in::-webkit-date-and-time-value { text-align: left; min-height: 1.2em; white-space: nowrap; }
+input[type="date"].lg-in::-webkit-datetime-edit { padding: 0; white-space: nowrap; }
