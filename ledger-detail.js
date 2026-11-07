@@ -626,7 +626,7 @@
                 rd.readAsText(f); t.value = '';
             }
         });
-        wireAi(el, { prompt: () => buildPrompt(undefined, true), onText: doImport, say });
+        wireAi(el, { prompt: () => buildPrompt(opts.cats, true), onText: doImport, say });
         $('#ld-imp').open = !st.receipt;
         renderAll();
     }
