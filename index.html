@@ -205,6 +205,10 @@
             padding-bottom: .65rem;
             position: relative;
         }
+        #site-header.hc { padding-top: 14px; padding-bottom: 14px; }
+        #site-header.hc #site-eyebrow, #site-header.hc #site-subtitle { display: none; }
+        #site-header.hc #site-title { font-size: .75rem; line-height: 24px; margin-top: 0; }
+        #site-header.hc #nt-bell { top: 7px; }
         #nt-bell { position: absolute; top: .55rem; right: .7rem; width: 38px; height: 38px; border-radius: 50%; background: rgba(255,255,255,.14); color: #fff; font-size: 18px; line-height: 1; display: flex; align-items: center; justify-content: center; }
         #nt-bell b { position: absolute; top: -4px; right: -4px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 10px; background: #d97706; color: #fff; font-size: 11px; font-weight: 800; line-height: 19px; }
         #nt-bell b:empty { display: none; }
@@ -2425,7 +2429,7 @@
             }
             ledgerLoading.then(() => { if (window.LEDGER) LEDGER.open(); });
         }
-        const HL_V = '11';
+        const HL_V = '12';
         let hlLoading = null;
         function loadHL() {
             if (!hlLoading) {
@@ -3993,7 +3997,7 @@
             try { localStorage.setItem('hintsDone', JSON.stringify(hintsDone)); } catch (e) { }
             refreshHints();
         };
-        const TOUR_V = '14';
+        const TOUR_V = '15';
         window.tourOpen = function () {
             document.getElementById('tour-prompt').classList.add('hidden');
             (window.TOUR ? Promise.resolve() : loadScript('tutorial.js?v=' + TOUR_V)).then(() => TOUR.start({ canAdmin: !!adminUser, isRead: readMode, setRead: setReadMode })).catch(() => { });
@@ -5098,6 +5102,26 @@
                 else if (e.key === 'Escape') closeLightbox();
             });
 
+        })();
+
+        // ---------- 捲動時縮小頂端綠色區域：往下捲只剩標題（字 2/3），回到最頂端才展開 ----------
+        (function headerCollapse() {
+            const hd = document.getElementById('site-header'), wrap = document.getElementById('sticky-wrapper');
+            if (!hd || !wrap) return;
+            let on = false, raf = 0;
+            const run = () => {
+                raf = 0;
+                const y = window.scrollY;
+                if (!on && y > 80) {
+                    const h0 = wrap.offsetHeight;
+                    hd.classList.add('hc'); on = true;
+                    wrap.style.marginBottom = Math.max(0, h0 - wrap.offsetHeight) + 'px';
+                } else if (on && y <= 2) {
+                    hd.classList.remove('hc'); on = false;
+                    wrap.style.marginBottom = '';
+                }
+            };
+            window.addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(run); }, { passive: true });
         })();
 
         // ---------- 全螢幕 ----------

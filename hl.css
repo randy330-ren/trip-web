@@ -146,12 +146,19 @@
 .hl-sfoot { flex-shrink: 0; padding: 10px 14px max(10px, env(safe-area-inset-bottom)); border-top: 1px solid #e5e0d6; }
 .hl-sfoot > .hl-btn { width: 100%; }
 
-.hl-win { position: fixed; inset: 0; z-index: 72; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0, 0, 0, .45); overflow: hidden; }
-.hl-wcard { position: relative; width: 100%; max-width: 20rem; padding: 24px 18px 18px; border-radius: 24px; background: #fff; text-align: center; animation: hlPop .35s ease-out; }
+.hl-win { position: fixed; inset: 0; z-index: 72; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(15, 22, 18, .92); overflow: hidden; }
+.hl-wcard { position: relative; width: 100%; max-width: 22rem; max-height: 100%; overflow-y: auto; padding: 8px 6px 6px; text-align: center; color: #fff; animation: hlPop .35s ease-out; }
+.hl-wg + .hl-wg { margin-top: 22px; padding-top: 18px; border-top: 1px solid rgba(255, 255, 255, .16); }
+.hl-wbig { margin-top: 10px; display: flex; justify-content: center; }
+.hl-wbig svg { filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .55)); }
+.hl-wo { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.hl-wr { display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px 12px; border-radius: 14px; background: rgba(255, 255, 255, .09); font-size: 14px; color: #fff; }
+.hl-wr svg { flex: none; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .4)); }
+.hl-ms { flex: none; vertical-align: middle; }
 .hl-wic { width: 76px; height: 76px; margin: 0 auto; border-radius: 9999px; background: #fbf3e4; border: 2px solid #f2dfbd; display: flex; align-items: center; justify-content: center; font-size: 40px; }
-.hl-wk { margin-top: 12px; font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--gold); }
-.hl-wt { margin-top: 2px; font-size: 22px; font-weight: 800; color: #1f2937; }
-.hl-wd { margin-top: 4px; font-size: 13px; color: #8f8576; }
+.hl-wk { margin-top: 12px; font-size: 12px; font-weight: 700; letter-spacing: .06em; color: #f3d58a; }
+.hl-wt { margin-top: 6px; font-size: 22px; font-weight: 800; color: #fff; }
+.hl-wd { margin-top: 4px; font-size: 13px; color: rgba(255, 255, 255, .78); }
 .hl-wcard .hl-btn { width: 100%; margin-top: 16px; }
 .hl-conf { position: absolute; inset: 0; pointer-events: none; }
 .hl-conf i { position: absolute; top: -12px; width: 8px; height: 14px; border-radius: 2px; animation: hlFall 2s ease-in forwards; }

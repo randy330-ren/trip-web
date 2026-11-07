@@ -22,11 +22,12 @@
         pay: ['💳', '盤子王', '當天墊付金額最多的旅伴', '整趟旅程墊付金額最多的旅伴'],
         cnt: ['📝', '記帳王', '當天記帳筆數最多的旅伴', '整趟旅程記帳筆數最多的旅伴'],
         spend: ['💸', '敗家王', '當天應分攤金額最多的旅伴', '整趟旅程應分攤金額最多的旅伴'],
-        save: ['🪙', '最省王', '當天應分攤金額最少的旅伴', '整趟旅程應分攤金額最少的旅伴']
+        save: ['🪙', '最省王', '當天應分攤金額最少的旅伴', '整趟旅程應分攤金額最少的旅伴'],
+        lazy: ['🐟', '摸魚王', '當天完全沒有記帳的旅伴', '整趟旅程完全沒有記帳的旅伴']
     };
 
     const ORDER = ['topic', 'early', 'helper', 'share', 'welcome'];
-    const LG = ['pay', 'cnt', 'spend', 'save'];
+    const LG = ['pay', 'cnt', 'spend', 'save', 'lazy'];
     const ALLD = ORDER.concat(LG);
     const NT = { at: ['📌', '有人在貼文中標注你'], all: ['📌', '有人@全部'], myl: ['❤️', '有人對你的貼文按讚'], myc: ['💬', '有人對你的貼文留言'], photo: ['📸', '有人新增了貼文'], cmt: ['💬', '有人對貼文留言'] };
 
@@ -178,11 +179,11 @@
                 Object.entries(e.shares).forEach(([pid, s]) => add(g.spend, pu[pid], s && Number.isInteger(s.b) ? s.b : 0, t));
             });
         });
-        const r = { byDate, all };
+        const r = { byDate, all, people: uniq(Object.values(pu).filter(u => !isAdm(u))) };
         lgMemo = { e: L.exps, p: L.people, m: S.members, r };
         return r;
     }
-    function lgPick(g) {
+    function lgPick(g, ppl, fin) {
         const out = {}, best = (m) => {
             let b = null;
             Object.entries(m).forEach(([u, v]) => { if (v.n > 0 && (!b || v.n > b.n || (v.n === b.n && v.t < b.t))) b = { u, n: v.n, t: v.t }; });
@@ -198,12 +199,18 @@
             es.forEach(([u, v]) => { hi = Math.max(hi, v.n); if (!lo || v.n < lo.n || (v.n === lo.n && v.t < lo.t)) lo = { u, n: v.n, t: v.t }; });
             if (lo.n < hi) out.save = lo.u;
         }
+        // 摸魚王：已綁定的團員中沒有記過帳的人（要當天／整趟已結束，且至少有一個人記過帳）
+        if (fin && ppl && ppl.length && Object.values(g.cnt).some(v => v.n > 0)) {
+            const z = ppl.filter(u => !(g.cnt[u] && g.cnt[u].n > 0));
+            if (z.length) out.lazy = z;
+        }
         return out;
     }
     const lgDay = (k) => {
         if (!lgOn()) return {};
         const m = meta(k);
-        return lgPick(lgAgg().byDate[`${TRIP_YEAR}-${pad(m.month)}-${pad(m.day)}`] || lgNew());
+        const A = lgAgg();
+        return lgPick(A.byDate[`${TRIP_YEAR}-${pad(m.month)}-${pad(m.day)}`] || lgNew(), A.people, Date.now() >= dayEnd(k));
     };
     function dayTitles(k) {
         const f = S.award[k];
@@ -217,11 +224,17 @@
         if (!signed() || !allReady() || !S.ready.lgp || !S.ready.lge) return;
         dayMeta.forEach(d => {
             const k = 'd' + d.n, end = dayEnd(k), f = S.award[k];
-            if (S.settling.has(k) || Date.now() < end || (f && (f.lg || !S.lg.ok))) return;
+            if (S.settling.has(k) || Date.now() < end || (f && ((f.lg && f.lz) || !S.lg.ok))) return;
             S.settling.add(k);
-            const lg = S.lg.ok ? { ...lgDay(k), lg: true } : {};
             const ref = createDb().ref('hl_award/' + k);
-            (f ? ref.update(lg) : ref.set({ ...assign(ranks(k, end)), ...lg, ts: firebase.database.ServerValue.TIMESTAMP })).catch(() => { });
+            if (!f) {
+                const lg = S.lg.ok ? { ...lgStore(lgDay(k)), lg: true, lz: true } : {};
+                ref.set({ ...assign(ranks(k, end)), ...lg, ts: firebase.database.ServerValue.TIMESTAMP }).catch(() => { });
+            } else {
+                // 已結算的舊資料：只補上摸魚王（lz 標記代表摸魚王已結算）
+                const lg = lgStore(lgDay(k));
+                ref.update(f.lg ? { lazy: lg.lazy || '', lz: true } : { ...lg, lg: true, lz: true }).catch(() => { });
+            }
         });
     }
     function tripTitles() {
@@ -237,10 +250,50 @@
             const pp = pickMax(Object.entries(groupBy(ps)).map(([u, l]) => ({ u, n: l.reduce((s, p) => s + rCount(p), 0), t: l[0].ts, min: 1 })));
             if (pp) out.pop = pp.u;
         }
-        if (lgOn()) Object.assign(out, lgPick(lgAgg().all));
+        if (lgOn()) { const A = lgAgg(); Object.assign(out, lgPick(A.all, A.people, Date.now() >= dayEnd('d' + dayMeta.length))); }
         return out;
     }
-    const medal = (id, uids, dark) => `<span class="hl-md${dark ? ' dark' : ''}">${TITLES[id][0]} ${TITLES[id][1]} ${esc([].concat(uids).map(nameOf).join('、'))}</span>`;
+    // 得獎者：單一 uid 字串、逗號分隔的多位（摸魚王可並列）或陣列
+    const wins = (v) => (Array.isArray(v) ? v : String(v || '').split(',').filter(Boolean));
+    const lgStore = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v]));
+    // ---------- 獎牌圖案（共用漸層，圖案白色線稿） ----------
+    const MC = {
+        early: ['#e7ad2f', '#b57a0c'], share: ['#4a8bd8', '#2762a8'], welcome: ['#ea6a8c', '#b73660'], topic: ['#25b0a6', '#11776f'], helper: ['#ee8147', '#bb5217'],
+        pay: ['#6d7f90', '#435262'], cnt: ['#a07c53', '#6e4f2c'], spend: ['#de5148', '#a52a23'], save: ['#77b256', '#47802c'], lazy: ['#3d84b8', '#1d5683'],
+        pop: ['#a45fd8', '#6f2fa3'], full: ['#3a9b68', '#1d6c43']
+    };
+    const MW = 'fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"', MF = 'fill="#fff"';
+    const MG = {
+        early: `<g ${MW}><circle cx="0" cy="4" r="14"/><path d="M-4-14h8M11-9l3-3M0 4V-6M0 4l7 4"/></g>`,
+        share: `<g ${MW}><rect x="-18" y="-10" width="36" height="25" rx="5"/><path d="M-8-10l3-5h10l3 5"/><circle cx="0" cy="3" r="7"/></g>`,
+        welcome: `<path ${MF} d="M0 15C-24-2-15-20 0-8C15-20 24-2 0 15Z"/>`,
+        topic: `<g ${MW}><path d="M-19-14h24a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4h-12l-7 6v-6h-5a4 4 0 0 1-4-4v-10a4 4 0 0 1 4-4Z"/></g><path ${MF} d="M-3 1h19a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4h-3v6l-7-6h-9a4 4 0 0 1-4-4V5a4 4 0 0 1 4-4Z" opacity=".92"/>`,
+        helper: `<path ${MF} d="M-19-2h8v18h-8z"/><path ${MF} d="M-8-2l8-15c4-2 8 1 7 6l-1 6h11c4 0 6 3 5 6l-3 10c-1 3-3 4-6 4H-8z"/>`,
+        pop: `<path ${MF} d="M-19 12l-3-22 12 9 10-15 10 15 12-9-3 22z"/><path d="M-19 16h38" ${MW}/>`,
+        full: `<g ${MW}><rect x="-18" y="-13" width="36" height="30" rx="5"/><path d="M-18-4h36M-9-17v7M9-17v7M-8 7l5 5 11-11"/></g>`,
+        pay: `<g ${MW}><circle cx="0" cy="0" r="14"/><circle cx="0" cy="0" r="8"/><path d="M-24-10v22M-27-10v7a3 3 0 0 0 6 0v-7M24-12c-5 3-5 12 0 15v12"/></g>`,
+        cnt: `<g ${MW}><rect x="-17" y="-17" width="28" height="35" rx="4"/><path d="M-10-7h14M-10 0h14M-10 7h8"/><path d="M6 14l16-20 4 3-16 20-6 2z" fill="#fff"/></g>`,
+        spend: `<g ${MW}><path d="M-17-6h34l-3 22h-28z"/><path d="M-8-6v-4a8 8 0 0 1 16 0v4"/></g><circle cx="21" cy="-16" r="5" ${MF}/>`,
+        save: `<g ${MW}><path d="M-20 4c0-11 9-17 20-17 5 0 8 1 11 3l6-2-1 8c2 3 3 5 3 8 0 6-4 8-8 8v4h-6v-4h-10v4h-6v-5c-5-2-9-4-9-7z"/><path d="M-4-8h9"/></g><circle cx="-4" cy="-3" r="1.8" ${MF}/><circle cx="1" cy="-22" r="5" ${MF}/>`,
+        lazy: `<path ${MF} d="M-20 0Q-6-15 12-4 18 0 12 4-6 15-20 0Z"/><path ${MF} d="M10 0l12-9v18z"/><circle cx="-10" cy="-2" r="2.2" fill="currentColor"/><g ${MW} stroke-width="2.4"><circle cx="-23" cy="-12" r="3"/><circle cx="-17" cy="-19" r="2"/></g>`
+    };
+    function medalDefs() {
+        if (document.getElementById('hl-mdefs')) return;
+        const el = document.createElement('div');
+        el.id = 'hl-mdefs'; el.setAttribute('aria-hidden', 'true'); el.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+        el.innerHTML = `<svg width="0" height="0"><defs>${Object.entries(MC).map(([id, [a, b]]) => `<linearGradient id="hm-${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient>`).join('')}<linearGradient id="hm-ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f7e3a4"/><stop offset=".5" stop-color="#d6a640"/><stop offset="1" stop-color="#9c6f1c"/></linearGradient></defs></svg>`;
+        document.body.appendChild(el);
+    }
+    // full：含緞帶的大獎牌；否則只畫圓牌（用在標籤與清單）
+    function medalSvg(id, full, px) {
+        medalDefs();
+        const c = MC[id];
+        if (!c) return '';
+        const disc = `<circle cx="60" cy="88" r="44" fill="url(#hm-ring)"/><circle cx="60" cy="88" r="37" fill="url(#hm-${id})"/><circle cx="60" cy="88" r="37" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="1.5" stroke-dasharray="2 3.2"/><path d="M30 70a34 34 0 0 1 36-22" fill="none" stroke="#fff" stroke-opacity=".4" stroke-width="3" stroke-linecap="round"/><g transform="translate(60 88) scale(.98)" style="color:${c[1]}">${MG[id]}</g>`;
+        if (!full) return `<svg class="hl-ms" viewBox="12 40 96 96" width="${px || 20}" height="${px || 20}" aria-hidden="true">${disc}</svg>`;
+        return `<svg class="hl-mb" viewBox="0 0 120 150" width="${px || 128}" height="${Math.round((px || 128) * 1.25)}" aria-hidden="true"><path d="M36 4h20l14 58-18 6z" fill="${c[1]}"/><path d="M84 4H64L50 62l18 6z" fill="${c[0]}"/><path d="M36 4h8l14 56-8 3z" fill="#fff" opacity=".18"/>${disc}</svg>`;
+    }
+    const medal = (id, uids, dark) => `<span class="hl-md${dark ? ' dark' : ''}">${medalSvg(id)}<span>${TITLES[id][1]} ${esc(wins(uids).map(nameOf).join('、'))}</span></span>`;
     const medalsHtml = (t, order, dark) => order.filter(id => t[id]).map(id => medal(id, t[id], dark && id === 'pop')).join('');
 
     // ---------- 監聽 ----------
@@ -333,7 +386,7 @@
     }
 
     function renderNow() {
-        if (!S.built) { settle(); renderNotices(); return; }
+        if (!S.built) { settle(); checkWins(); renderNotices(); return; }
         const all = allList(), si = signed();
         const real = all.filter(p => !isAdm(p.uid, p.author));
         const nc = si ? all.reduce((n, p) => n + comments(p).length, 0) : 0;
@@ -407,36 +460,50 @@
         }
     }
 
-    // ---------- 獲得稱號 ----------
+    // ---------- 獲得稱號（自己與別人得獎都會跳出全螢幕畫面，任何頁面都會顯示） ----------
     function checkWins() {
         const me = memberUser && memberUser.uid;
-        if (!me || !S.active || !S.photosLive || S.winOpen || !S.ready.react || !S.ready.comments || !S.ready.members || !S.ready.award || (S.sheet && S.sheet.busy)) return;
-        const lsKey = 'hl_won_' + me;
-        let seen = {};
-        try { seen = JSON.parse(localStorage.getItem(lsKey) || '{}') || {}; } catch (e) { }
-        const fresh = [];
+        if (!me || !S.photosLive || S.winOpen || !S.ready.react || !S.ready.comments || !S.ready.members || !S.ready.award || (S.sheet && S.sheet.busy)) return;
+        const lsKey = 'hl_won_' + me, bKey = 'hl_wonb_' + me;
+        let seen = {}, based = false;
+        try { seen = JSON.parse(localStorage.getItem(lsKey) || '{}') || {}; based = localStorage.getItem(bKey) === '1'; } catch (e) { }
+        const groups = [];
+        const grp = (k) => { let g = groups.find(x => x.k === k); if (!g) { g = { k, mine: [], others: [] }; groups.push(g); } return g; };
+        let changed = false;
         dayMeta.forEach(d => {
             const k = 'd' + d.n, f = S.award[k];
-            if (f) ALLD.forEach(id => { if (f[id] === me && !seen['a_' + k + '_' + id]) fresh.push({ key: 'a_' + k + '_' + id, id, k }); });
+            if (!f) return;
+            ALLD.forEach(id => wins(f[id]).forEach(u => {
+                const mine = u === me, key = mine ? 'a_' + k + '_' + id : 'o_' + k + '_' + id + '_' + u;
+                if (seen[key]) return;
+                seen[key] = Date.now(); changed = true;
+                if (!mine && !based) return;
+                (mine ? grp(k).mine : grp(k).others).push({ id, u });
+            }));
         });
-        Object.entries(tripTitles()).forEach(([id, u]) => { if ([].concat(u).includes(me) && !seen['trip_' + id]) fresh.push({ key: 'trip_' + id, id, k: null }); });
-        if (!fresh.length) return;
-        fresh.forEach(f => { seen[f.key] = Date.now(); });
-        try { localStorage.setItem(lsKey, JSON.stringify(seen)); } catch (e) { }
-        showWin(fresh);
+        Object.entries(tripTitles()).forEach(([id, u]) => { if (wins(u).includes(me) && !seen['trip_' + id]) { seen['trip_' + id] = Date.now(); changed = true; grp(null).mine.push({ id, u: me }); } });
+        if (changed || !based) { try { localStorage.setItem(lsKey, JSON.stringify(seen)); localStorage.setItem(bKey, '1'); } catch (e) { } }
+        const list = groups.filter(g => g.mine.length || g.others.length);
+        if (list.length) showWin(list);
     }
-    function showWin(list) {
+    function showWin(groups) {
         S.winOpen = true;
-        const [m, ...rest] = list, T = TITLES[m.id];
+        groups.sort((a, b) => (a.k === null ? 1 : 0) - (b.k === null ? 1 : 0) || (a.k || '').localeCompare(b.k || ''));
+        const hasMine = groups.some(g => g.mine.length);
         const ov = document.createElement('div');
         ov.className = 'hl-win';
         const colors = ['#b08758', '#3b4d43', '#f59e0b', '#e11d48', '#10b981', '#60a5fa'];
-        ov.innerHTML = `<div class="hl-conf">${Array.from({ length: 28 }, (_, i) => `<i style="left:${Math.random() * 100}%;background:${colors[i % colors.length]};animation-delay:${(Math.random() * .5).toFixed(2)}s;transform:rotate(${Math.round(Math.random() * 360)}deg)"></i>`).join('')}</div>
-            <div class="hl-wcard"><div class="hl-wic">${T[0]}</div>
-            <p class="hl-wk">${m.k ? `D${meta(m.k).n} 花絮小挑戰` : '旅程挑戰'}</p>
-            <p class="hl-wt">你是${m.k ? '今天的' : ''}${T[1]}！</p><p class="hl-wd">${m.k ? T[2] : (T[3] || T[2])}</p>
-            ${rest.length ? `<div class="hl-mds c">${rest.map(r => `<span class="hl-md">${TITLES[r.id][0]} 同時獲得：${r.k ? `D${meta(r.k).n} ` : ''}${TITLES[r.id][1]}</span>`).join('')}</div>` : ''}
-            <button type="button" class="hl-btn pri">太棒了</button></div>`;
+        const body = groups.map(g => {
+            const label = g.k ? `D${meta(g.k).n} 花絮小挑戰` : '旅程挑戰';
+            const [m, ...rest] = g.mine, T = m && TITLES[m.id];
+            const mineHtml = m ? `<div class="hl-wbig">${medalSvg(m.id, true, 128)}</div>
+                <p class="hl-wt">恭喜獲得「${T[1]}」稱號！</p><p class="hl-wd">${g.k ? T[2] : (T[3] || T[2])}</p>
+                ${rest.length ? `<div class="hl-mds c">${rest.map(r => `<span class="hl-md dark">${medalSvg(r.id)}<span>同時獲得：${TITLES[r.id][1]}</span></span>`).join('')}</div>` : ''}` : '';
+            const others = g.others.length ? `<div class="hl-wo">${m ? '<p class="hl-wk">其他旅伴</p>' : '<p class="hl-wt">今日稱號出爐</p>'}${g.others.map(o => `<div class="hl-wr">${medalSvg(o.id, false, 34)}<span>恭喜 <b>${esc(nameOf(o.u))}</b> 獲得「${TITLES[o.id][1]}」稱號</span></div>`).join('')}</div>` : '';
+            return `<div class="hl-wg"><p class="hl-wk">${label}</p>${mineHtml}${others}</div>`;
+        }).join('');
+        ov.innerHTML = `<div class="hl-conf">${hasMine ? Array.from({ length: 28 }, (_, i) => `<i style="left:${Math.random() * 100}%;background:${colors[i % colors.length]};animation-delay:${(Math.random() * .5).toFixed(2)}s;transform:rotate(${Math.round(Math.random() * 360)}deg)"></i>`).join('') : ''}</div>
+            <div class="hl-wcard">${body}<button type="button" class="hl-btn pri">${hasMine ? '太棒了' : '知道了'}</button></div>`;
         document.body.appendChild(ov);
         setTimeout(() => { const c = ov.querySelector('.hl-conf'); if (c) c.remove(); }, 2600);
         ov.querySelector('button').addEventListener('click', () => { ov.remove(); S.winOpen = false; });
@@ -477,12 +544,6 @@
             if (mine) { const rs = reacts(p); Object.entries(rtsOf(p)).forEach(([u, t]) => { if (u !== me && rs[u]) add('myl', +t || 0, p); }); }
         });
         const out = Object.values(best);
-        Object.entries(S.award).forEach(([k, f]) => {
-            if (!f || !(f.ts > seen) || !meta(k)) return;
-            const ids = ALLD.filter(id => f[id]);
-            if (!ids.length || ids.some(id => f[id] === me)) return;
-            out.push({ type: 'award', ts: f.ts, n: meta(k).n, key: 'award:' + k, text: `D${meta(k).n} 恭喜 ${ids.map(id => nameOf(f[id]) + '成為' + TITLES[id][1]).join('、')}` });
-        });
         return out.filter(n => !S.dis.has(n.key)).sort((a, b) => b.ts - a.ts);
     }
     // ---------- 發文提醒（日本時間：8:00 起提醒昨天、12:00 起提醒今天；打開 App 時判斷） ----------
