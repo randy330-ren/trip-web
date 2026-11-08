@@ -299,4 +299,11 @@ t('平分：件數顯示成分數；1 件三人平分，進位後加總等於收
     assert.ok(Math.max(...al) - Math.min(...al) <= 1);
 });
 
+t('品項分配：手動件數加上每筆平分，加總一致', () => {
+    const o = LD.mergeShares({ a: 1 }, [{ k: 2, ids: ['b', 'c', 'd'] }, { k: 1, ids: ['a', 'b'] }]);
+    assert.ok(Math.abs(o.a - 1.5) < 1e-9 && Math.abs(o.b - (2 / 3 + 0.5)) < 1e-9 && Math.abs(o.c - 2 / 3) < 1e-9);
+    assert.ok(Math.abs(Object.values(o).reduce((x, y) => x + y, 0) - 4) < 1e-9);
+    assert.deepStrictEqual(LD.mergeShares({}, []), {});
+});
+
 console.log(`\n全部通過：${pass} 項`);
