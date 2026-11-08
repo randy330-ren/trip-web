@@ -258,6 +258,14 @@ t('個人逐品項：一次匯入多張收據、單張格式相容、壞的那�
     assert.ok(LD.parseReceipts(JSON.stringify({ receipts: [{ items: [] }] })).error);
     assert.ok(LD.buildPrompt(['餐飲'], true).includes('"receipts"') && !LD.buildPrompt(['餐飲']).includes('"receipts"'));
 });
+t('個人逐品項：品項自帶稅制（外稅／內稅混合）與預設不退稅', () => {
+    const r = LD.parseReceipts(JSON.stringify({ receipt: { taxMode: 'excl', receiptTotal: 5275, items: [{ jp: 'A', unit: 3720, qty: 1, rate: 8 }, { jp: 'B', unit: 1260, qty: 1, rate: 8, taxMode: 'incl' }] } }), false).receipts[0];
+    assert.deepStrictEqual(r.items.map((i) => i.taxMode), ['', 'incl']);
+    assert.deepStrictEqual(r.items.map((i) => i.star), [false, false]);
+    assert.strictEqual(LD.parseReceipt(JSON.stringify({ items: [{ jp: 'x', unit: 1 }] })).receipt.items[0].star, true);
+    assert.strictEqual(LD.itemAmounts(r, true, 'before').reduce((a, b) => a + b, 0), 5275);
+    assert.deepStrictEqual(LD.checkReceipt(r), []);
+});
 t('退稅分配：依預計退稅比例拆開，加總等於實際退稅', () => {
     const r = C.allocate(1500, [54, 120, 30]);
     assert.strictEqual(r.reduce((x, y) => x + y, 0), 1500);
