@@ -286,4 +286,24 @@ t('明細分帳：每人明細備註文字', () => {
     assert.ok(txt.includes('進位 ¥1') && txt.includes('預計可退 ¥100') && txt.includes('備註：備'));
 });
 
+t('平分：件數顯示成分數；1 件三人平分，進位後加總等於收據合計', () => {
+    assert.strictEqual(LD.fmtQty(2), '2');
+    assert.strictEqual(LD.fmtQty(1 / 3), '1/3');
+    assert.strictEqual(LD.fmtQty(5 / 2), '2 1/2');
+    assert.strictEqual(LD.fmtQty(0.123456), '0.12');
+    const it = { jp: 'A', zh: '甲', unit: 100, rate: 10, star: true, qty: 1 }, S = { basis: 'before', disc: 1, taxMode: 'excl' };
+    const raws = [1, 2, 3].map(() => LD.calcPerson([{ item: it, n: 1 / 3 }], S).raw);
+    assert.ok(Math.abs(raws.reduce((a, b) => a + b, 0) - 110) < 1e-9);
+    const al = LD.alignTotals(raws, 110);
+    assert.strictEqual(al.reduce((a, b) => a + b, 0), 110);
+    assert.ok(Math.max(...al) - Math.min(...al) <= 1);
+});
+
+t('品項分配：手動件數加上每筆平分，加總一致', () => {
+    const o = LD.mergeShares({ a: 1 }, [{ k: 2, ids: ['b', 'c', 'd'] }, { k: 1, ids: ['a', 'b'] }]);
+    assert.ok(Math.abs(o.a - 1.5) < 1e-9 && Math.abs(o.b - (2 / 3 + 0.5)) < 1e-9 && Math.abs(o.c - 2 / 3) < 1e-9);
+    assert.ok(Math.abs(Object.values(o).reduce((x, y) => x + y, 0) - 4) < 1e-9);
+    assert.deepStrictEqual(LD.mergeShares({}, []), {});
+});
+
 console.log(`\n全部通過：${pass} 項`);
