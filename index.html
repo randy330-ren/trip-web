@@ -117,9 +117,9 @@
         #page-itinerary:not(.ready) > section[id^="day"]:not(#day1) { display: none; }
         @keyframes drPop { 0% { transform: scale(.6); opacity: .3; } 60% { transform: scale(1.12); } 100% { transform: scale(1); opacity: 1; } }
         .dr-lock { animation: drPop .4s ease-out; }
-        .dr-list { display: flex; flex-direction: column; gap: 6px; }
-        .dr-row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-radius: 12px; font-size: 15px; font-weight: 700; }
-        .dr-n { min-width: 30px; font-size: 12px; opacity: .8; }
+        .dr-list { display: flex; flex-wrap: wrap; gap: 6px; }
+        .dr-row { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 9999px; font-size: 14px; font-weight: 700; white-space: nowrap; }
+        .dr-n { font-size: 11px; opacity: .8; }
         .dr-roll { background: #f3f1ea; color: #a3a398; border: 1px dashed #cfcbbd; }
         .dr-lock, .dr-done { background: #3b4d43; color: #fff; border: 1px solid #3b4d43; }
         .dr-pin { background: #b08758; border-color: #b08758; }
@@ -1008,8 +1008,8 @@
                     <h2 class="text-lg font-bold">🎲 成員抽籤</h2>
                     <span id="draw-arrow" class="drawer-hint">點擊展開 ▼</span>
                 </button>
-                <div id="draw-snd" style="text-align:right;margin-top:6px"></div>
-                <div id="draw-live"></div>
+                <div id="draw-snd" style="text-align:right;margin-top:6px;display:none"></div>
+                <div id="draw-live" style="display:none"></div>
                 <div id="draw-body" class="hidden mt-3"></div>
             </div>
 
@@ -5425,7 +5425,17 @@
         const drName = (id) => { const p = DR.people.find(x => x.id === id); return p ? p.name : ''; };
         const drPool = () => DR.people.filter(p => DR.sel.has(p.id));
         const drBlockName = (b) => b.map(drName).join('+');
-        const drLabels = (blocks) => { let k = 0; return blocks.map(b => { const i = k; k += b.length; return b.length > 1 ? `${i + 1}-${i + b.length}` : String(i + 1); }); };
+        const drLabels = (blocks) => blocks.map((_, i) => String(i + 1));
+        const drUnits = (sel) => {
+            const seen = new Set(), out = [];
+            sel.forEach(p => {
+                const g = DR.groups.find(x => x.includes(p.id));
+                if (!g) return out.push({ key: p.id, ids: [p.id], name: p.name });
+                const key = g.join('+');
+                if (!seen.has(key)) { seen.add(key); out.push({ key, ids: g.slice(), name: g.map(drName).join('+') }); }
+            });
+            return out;
+        };
         function drCopy(text, btn) {
             const done = () => { if (btn) { const o = btn.textContent; btn.textContent = '✅ 已複製'; setTimeout(() => { btn.textContent = o; }, 1500); } };
             const fb = () => { try { const ta = document.createElement('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); done(); } catch (e) { alert(text); } };
@@ -5512,7 +5522,7 @@
                 const v = s.val() || {}, list = Object.keys(v).sort().map(k => ({ k, ...v[k] })), prev = new Set(DR.hist.map(x => x.k));
                 const fresh = list.filter(x => !prev.has(x.k)), last = fresh[fresh.length - 1];
                 DR.hist = list;
-                drLiveRender(!DR.first && last && !DR.mine.has(last.k) && Date.now() - (last.ts || 0) < 120000 ? last : null);
+                drLiveRender(DR.open && !DR.first && last && !DR.mine.has(last.k) && Date.now() - (last.ts || 0) < 120000 ? last : null);
                 DR.first = false;
             }, () => { });
         }
@@ -5534,6 +5544,7 @@
             DR.open = !DR.open;
             document.getElementById('draw-body').classList.toggle('hidden', !DR.open);
             document.getElementById('draw-arrow').textContent = DR.open ? '點擊收合 ▲' : '點擊展開 ▼';
+            ['draw-snd', 'draw-live'].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = DR.open ? '' : 'none'; });
             if (DR.open) { drawRender(); drawLoad(); }
         };
         function drawWheelSvg(pool) {
@@ -5550,23 +5561,26 @@
             if (!box || !DR.open || DR.spin) return;
             const P = DR.people;
             if (!P.length) { box.innerHTML = '<p class="text-xs text-gray-400 py-2">還沒有記帳團員，請先到記帳頁新增團員。</p>'; return; }
-            const sel = P.filter(p => DR.sel.has(p.id)), pool = drPool(), n = sel.length;
+            const sel = P.filter(p => DR.sel.has(p.id)), pool = drPool();
+            DR.groups = DR.groups.map(g => g.filter(id => DR.sel.has(id))).filter(g => g.length > 1);
+            const units = drUnits(sel), n = units.length;
             const chips = P.map(p => `<button type="button" data-da="tg" data-id="${p.id}" class="px-3 py-1.5 rounded-full text-xs font-bold border ${DR.sel.has(p.id) ? 'bg-[#3b4d43] text-white border-[#3b4d43]' : 'bg-white text-gray-400 border-gray-200'}">${escapeHtml(p.name)}</button>`).join('');
             DR.k = Math.max(1, Math.min(DR.k, pool.length || 1));
             const btn = 'px-4 py-2 rounded-xl text-sm font-bold';
             const wheel = pool.length ? drawWheelSvg(pool) : '<p class="text-xs text-gray-400 py-4 text-center">沒有可抽的成員。</p>';
-            DR.fixed = Object.fromEntries(Object.entries(DR.fixed).filter(([i, id]) => +i < n && DR.sel.has(id)));
+            const ukeys = new Set(units.map(u => u.key));
+            DR.fixed = Object.fromEntries(Object.entries(DR.fixed).filter(([i, k]) => +i < n && ukeys.has(k)));
             const where = (id) => Object.keys(DR.fixed).find(i => DR.fixed[i] === id);
-            const slots = sel.map((_, i) => `<div class="flex items-center gap-2"><span class="sticky left-0 z-[1] w-5 py-1.5 bg-[#fcfbf8] text-xs font-bold text-gray-500 text-right shrink-0">${i + 1}</span><div class="flex flex-nowrap gap-1.5">${sel.map(p => { const w = where(p.id); return `<button type="button" data-da="pin" data-i="${i}" data-id="${p.id}" class="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold border ${w == i ? 'bg-[#b08758] text-white border-[#b08758]' : (w !== undefined ? 'bg-gray-100 text-gray-300 border-gray-200' : 'bg-white text-[#3b4d43] border-gray-300')}">${escapeHtml(p.name)}</button>`; }).join('')}</div></div>`).join('');
-            const ord = DR.blocks && DR.ord && DR.ord.length === n ? (() => { let k = 0; const pins = DR.blocks.map((b) => { const i = k; k += b.length; return b.some((_, d) => DR.ordFix.includes(i + d)); }); return `<div id="dr-ord">${drRowsHtml(DR.blocks.map(drBlockName), drLabels(DR.blocks), 'dr-done', pins)}</div>`; })() : '';
+            const slots = units.map((_, i) => `<div class="flex items-center gap-2"><span class="sticky left-0 z-[1] w-5 py-1.5 bg-[#fcfbf8] text-xs font-bold text-gray-500 text-right shrink-0">${i + 1}</span><div class="flex flex-nowrap gap-1.5">${units.map(p => { const w = where(p.key); return `<button type="button" data-da="pin" data-i="${i}" data-id="${p.key}" class="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold border ${w == i ? 'bg-[#b08758] text-white border-[#b08758]' : (w !== undefined ? 'bg-gray-100 text-gray-300 border-gray-200' : 'bg-white text-[#3b4d43] border-gray-300')}">${escapeHtml(p.name)}</button>`; }).join('')}</div></div>`).join('');
+            const ord = DR.blocks && DR.blocks.length === n ? (() => { const pins = DR.blocks.map((_, i) => DR.ordFix.includes(i)); return `<div id="dr-ord">${drRowsHtml(DR.blocks.map(drBlockName), drLabels(DR.blocks), 'dr-done', pins)}</div>`; })() : '';
             DR.groups = DR.groups.map(g => g.filter(id => DR.sel.has(id))).filter(g => g.length > 1);
             const inGrp = new Set(DR.groups.flat()), gb = 'px-3 py-1.5 rounded-full text-xs font-bold border';
-            const grpHtml = `<p class="text-[11px] text-gray-500 mb-1.5">🔗 綁定相鄰：綁定的人排序後會排在一起，組內順序隨機。</p><div class="flex flex-wrap gap-1.5 mb-3">${DR.groups.map((g, i) => `<span class="${gb} bg-[#e7efe9] text-[#3b4d43] border-gray-200">${escapeHtml(g.map(drName).join('+'))} <button type="button" data-da="ungrp" data-i="${i}" aria-label="取消綁定">✕</button></span>`).join('')}${DR.bind ? sel.filter(p => !inGrp.has(p.id)).map(p => `<button type="button" data-da="bindp" data-id="${p.id}" class="${gb} ${DR.bind.has(p.id) ? 'bg-[#b08758] text-white border-[#b08758]' : 'bg-white text-gray-500 border-gray-300'}">${escapeHtml(p.name)}</button>`).join('') + `<button type="button" data-da="bindok" class="${gb} bg-[#3b4d43] text-white border-[#3b4d43]">完成綁定</button><button type="button" data-da="bindx" class="${gb} bg-white text-gray-500 border-gray-300">取消</button>` : `<button type="button" data-da="bindnew" class="${gb} bg-white text-gray-500 border-gray-300" style="border-style:dashed">＋ 新增綁定</button>`}</div>`;
+            const grpHtml = `<p class="text-[11px] text-gray-500 mb-1.5">🔗 綁定：綁定的人算成一個名次，一起排序，組內順序隨機。</p><div class="flex flex-wrap gap-1.5 mb-3">${DR.groups.map((g, i) => `<span class="${gb} bg-[#e7efe9] text-[#3b4d43] border-gray-200">${escapeHtml(g.map(drName).join('+'))} <button type="button" data-da="ungrp" data-i="${i}" aria-label="取消綁定">✕</button></span>`).join('')}${DR.bind ? sel.filter(p => !inGrp.has(p.id)).map(p => `<button type="button" data-da="bindp" data-id="${p.id}" class="${gb} ${DR.bind.has(p.id) ? 'bg-[#b08758] text-white border-[#b08758]' : 'bg-white text-gray-500 border-gray-300'}">${escapeHtml(p.name)}</button>`).join('') + `<button type="button" data-da="bindok" class="${gb} bg-[#3b4d43] text-white border-[#3b4d43]">完成綁定</button><button type="button" data-da="bindx" class="${gb} bg-white text-gray-500 border-gray-300">取消</button>` : `<button type="button" data-da="bindnew" class="${gb} bg-white text-gray-500 border-gray-300" style="border-style:dashed">＋ 新增綁定</button>`}</div>`;
             box.innerHTML = `<p class="text-[11px] text-gray-500 mb-1.5">參加成員（點選切換）</p><div class="flex flex-wrap gap-1.5">${chips}</div>
                 <div class="border-t border-gray-100 mt-4 pt-3"><p class="text-sm font-bold">🎡 隨機挑選</p>${wheel}
                 <div class="flex items-center justify-center gap-3 my-2"><button type="button" data-da="kdec" class="w-9 h-9 rounded-full bg-[#e7e4db] text-lg font-bold text-[#3b4d43]">−</button><span class="text-sm font-bold w-16 text-center">抽 ${DR.k} 位</span><button type="button" data-da="kinc" class="w-9 h-9 rounded-full bg-[#e7e4db] text-lg font-bold text-[#3b4d43]">＋</button></div>
                 <div class="text-center mb-2"><button type="button" data-da="spin" class="${btn} bg-[#3b4d43] text-white" ${pool.length ? '' : 'disabled'}>🎲 轉！</button></div><div id="draw-res">${drResHtml(DR.res || [])}</div>${DR.msg ? `<p class="text-xs text-red-500 text-center mt-1">${DR.msg}</p>` : ''}</div>
-                <div class="border-t border-gray-100 mt-4 pt-3"><p class="text-sm font-bold mb-1">🔀 隨機排序</p>${grpHtml}<p class="text-[11px] text-gray-500 mb-2">在想指定的名次點選成員（再點一次取消），沒點的名次用抽的。</p><div class="overflow-x-auto pb-1 mb-3"><div class="w-max space-y-2">${slots}</div></div>
+                <div class="border-t border-gray-100 mt-4 pt-3"><p class="text-sm font-bold mb-1">🔀 隨機排序</p>${grpHtml}<p class="text-[11px] text-gray-500 mb-2">在想指定的名次點選成員或綁定組（再點一次取消），沒點的名次用抽的。</p><div class="overflow-x-auto pb-1 mb-3"><div class="w-max space-y-2">${slots}</div></div>
                 <div class="flex gap-2"><button type="button" data-da="shuf" class="${btn} bg-[#3b4d43] text-white" ${n ? '' : 'disabled'}>🔀 開始排序</button><button type="button" data-da="ordreset" class="${btn} bg-[#e7e4db] text-[#3b4d43]">重置</button></div>${DR.omsg ? `<p class="text-xs text-red-500 mt-1">${DR.omsg}</p>` : ''}${ord ? `<div class="mt-3">${ord}<button type="button" data-da="ocopy" class="${btn} bg-[#e7e4db] text-[#3b4d43] mt-2">📋 複製結果</button>${DR.ordFix.length ? '<p class="text-[10px] text-gray-400 mt-1.5">金色為指定名次</p>' : ''}</div>` : ''}</div>`;
             if (DR.animOrd) {
                 DR.animOrd = false;
@@ -5608,36 +5622,14 @@
             step();
         }
         function drawShuffle() {
-            const sel = DR.people.filter(p => DR.sel.has(p.id)), n = sel.length, ids = sel.map(p => p.id);
-            const grp = DR.groups.map(g => g.filter(id => DR.sel.has(id))).filter(g => g.length > 1), inG = new Set(grp.flat());
-            const pins = Object.entries(DR.fixed).filter(([i]) => +i < n).map(([i, id]) => [+i, id]);
-            let out = null;
-            for (let t = 0; t < 40 && !out; t++) {
-                const o = new Array(n).fill(null);
-                pins.forEach(([i, id]) => { if (!inG.has(id)) o[i] = id; });
-                let ok = true;
-                const pinned = grp.filter(g => pins.some(([, id]) => g.includes(id))), loose = grp.filter(g => !pinned.includes(g));
-                for (const g of [...shuffle(pinned), ...shuffle(loose)]) {
-                    const ranks = pins.filter(([, id]) => g.includes(id)).map(([i]) => i), fixedIn = new Map(pins.filter(([, id]) => g.includes(id)).map(([i, id]) => [i, id])), st = [];
-                    for (let s0 = 0; s0 + g.length <= n; s0++) {
-                        if (ranks.some(r => r < s0 || r >= s0 + g.length)) continue;
-                        let free = true;
-                        for (let d = 0; d < g.length; d++) { const v = o[s0 + d]; if (v !== null && !fixedIn.has(s0 + d)) free = false; }
-                        if (free) st.push(s0);
-                    }
-                    if (!st.length) { ok = false; break; }
-                    const s0 = st[rnd(st.length)], rest = shuffle(g.filter(id => ![...fixedIn.values()].includes(id)));
-                    for (let d = 0; d < g.length; d++) o[s0 + d] = fixedIn.get(s0 + d) || rest.shift();
-                }
-                if (ok) out = o;
-            }
-            if (!out) { DR.omsg = '指定名次與綁定衝突，請取消部分指定名次後再試。'; return drawRender(); }
-            const rest = shuffle(ids.filter(id => !out.includes(id)));
-            DR.ord = out.map(x => x || rest.shift());
-            DR.ordFix = pins.map(([i]) => i);
-            const blocks = [];
-            for (let i = 0; i < n;) { const g = grp.find(x => x.includes(DR.ord[i])), len = g ? g.length : 1; blocks.push(DR.ord.slice(i, i + len)); i += len; }
-            DR.blocks = blocks; DR.animOrd = true; DR.omsg = '';
+            const sel = DR.people.filter(p => DR.sel.has(p.id));
+            DR.groups = DR.groups.map(g => g.filter(id => DR.sel.has(id))).filter(g => g.length > 1);
+            const units = drUnits(sel), n = units.length, keys = units.map(u => u.key), out = new Array(n).fill(null);
+            Object.entries(DR.fixed).forEach(([i, k]) => { if (+i < n && keys.includes(k)) out[+i] = k; });
+            const rest = shuffle(keys.filter(k => !out.includes(k)));
+            const blocks = out.map(x => x || rest.shift()).map(k => shuffle(units.find(u => u.key === k).ids));
+            DR.blocks = blocks; DR.ord = blocks.flat(); DR.ordFix = Object.keys(DR.fixed).map(Number).filter(i => i < n);
+            DR.animOrd = true; DR.omsg = '';
             drPublish({ type: 'order', blocks: blocks.map(b => b.map(drName)) });
             drawRender();
         }
