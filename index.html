@@ -115,6 +115,14 @@
         .tm-btn { position: relative; width: 40px; flex-shrink: 0; border-radius: 8px; background: var(--green); color: #fff; display: flex; align-items: center; justify-content: center; }
         .tm-btn input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; }
         #page-itinerary:not(.ready) > section[id^="day"]:not(#day1) { display: none; }
+        @keyframes drPop { 0% { transform: scale(.6); opacity: .3; } 60% { transform: scale(1.12); } 100% { transform: scale(1); opacity: 1; } }
+        .dr-lock { animation: drPop .4s ease-out; }
+        .dr-list { display: flex; flex-wrap: wrap; gap: 6px; }
+        .dr-row { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 9999px; font-size: 14px; font-weight: 700; white-space: nowrap; }
+        .dr-n { font-size: 11px; opacity: .8; }
+        .dr-roll { background: #f3f1ea; color: #a3a398; border: 1px dashed #cfcbbd; }
+        .dr-lock, .dr-done { background: #3b4d43; color: #fff; border: 1px solid #3b4d43; }
+        .dr-pin { background: #b08758; border-color: #b08758; }
         @keyframes inR { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
         @keyframes inL { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
         .swipe-in-r { animation: inR .2s ease-out; }
@@ -1000,6 +1008,8 @@
                     <h2 class="text-lg font-bold">🎲 成員抽籤</h2>
                     <span id="draw-arrow" class="drawer-hint">點擊展開 ▼</span>
                 </button>
+                <div id="draw-snd" style="text-align:right;margin-top:6px;display:none"></div>
+                <div id="draw-live" style="display:none"></div>
                 <div id="draw-body" class="hidden mt-3"></div>
             </div>
 
@@ -5408,12 +5418,114 @@
         };
 
         // ---------- 成員抽籤（名單取自記帳團員，結果只留在本機） ----------
-        const DR = { people: [], known: null, sel: new Set(), k: 1, rot: 0, res: null, fixed: {}, ord: null, ordFix: [], open: false, spin: false, msg: '' };
+        const DR = { people: [], known: null, sel: new Set(), k: 1, rot: 0, res: null, fixed: {}, ord: null, blocks: null, ordFix: [], open: false, spin: false, msg: '', omsg: '', groups: [], bind: null, animOrd: false, tm: [], mine: new Set(), hist: [], showHist: false, first: true, syncKey: null, syncRef: null, syncCb: null };
         const DR_COL = ['#3b4d43', '#b08758', '#5f7a6c', '#8a6f4d', '#6b8576', '#a9744f', '#4a6358', '#9b8160'];
         const rnd = (n) => { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; };
         const shuffle = (arr) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
         const drName = (id) => { const p = DR.people.find(x => x.id === id); return p ? p.name : ''; };
         const drPool = () => DR.people.filter(p => DR.sel.has(p.id));
+        const drBlockName = (b) => b.map(drName).join('+');
+        const drLabels = (blocks) => blocks.map((_, i) => String(i + 1));
+        const drUnits = (sel) => {
+            const seen = new Set(), out = [];
+            sel.forEach(p => {
+                const g = DR.groups.find(x => x.includes(p.id));
+                if (!g) return out.push({ key: p.id, ids: [p.id], name: p.name });
+                const key = g.join('+');
+                if (!seen.has(key)) { seen.add(key); out.push({ key, ids: g.slice(), name: g.map(drName).join('+') }); }
+            });
+            return out;
+        };
+        function drCopy(text, btn) {
+            const done = () => { if (btn) { const o = btn.textContent; btn.textContent = '✅ 已複製'; setTimeout(() => { btn.textContent = o; }, 1500); } };
+            const fb = () => { try { const ta = document.createElement('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); done(); } catch (e) { alert(text); } };
+            try { if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text).then(done, fb); } catch (e) { }
+            fb();
+        }
+        const SND = { on: false, ctx: null };
+        function sndCtx() {
+            if (!SND.ctx) { try { SND.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { } }
+            if (SND.ctx && SND.ctx.state === 'suspended') SND.ctx.resume().catch(() => { });
+            return SND.ctx;
+        }
+        function beep(freq, dur, type, vol, delay) {
+            if (!SND.on) return;
+            const c = sndCtx(); if (!c) return;
+            const t = c.currentTime + (delay || 0), o = c.createOscillator(), g = c.createGain();
+            o.type = type || 'sine'; o.frequency.value = freq;
+            g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol || 0.12, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+            o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + dur + 0.02);
+        }
+        const sndTick = () => beep(700 + rnd(500), 0.04, 'square', 0.035);
+        const sndLock = () => { beep(880, 0.12, 'triangle', 0.15); beep(1320, 0.18, 'triangle', 0.1, 0.06); };
+        const sndDone = () => [523, 659, 784, 1047].forEach((f, i) => beep(f, 0.22, 'triangle', 0.13, i * 0.09));
+        function drSndRender() {
+            const box = document.getElementById('draw-snd');
+            if (box) box.innerHTML = `<button type="button" data-da="snd" style="font-size:12px;font-weight:700;padding:4px 10px;border-radius:9999px;background:${SND.on ? '#3b4d43' : '#e7e4db'};color:${SND.on ? '#fff' : '#3b4d43'}">${SND.on ? '🔊 音效開啟' : '🔇 音效關閉'}</button>`;
+        }
+        const drRowsHtml = (finals, labels, cls, pins) => `<div class="dr-list">${finals.map((f, i) => `<div class="dr-row ${cls}${pins && pins[i] ? ' dr-pin' : ''}">${labels ? `<span class="dr-n">${labels[i]}</span>` : ''}<span class="dr-t">${escapeHtml(f)}</span></div>`).join('')}</div>`;
+        function drRoll(el, finals, pool, labels, done) {
+            DR.tm.forEach(t => { clearTimeout(t); clearInterval(t); }); DR.tm = [];
+            el.innerHTML = `<div class="dr-list">${finals.map((f, i) => `<div class="dr-row dr-roll">${labels ? `<span class="dr-n">${labels[i]}</span>` : ''}<span class="dr-t">？</span></div>`).join('')}</div>`;
+            const rows = el.querySelectorAll('.dr-row'), tk = setInterval(sndTick, 110);
+            DR.tm.push(tk);
+            finals.forEach((f, i) => {
+                const sp = rows[i], t = sp && sp.querySelector('.dr-t');
+                if (!t) return;
+                const iv = setInterval(() => { t.textContent = pool[rnd(pool.length)]; }, 70);
+                DR.tm.push(iv);
+                DR.tm.push(setTimeout(() => {
+                    clearInterval(iv); t.textContent = f; sp.classList.remove('dr-roll'); sp.classList.add('dr-lock'); sndLock();
+                    if (i === finals.length - 1) { clearInterval(tk); setTimeout(sndDone, 250); if (done) done(); }
+                }, 800 + i * 450));
+            });
+        }
+        function drPublish(rec) {
+            const d = memberUser ? db : (adminUser ? adminDb : null);
+            if (!d || isOffline()) return;
+            try {
+                const r = d.ref('draws').push();
+                DR.mine.add(r.key);
+                r.set({ ...rec, ts: TS(), by: currentUserUid, byName: (memberUser && memberUser.displayName) || (adminUser ? '管理員' : '') })
+                    .catch(() => { if (!DR.warned) { DR.warned = true; alert('抽籤結果同步失敗：可能是 Firebase 規則尚未開放 draws，結果只會顯示在你的畫面。'); } });
+            } catch (e) { }
+        }
+        const drFinals = (r) => (r.type === 'order' ? (r.blocks || []).map(b => (b || []).join('+')) : (r.win || []));
+        const drText = (r) => (r.type === 'order' ? drFinals(r).join('>') : drFinals(r).join('、'));
+        const drTime = (ts) => { const d = new Date(ts || Date.now()); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+        function drLiveRender(play) {
+            const box = document.getElementById('draw-live');
+            if (!box) return;
+            const H = DR.hist, r = H[H.length - 1];
+            if (!r) { box.innerHTML = ''; return; }
+            const lab = (x) => `${x.type === 'order' ? '🔀 排序' : '🎡 隨機挑選'}・${drTime(x.ts)}・${escapeHtml(x.byName || '')}`;
+            const cbtn = 'font-size:12px;font-weight:700;padding:4px 10px;border-radius:9999px;background:#e7e4db;color:#3b4d43';
+            const lbls = r.type === 'order' ? drLabels(r.blocks || []) : null;
+            const hist = H.slice(0, -1).reverse().map((x, j) => `<div style="border-top:1px solid #f1e8c8;padding:6px 0;display:flex;justify-content:space-between;gap:8px;align-items:center"><div style="min-width:0"><div style="font-size:11px;color:#6b7280">${lab(x)}</div><div style="font-size:13px;font-weight:700;color:#3b4d43;word-break:break-all">${escapeHtml(drText(x))}</div></div><button type="button" data-da="lcopy" data-i="${H.length - 2 - j}" style="${cbtn};flex-shrink:0">📋 複製</button></div>`).join('');
+            box.innerHTML = `<div style="margin-top:12px;background:#fffbeb;border-radius:12px;padding:10px 12px">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:11px;color:#6b7280">最新抽籤・${lab(r)}</span><button type="button" data-da="lcopy" data-i="${H.length - 1}" style="${cbtn};flex-shrink:0">📋 複製</button></div>
+                <div id="draw-live-res" style="margin-top:8px">${drRowsHtml(drFinals(r), lbls, 'dr-done')}</div>
+                ${H.length > 1 ? `<button type="button" data-da="hist" style="margin-top:8px;font-size:12px;color:#6b7280">🕘 歷史紀錄（${H.length - 1}）${DR.showHist ? '▲' : '▼'}</button>${DR.showHist ? `<div style="margin-top:4px">${hist}</div>` : ''}` : ''}</div>`;
+            if (play) {
+                const el = document.getElementById('draw-live-res'), fin = drFinals(play);
+                if (el && fin.length) drRoll(el, fin, play.type === 'order' ? fin.join('+').split('+') : (play.pool && play.pool.length ? play.pool : fin), play.type === 'order' ? drLabels(play.blocks || []) : null, null);
+            }
+        }
+        function drSyncStart() {
+            const d = memberUser ? db : (adminUser ? adminDb : null), key = d ? currentUserUid : '';
+            if (key === DR.syncKey) return;
+            if (DR.syncRef) DR.syncRef.off('value', DR.syncCb);
+            DR.syncRef = null; DR.syncKey = key; DR.hist = []; DR.first = true;
+            if (!d) return drLiveRender();
+            DR.syncRef = d.ref('draws').orderByKey().limitToLast(30);
+            DR.syncCb = DR.syncRef.on('value', (s) => {
+                const v = s.val() || {}, list = Object.keys(v).sort().map(k => ({ k, ...v[k] })), prev = new Set(DR.hist.map(x => x.k));
+                const fresh = list.filter(x => !prev.has(x.k)), last = fresh[fresh.length - 1];
+                DR.hist = list;
+                drLiveRender(DR.open && !DR.first && last && !DR.mine.has(last.k) && Date.now() - (last.ts || 0) < 120000 ? last : null);
+                DR.first = false;
+            }, () => { });
+        }
         function drawLoad() {
             const d = memberUser ? db : (adminUser ? adminDb : null);
             if (!d) return;
@@ -5432,6 +5544,7 @@
             DR.open = !DR.open;
             document.getElementById('draw-body').classList.toggle('hidden', !DR.open);
             document.getElementById('draw-arrow').textContent = DR.open ? '點擊收合 ▲' : '點擊展開 ▼';
+            ['draw-snd', 'draw-live'].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = DR.open ? '' : 'none'; });
             if (DR.open) { drawRender(); drawLoad(); }
         };
         function drawWheelSvg(pool) {
@@ -5448,21 +5561,32 @@
             if (!box || !DR.open || DR.spin) return;
             const P = DR.people;
             if (!P.length) { box.innerHTML = '<p class="text-xs text-gray-400 py-2">還沒有記帳團員，請先到記帳頁新增團員。</p>'; return; }
-            const sel = P.filter(p => DR.sel.has(p.id)), pool = drPool(), n = sel.length;
+            const sel = P.filter(p => DR.sel.has(p.id)), pool = drPool();
+            DR.groups = DR.groups.map(g => g.filter(id => DR.sel.has(id))).filter(g => g.length > 1);
+            const units = drUnits(sel), n = units.length;
             const chips = P.map(p => `<button type="button" data-da="tg" data-id="${p.id}" class="px-3 py-1.5 rounded-full text-xs font-bold border ${DR.sel.has(p.id) ? 'bg-[#3b4d43] text-white border-[#3b4d43]' : 'bg-white text-gray-400 border-gray-200'}">${escapeHtml(p.name)}</button>`).join('');
             DR.k = Math.max(1, Math.min(DR.k, pool.length || 1));
             const btn = 'px-4 py-2 rounded-xl text-sm font-bold';
             const wheel = pool.length ? drawWheelSvg(pool) : '<p class="text-xs text-gray-400 py-4 text-center">沒有可抽的成員。</p>';
-            DR.fixed = Object.fromEntries(Object.entries(DR.fixed).filter(([i, id]) => +i < n && DR.sel.has(id)));
+            const ukeys = new Set(units.map(u => u.key));
+            DR.fixed = Object.fromEntries(Object.entries(DR.fixed).filter(([i, k]) => +i < n && ukeys.has(k)));
             const where = (id) => Object.keys(DR.fixed).find(i => DR.fixed[i] === id);
-            const slots = sel.map((_, i) => `<div class="flex items-center gap-2"><span class="sticky left-0 z-[1] w-5 py-1.5 bg-[#fcfbf8] text-xs font-bold text-gray-500 text-right shrink-0">${i + 1}</span><div class="flex flex-nowrap gap-1.5">${sel.map(p => { const w = where(p.id); return `<button type="button" data-da="pin" data-i="${i}" data-id="${p.id}" class="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold border ${w == i ? 'bg-[#b08758] text-white border-[#b08758]' : (w !== undefined ? 'bg-gray-100 text-gray-300 border-gray-200' : 'bg-white text-[#3b4d43] border-gray-300')}">${escapeHtml(p.name)}</button>`; }).join('')}</div></div>`).join('');
-            const ord = DR.ord && DR.ord.length === n ? `<div class="flex flex-nowrap gap-1.5 overflow-x-auto pb-1">${DR.ord.map((id, i) => `<span class="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-sm font-bold ${DR.ordFix.includes(i) ? 'bg-[#b08758] text-white' : 'bg-[#e7efe9] text-[#3b4d43]'}"><span class="text-[10px] opacity-70 mr-1">${i + 1}</span>${escapeHtml(drName(id))}</span>`).join('')}</div>` : '';
+            const slots = units.map((_, i) => `<div class="flex items-center gap-2"><span class="sticky left-0 z-[1] w-5 py-1.5 bg-[#fcfbf8] text-xs font-bold text-gray-500 text-right shrink-0">${i + 1}</span><div class="flex flex-nowrap gap-1.5">${units.map(p => { const w = where(p.key); return `<button type="button" data-da="pin" data-i="${i}" data-id="${p.key}" class="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold border ${w == i ? 'bg-[#b08758] text-white border-[#b08758]' : (w !== undefined ? 'bg-gray-100 text-gray-300 border-gray-200' : 'bg-white text-[#3b4d43] border-gray-300')}">${escapeHtml(p.name)}</button>`; }).join('')}</div></div>`).join('');
+            const ord = DR.blocks && DR.blocks.length === n ? (() => { const pins = DR.blocks.map((_, i) => DR.ordFix.includes(i)); return `<div id="dr-ord">${drRowsHtml(DR.blocks.map(drBlockName), drLabels(DR.blocks), 'dr-done', pins)}</div>`; })() : '';
+            DR.groups = DR.groups.map(g => g.filter(id => DR.sel.has(id))).filter(g => g.length > 1);
+            const inGrp = new Set(DR.groups.flat()), gb = 'px-3 py-1.5 rounded-full text-xs font-bold border';
+            const grpHtml = `<p class="text-[11px] text-gray-500 mb-1.5">🔗 綁定：綁定的人算成一個名次，一起排序，組內順序隨機。</p><div class="flex flex-wrap gap-1.5 mb-3">${DR.groups.map((g, i) => `<span class="${gb} bg-[#e7efe9] text-[#3b4d43] border-gray-200">${escapeHtml(g.map(drName).join('+'))} <button type="button" data-da="ungrp" data-i="${i}" aria-label="取消綁定">✕</button></span>`).join('')}${DR.bind ? sel.filter(p => !inGrp.has(p.id)).map(p => `<button type="button" data-da="bindp" data-id="${p.id}" class="${gb} ${DR.bind.has(p.id) ? 'bg-[#b08758] text-white border-[#b08758]' : 'bg-white text-gray-500 border-gray-300'}">${escapeHtml(p.name)}</button>`).join('') + `<button type="button" data-da="bindok" class="${gb} bg-[#3b4d43] text-white border-[#3b4d43]">完成綁定</button><button type="button" data-da="bindx" class="${gb} bg-white text-gray-500 border-gray-300">取消</button>` : `<button type="button" data-da="bindnew" class="${gb} bg-white text-gray-500 border-gray-300" style="border-style:dashed">＋ 新增綁定</button>`}</div>`;
             box.innerHTML = `<p class="text-[11px] text-gray-500 mb-1.5">參加成員（點選切換）</p><div class="flex flex-wrap gap-1.5">${chips}</div>
                 <div class="border-t border-gray-100 mt-4 pt-3"><p class="text-sm font-bold">🎡 隨機挑選</p>${wheel}
                 <div class="flex items-center justify-center gap-3 my-2"><button type="button" data-da="kdec" class="w-9 h-9 rounded-full bg-[#e7e4db] text-lg font-bold text-[#3b4d43]">−</button><span class="text-sm font-bold w-16 text-center">抽 ${DR.k} 位</span><button type="button" data-da="kinc" class="w-9 h-9 rounded-full bg-[#e7e4db] text-lg font-bold text-[#3b4d43]">＋</button></div>
                 <div class="text-center mb-2"><button type="button" data-da="spin" class="${btn} bg-[#3b4d43] text-white" ${pool.length ? '' : 'disabled'}>🎲 轉！</button></div><div id="draw-res">${drResHtml(DR.res || [])}</div>${DR.msg ? `<p class="text-xs text-red-500 text-center mt-1">${DR.msg}</p>` : ''}</div>
-                <div class="border-t border-gray-100 mt-4 pt-3"><p class="text-sm font-bold mb-1">🔀 隨機排序</p><p class="text-[11px] text-gray-500 mb-2">在想指定的名次點選成員（再點一次取消），沒點的名次用抽的。</p><div class="overflow-x-auto pb-1 mb-3"><div class="w-max space-y-2">${slots}</div></div>
-                <div class="flex gap-2"><button type="button" data-da="shuf" class="${btn} bg-[#3b4d43] text-white" ${n ? '' : 'disabled'}>🔀 開始排序</button><button type="button" data-da="ordreset" class="${btn} bg-[#e7e4db] text-[#3b4d43]">重置</button></div>${ord ? `<div class="mt-3">${ord}${DR.ordFix.length ? '<p class="text-[10px] text-gray-400 mt-1.5">金色為指定名次</p>' : ''}</div>` : ''}</div>`;
+                <div class="border-t border-gray-100 mt-4 pt-3"><p class="text-sm font-bold mb-1">🔀 隨機排序</p>${grpHtml}<p class="text-[11px] text-gray-500 mb-2">在想指定的名次點選成員或綁定組（再點一次取消），沒點的名次用抽的。</p><div class="overflow-x-auto pb-1 mb-3"><div class="w-max space-y-2">${slots}</div></div>
+                <div class="flex gap-2"><button type="button" data-da="shuf" class="${btn} bg-[#3b4d43] text-white" ${n ? '' : 'disabled'}>🔀 開始排序</button><button type="button" data-da="ordreset" class="${btn} bg-[#e7e4db] text-[#3b4d43]">重置</button></div>${DR.omsg ? `<p class="text-xs text-red-500 mt-1">${DR.omsg}</p>` : ''}${ord ? `<div class="mt-3">${ord}<button type="button" data-da="ocopy" class="${btn} bg-[#e7e4db] text-[#3b4d43] mt-2">📋 複製結果</button>${DR.ordFix.length ? '<p class="text-[10px] text-gray-400 mt-1.5">金色為指定名次</p>' : ''}</div>` : ''}</div>`;
+            if (DR.animOrd) {
+                DR.animOrd = false;
+                const el = document.getElementById('dr-ord');
+                if (el && DR.blocks) { DR.spin = true; drRoll(el, DR.blocks.map(drBlockName), DR.ord.map(drName), drLabels(DR.blocks), () => { DR.spin = false; drawRender(); }); }
+            }
         }
         function drawSpin() {
             const pool = drPool();
@@ -5471,8 +5595,9 @@
             DR.msg = '';
             const k = Math.min(DR.k, pool.length), win = shuffle(pool.map(p => p.id)).slice(0, k), a = 360 / pool.length;
             const el = document.getElementById('draw-wheel'), resEl = document.getElementById('draw-res');
-            if (!el) { DR.res = win; return drawRender(); }
+            if (!el) { DR.res = win; drPublish({ type: 'pick', pool: pool.map(p => p.name), win: win.map(drName) }); return drawRender(); }
             const dur = k === 1 ? 4 : 2.2, turns = k === 1 ? 1800 : 720;
+            const ticks = () => { let t = 0; while (t < dur * 1000) { DR.tm.push(setTimeout(sndTick, t)); t += 55 + Math.pow(t / (dur * 1000), 2) * 420; } };
             DR.res = []; DR.spin = true;
             if (resEl) resEl.innerHTML = '';
             let i = 0;
@@ -5482,6 +5607,7 @@
                 const delta = (((-(w + .5 + jit) * a - DR.rot) % 360) + 360) % 360;
                 const target = DR.rot + turns + delta;
                 void el.getBoundingClientRect();
+                ticks();
                 el.style.transition = `transform ${dur}s cubic-bezier(.12,.6,.1,1)`;
                 el.style.transform = `rotate(${target}deg)`;
                 setTimeout(() => {
@@ -5489,20 +5615,40 @@
                     el.style.transition = 'none'; el.style.transform = `rotate(${DR.rot}deg)`;
                     DR.res = win.slice(0, ++i);
                     if (resEl) resEl.innerHTML = drResHtml(DR.res);
-                    if (i < k) setTimeout(step, 450); else { DR.spin = false; drawRender(); }
+                    sndLock();
+                    if (i < k) setTimeout(step, 450); else { setTimeout(sndDone, 250); DR.spin = false; drPublish({ type: 'pick', pool: pool.map(p => p.name), win: win.map(drName) }); drawRender(); }
                 }, dur * 1000 + 50);
             };
             step();
         }
         function drawShuffle() {
-            const sel = DR.people.filter(p => DR.sel.has(p.id)), n = sel.length;
-            const out = new Array(n).fill(null);
-            Object.entries(DR.fixed).forEach(([i, id]) => { out[+i] = id; });
-            const rest = shuffle(sel.map(p => p.id).filter(id => !out.includes(id)));
-            DR.ord = out.map(x => x || rest.shift());
-            DR.ordFix = Object.keys(DR.fixed).map(Number);
+            const sel = DR.people.filter(p => DR.sel.has(p.id));
+            DR.groups = DR.groups.map(g => g.filter(id => DR.sel.has(id))).filter(g => g.length > 1);
+            const units = drUnits(sel), n = units.length, keys = units.map(u => u.key), out = new Array(n).fill(null);
+            Object.entries(DR.fixed).forEach(([i, k]) => { if (+i < n && keys.includes(k)) out[+i] = k; });
+            const rest = shuffle(keys.filter(k => !out.includes(k)));
+            const blocks = out.map(x => x || rest.shift()).map(k => shuffle(units.find(u => u.key === k).ids));
+            DR.blocks = blocks; DR.ord = blocks.flat(); DR.ordFix = Object.keys(DR.fixed).map(Number).filter(i => i < n);
+            DR.animOrd = true; DR.omsg = '';
+            drPublish({ type: 'order', blocks: blocks.map(b => b.map(drName)) });
             drawRender();
         }
+        (function () {
+            const sb = document.getElementById('draw-snd');
+            if (!sb) return;
+            sb.addEventListener('click', (e) => { if (e.target.closest('button[data-da="snd"]')) { SND.on = !SND.on; if (SND.on) sndLock(); drSndRender(); } });
+            drSndRender();
+        })();
+        (function () {
+            const lv = document.getElementById('draw-live');
+            if (!lv) return;
+            lv.addEventListener('click', (e) => {
+                const b = e.target.closest('button[data-da]');
+                if (!b) return;
+                if (b.dataset.da === 'hist') { DR.showHist = !DR.showHist; drLiveRender(); }
+                else if (b.dataset.da === 'lcopy') { const r = DR.hist[+b.dataset.i]; if (r) drCopy(drText(r), b); }
+            });
+        })();
         (function () {
             const box = document.getElementById('draw-body');
             if (!box) return;
@@ -5510,13 +5656,23 @@
                 const b = e.target.closest('button[data-da]');
                 if (!b || DR.spin) return;
                 const a = b.dataset.da;
-                if (a === 'tg') { const id = b.dataset.id; DR.sel.has(id) ? DR.sel.delete(id) : DR.sel.add(id); DR.ord = null; DR.res = null; DR.msg = ''; }
-                else if (a === 'ordreset') { DR.fixed = {}; DR.ord = null; DR.ordFix = []; }
+                DR.omsg = '';
+                if (a === 'tg') { const id = b.dataset.id; DR.sel.has(id) ? DR.sel.delete(id) : DR.sel.add(id); DR.ord = DR.blocks = null; DR.res = null; DR.msg = ''; }
+                else if (a === 'ordreset') { DR.fixed = {}; DR.ord = DR.blocks = null; DR.ordFix = []; }
+                else if (a === 'bindnew') DR.bind = new Set();
+                else if (a === 'bindp') { const id = b.dataset.id; if (DR.bind) DR.bind.has(id) ? DR.bind.delete(id) : DR.bind.add(id); }
+                else if (a === 'bindx') DR.bind = null;
+                else if (a === 'bindok') {
+                    if (!DR.bind || DR.bind.size < 2) DR.omsg = '至少要選 2 個人才能綁定。';
+                    else { const g = DR.people.filter(p => DR.bind.has(p.id)).map(p => p.id); DR.groups.push(g); DR.bind = null; DR.ord = DR.blocks = null; }
+                }
+                else if (a === 'ungrp') { DR.groups.splice(+b.dataset.i, 1); DR.ord = DR.blocks = null; }
+                else if (a === 'ocopy') { if (DR.blocks) drCopy(DR.blocks.map(drBlockName).join('>'), b); return; }
                 else if (a === 'pin') {
                     const id = b.dataset.id, i = b.dataset.i;
                     if (DR.fixed[i] === id) delete DR.fixed[i];
                     else { Object.keys(DR.fixed).forEach(k => { if (DR.fixed[k] === id) delete DR.fixed[k]; }); DR.fixed[i] = id; }
-                    DR.ord = null;
+                    DR.ord = DR.blocks = null;
                 }
                 else if (a === 'kdec') DR.k = Math.max(1, DR.k - 1);
                 else if (a === 'kinc') DR.k = Math.min(Math.max(1, drPool().length), DR.k + 1);
@@ -5636,7 +5792,7 @@
             switchTab('ledger');
             (ledgerLoading || Promise.resolve()).then(() => { if (window.LEDGER && LEDGER.focus) LEDGER.focus(ex, tr); });
         }
-        window.onIdentity = () => { remSync(); if (DR.open) drawLoad(); };
+        window.onIdentity = () => { remSync(); drSyncStart(); if (DR.open) drawLoad(); };
         onIdentity();
 
         // ---------- 離線快取：先用舊資料渲染，雲端資料回來後會自動覆蓋 ----------
