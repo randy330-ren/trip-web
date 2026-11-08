@@ -5418,7 +5418,7 @@
         };
 
         // ---------- 成員抽籤（名單取自記帳團員，結果只留在本機） ----------
-        const DR = { people: [], known: null, sel: new Set(), k: 1, rot: 0, res: null, fixed: {}, ord: null, blocks: null, ordFix: [], open: false, spin: false, msg: '', omsg: '', groups: [], bind: null, animOrd: false, tm: [], mine: new Set(), hist: [], showHist: false, first: true, syncKey: null, syncRef: null, syncCb: null };
+        const DR = { people: [], known: null, sel: new Set(), k: 1, rot: 0, res: null, fixed: {}, ord: null, blocks: null, ordFix: [], open: false, spin: false, msg: '', omsg: '', groups: [], bind: null, animOrd: false, tm: [], mine: new Set(), hist: [], drawerOpen: false, first: true, syncKey: null, syncRef: null, syncCb: null };
         const DR_COL = ['#3b4d43', '#b08758', '#5f7a6c', '#8a6f4d', '#6b8576', '#a9744f', '#4a6358', '#9b8160'];
         const rnd = (n) => { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; };
         const shuffle = (arr) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -5480,6 +5480,7 @@
                 }, 800 + i * 450));
             });
         }
+        const DR_MAX = 10;
         function drPublish(rec) {
             const d = memberUser ? db : (adminUser ? adminDb : null);
             if (!d || isOffline()) return;
@@ -5487,6 +5488,11 @@
                 const r = d.ref('draws').push();
                 DR.mine.add(r.key);
                 r.set({ ...rec, ts: TS(), by: currentUserUid, byName: (memberUser && memberUser.displayName) || (adminUser ? '管理員' : '') })
+                    .then(() => d.ref('draws').orderByKey().once('value'))
+                    .then((snap) => {
+                        const keys = Object.keys(snap.val() || {}).sort(), extra = keys.length - DR_MAX;
+                        if (extra > 0) return d.ref('draws').update(Object.fromEntries(keys.slice(0, extra).map(k => [k, null])));
+                    })
                     .catch(() => { if (!DR.warned) { DR.warned = true; alert('抽籤結果同步失敗：可能是 Firebase 規則尚未開放 draws，結果只會顯示在你的畫面。'); } });
             } catch (e) { }
         }
@@ -5496,17 +5502,20 @@
         function drLiveRender(play) {
             const box = document.getElementById('draw-live');
             if (!box) return;
-            const H = DR.hist, r = H[H.length - 1];
-            if (!r) { box.innerHTML = ''; return; }
+            const H = DR.hist.slice().reverse();
+            if (!H.length) { box.innerHTML = ''; return; }
+            const isAdmin = !!adminUser;
+            if (play) DR.drawerOpen = true;
             const lab = (x) => `${x.type === 'order' ? '🔀 排序' : '🎡 隨機挑選'}・${drTime(x.ts)}・${escapeHtml(x.byName || '')}`;
             const cbtn = 'font-size:12px;font-weight:700;padding:4px 10px;border-radius:9999px;background:#e7e4db;color:#3b4d43';
-            const lbls = r.type === 'order' ? drLabels(r.blocks || []) : null;
-            const hist = H.slice(0, -1).reverse().map((x, j) => `<div style="border-top:1px solid #f1e8c8;padding:6px 0;display:flex;justify-content:space-between;gap:8px;align-items:center"><div style="min-width:0"><div style="font-size:11px;color:#6b7280">${lab(x)}</div><div style="font-size:13px;font-weight:700;color:#3b4d43;word-break:break-all">${escapeHtml(drText(x))}</div></div><button type="button" data-da="lcopy" data-i="${H.length - 2 - j}" style="${cbtn};flex-shrink:0">📋 複製</button></div>`).join('');
+            const dbtn = 'font-size:12px;font-weight:700;padding:4px 10px;border-radius:9999px;background:#fdecea;color:#b4402f';
+            const rows = H.map((x, idx) => `<div style="${idx ? 'border-top:1px solid #f1e8c8;padding-top:8px;margin-top:8px' : ''}">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:11px;color:#6b7280">${idx ? '' : '最新・'}${lab(x)}</span><span style="display:flex;gap:6px;flex-shrink:0"><button type="button" data-da="lcopy" data-k="${x.k}" style="${cbtn}">📋 複製</button>${isAdmin ? `<button type="button" data-da="ldel" data-k="${x.k}" style="${dbtn}">刪除</button>` : ''}</span></div>
+                <div ${idx ? '' : 'id="draw-live-res"'} style="margin-top:6px">${drRowsHtml(drFinals(x), x.type === 'order' ? drLabels(x.blocks || []) : null, 'dr-done')}</div></div>`).join('');
             box.innerHTML = `<div style="margin-top:12px;background:#fffbeb;border-radius:12px;padding:10px 12px">
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:11px;color:#6b7280">最新抽籤・${lab(r)}</span><button type="button" data-da="lcopy" data-i="${H.length - 1}" style="${cbtn};flex-shrink:0">📋 複製</button></div>
-                <div id="draw-live-res" style="margin-top:8px">${drRowsHtml(drFinals(r), lbls, 'dr-done')}</div>
-                ${H.length > 1 ? `<button type="button" data-da="hist" style="margin-top:8px;font-size:12px;color:#6b7280">🕘 歷史紀錄（${H.length - 1}）${DR.showHist ? '▲' : '▼'}</button>${DR.showHist ? `<div style="margin-top:4px">${hist}</div>` : ''}` : ''}</div>`;
-            if (play) {
+                <button type="button" data-da="drawer" style="width:100%;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:800;color:#3b4d43"><span>📜 抽籤結果（${H.length}／${DR_MAX}）</span><span style="font-size:12px;color:#6b7280">${DR.drawerOpen ? '收合 ▲' : '展開 ▼'}</span></button>
+                ${DR.drawerOpen ? `<div style="margin-top:10px">${rows}${isAdmin ? `<div style="margin-top:10px;text-align:right"><button type="button" data-da="lclear" style="${dbtn}">全部清除</button></div>` : ''}</div>` : ''}</div>`;
+            if (play && DR.drawerOpen) {
                 const el = document.getElementById('draw-live-res'), fin = drFinals(play);
                 if (el && fin.length) drRoll(el, fin, play.type === 'order' ? fin.join('+').split('+') : (play.pool && play.pool.length ? play.pool : fin), play.type === 'order' ? drLabels(play.blocks || []) : null, null);
             }
@@ -5517,7 +5526,7 @@
             if (DR.syncRef) DR.syncRef.off('value', DR.syncCb);
             DR.syncRef = null; DR.syncKey = key; DR.hist = []; DR.first = true;
             if (!d) return drLiveRender();
-            DR.syncRef = d.ref('draws').orderByKey().limitToLast(30);
+            DR.syncRef = d.ref('draws').orderByKey().limitToLast(DR_MAX);
             DR.syncCb = DR.syncRef.on('value', (s) => {
                 const v = s.val() || {}, list = Object.keys(v).sort().map(k => ({ k, ...v[k] })), prev = new Set(DR.hist.map(x => x.k));
                 const fresh = list.filter(x => !prev.has(x.k)), last = fresh[fresh.length - 1];
@@ -5645,8 +5654,17 @@
             lv.addEventListener('click', (e) => {
                 const b = e.target.closest('button[data-da]');
                 if (!b) return;
-                if (b.dataset.da === 'hist') { DR.showHist = !DR.showHist; drLiveRender(); }
-                else if (b.dataset.da === 'lcopy') { const r = DR.hist[+b.dataset.i]; if (r) drCopy(drText(r), b); }
+                const da = b.dataset.da;
+                if (da === 'drawer') { DR.drawerOpen = !DR.drawerOpen; drLiveRender(); }
+                else if (da === 'lcopy') { const r = DR.hist.find(x => x.k === b.dataset.k); if (r) drCopy(drText(r), b); }
+                else if (da === 'ldel') {
+                    if (!adminUser || !confirm('確定刪除這筆抽籤結果嗎？所有成員都會看不到。')) return;
+                    adminDb.ref('draws/' + b.dataset.k).remove().catch(() => alert('刪除失敗：請確認 Firebase 規則已允許刪除 draws。'));
+                }
+                else if (da === 'lclear') {
+                    if (!adminUser || !DR.hist.length || !confirm('確定清除全部抽籤結果嗎？所有成員都會看不到。')) return;
+                    adminDb.ref('draws').update(Object.fromEntries(DR.hist.map(x => [x.k, null]))).catch(() => alert('清除失敗：請確認 Firebase 規則已允許刪除 draws。'));
+                }
             });
         })();
         (function () {
