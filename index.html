@@ -117,7 +117,12 @@
         #page-itinerary:not(.ready) > section[id^="day"]:not(#day1) { display: none; }
         @keyframes drPop { 0% { transform: scale(.6); opacity: .3; } 60% { transform: scale(1.12); } 100% { transform: scale(1); opacity: 1; } }
         .dr-lock { animation: drPop .4s ease-out; }
-        .dr-roll { opacity: .65; }
+        .dr-list { display: flex; flex-direction: column; gap: 6px; }
+        .dr-row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-radius: 12px; font-size: 15px; font-weight: 700; }
+        .dr-n { min-width: 30px; font-size: 12px; opacity: .8; }
+        .dr-roll { background: #f3f1ea; color: #a3a398; border: 1px dashed #cfcbbd; }
+        .dr-lock, .dr-done { background: #3b4d43; color: #fff; border: 1px solid #3b4d43; }
+        .dr-pin { background: #b08758; border-color: #b08758; }
         @keyframes inR { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
         @keyframes inL { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
         .swipe-in-r { animation: inR .2s ease-out; }
@@ -1003,6 +1008,7 @@
                     <h2 class="text-lg font-bold">🎲 成員抽籤</h2>
                     <span id="draw-arrow" class="drawer-hint">點擊展開 ▼</span>
                 </button>
+                <div id="draw-snd" style="text-align:right;margin-top:6px"></div>
                 <div id="draw-live"></div>
                 <div id="draw-body" class="hidden mt-3"></div>
             </div>
@@ -5426,15 +5432,42 @@
             try { if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text).then(done, fb); } catch (e) { }
             fb();
         }
+        const SND = { on: false, ctx: null };
+        function sndCtx() {
+            if (!SND.ctx) { try { SND.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { } }
+            if (SND.ctx && SND.ctx.state === 'suspended') SND.ctx.resume().catch(() => { });
+            return SND.ctx;
+        }
+        function beep(freq, dur, type, vol, delay) {
+            if (!SND.on) return;
+            const c = sndCtx(); if (!c) return;
+            const t = c.currentTime + (delay || 0), o = c.createOscillator(), g = c.createGain();
+            o.type = type || 'sine'; o.frequency.value = freq;
+            g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol || 0.12, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+            o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + dur + 0.02);
+        }
+        const sndTick = () => beep(700 + rnd(500), 0.04, 'square', 0.035);
+        const sndLock = () => { beep(880, 0.12, 'triangle', 0.15); beep(1320, 0.18, 'triangle', 0.1, 0.06); };
+        const sndDone = () => [523, 659, 784, 1047].forEach((f, i) => beep(f, 0.22, 'triangle', 0.13, i * 0.09));
+        function drSndRender() {
+            const box = document.getElementById('draw-snd');
+            if (box) box.innerHTML = `<button type="button" data-da="snd" style="font-size:12px;font-weight:700;padding:4px 10px;border-radius:9999px;background:${SND.on ? '#3b4d43' : '#e7e4db'};color:${SND.on ? '#fff' : '#3b4d43'}">${SND.on ? '🔊 音效開啟' : '🔇 音效關閉'}</button>`;
+        }
+        const drRowsHtml = (finals, labels, cls, pins) => `<div class="dr-list">${finals.map((f, i) => `<div class="dr-row ${cls}${pins && pins[i] ? ' dr-pin' : ''}">${labels ? `<span class="dr-n">${labels[i]}</span>` : ''}<span class="dr-t">${escapeHtml(f)}</span></div>`).join('')}</div>`;
         function drRoll(el, finals, pool, labels, done) {
             DR.tm.forEach(t => { clearTimeout(t); clearInterval(t); }); DR.tm = [];
-            el.innerHTML = finals.map((f, i) => `<span class="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-sm font-bold bg-[#e7efe9] text-[#3b4d43] dr-roll">${labels ? `<span class="text-[10px] opacity-70 mr-1">${labels[i]}</span>` : ''}<span class="dr-t">？</span></span>`).join('');
+            el.innerHTML = `<div class="dr-list">${finals.map((f, i) => `<div class="dr-row dr-roll">${labels ? `<span class="dr-n">${labels[i]}</span>` : ''}<span class="dr-t">？</span></div>`).join('')}</div>`;
+            const rows = el.querySelectorAll('.dr-row'), tk = setInterval(sndTick, 110);
+            DR.tm.push(tk);
             finals.forEach((f, i) => {
-                const sp = el.children[i], t = sp && sp.querySelector('.dr-t');
+                const sp = rows[i], t = sp && sp.querySelector('.dr-t');
                 if (!t) return;
                 const iv = setInterval(() => { t.textContent = pool[rnd(pool.length)]; }, 70);
                 DR.tm.push(iv);
-                DR.tm.push(setTimeout(() => { clearInterval(iv); t.textContent = f; sp.classList.remove('dr-roll'); sp.classList.add('dr-lock'); if (i === finals.length - 1 && done) done(); }, 800 + i * 450));
+                DR.tm.push(setTimeout(() => {
+                    clearInterval(iv); t.textContent = f; sp.classList.remove('dr-roll'); sp.classList.add('dr-lock'); sndLock();
+                    if (i === finals.length - 1) { clearInterval(tk); setTimeout(sndDone, 250); if (done) done(); }
+                }, 800 + i * 450));
             });
         }
         function drPublish(rec) {
@@ -5456,13 +5489,12 @@
             const H = DR.hist, r = H[H.length - 1];
             if (!r) { box.innerHTML = ''; return; }
             const lab = (x) => `${x.type === 'order' ? '🔀 排序' : '🎡 隨機挑選'}・${drTime(x.ts)}・${escapeHtml(x.byName || '')}`;
-            const chip = 'display:inline-block;padding:6px 12px;border-radius:9999px;font-size:14px;font-weight:700;background:#e7efe9;color:#3b4d43;white-space:nowrap';
             const cbtn = 'font-size:12px;font-weight:700;padding:4px 10px;border-radius:9999px;background:#e7e4db;color:#3b4d43';
             const lbls = r.type === 'order' ? drLabels(r.blocks || []) : null;
             const hist = H.slice(0, -1).reverse().map((x, j) => `<div style="border-top:1px solid #f1e8c8;padding:6px 0;display:flex;justify-content:space-between;gap:8px;align-items:center"><div style="min-width:0"><div style="font-size:11px;color:#6b7280">${lab(x)}</div><div style="font-size:13px;font-weight:700;color:#3b4d43;word-break:break-all">${escapeHtml(drText(x))}</div></div><button type="button" data-da="lcopy" data-i="${H.length - 2 - j}" style="${cbtn};flex-shrink:0">📋 複製</button></div>`).join('');
             box.innerHTML = `<div style="margin-top:12px;background:#fffbeb;border-radius:12px;padding:10px 12px">
                 <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:11px;color:#6b7280">最新抽籤・${lab(r)}</span><button type="button" data-da="lcopy" data-i="${H.length - 1}" style="${cbtn};flex-shrink:0">📋 複製</button></div>
-                <div id="draw-live-res" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${drFinals(r).map((f, i) => `<span style="${chip}">${lbls ? `<span style="font-size:10px;opacity:.7;margin-right:4px">${lbls[i]}</span>` : ''}${escapeHtml(f)}</span>`).join('')}</div>
+                <div id="draw-live-res" style="margin-top:8px">${drRowsHtml(drFinals(r), lbls, 'dr-done')}</div>
                 ${H.length > 1 ? `<button type="button" data-da="hist" style="margin-top:8px;font-size:12px;color:#6b7280">🕘 歷史紀錄（${H.length - 1}）${DR.showHist ? '▲' : '▼'}</button>${DR.showHist ? `<div style="margin-top:4px">${hist}</div>` : ''}` : ''}</div>`;
             if (play) {
                 const el = document.getElementById('draw-live-res'), fin = drFinals(play);
@@ -5526,7 +5558,7 @@
             DR.fixed = Object.fromEntries(Object.entries(DR.fixed).filter(([i, id]) => +i < n && DR.sel.has(id)));
             const where = (id) => Object.keys(DR.fixed).find(i => DR.fixed[i] === id);
             const slots = sel.map((_, i) => `<div class="flex items-center gap-2"><span class="sticky left-0 z-[1] w-5 py-1.5 bg-[#fcfbf8] text-xs font-bold text-gray-500 text-right shrink-0">${i + 1}</span><div class="flex flex-nowrap gap-1.5">${sel.map(p => { const w = where(p.id); return `<button type="button" data-da="pin" data-i="${i}" data-id="${p.id}" class="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold border ${w == i ? 'bg-[#b08758] text-white border-[#b08758]' : (w !== undefined ? 'bg-gray-100 text-gray-300 border-gray-200' : 'bg-white text-[#3b4d43] border-gray-300')}">${escapeHtml(p.name)}</button>`; }).join('')}</div></div>`).join('');
-            const ord = DR.blocks && DR.ord && DR.ord.length === n ? (() => { let k = 0; return `<div id="dr-ord" class="flex flex-nowrap gap-1.5 overflow-x-auto pb-1">${DR.blocks.map((b) => { const i = k; k += b.length; const fx = b.length === 1 && DR.ordFix.includes(i); return `<span class="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-sm font-bold ${fx ? 'bg-[#b08758] text-white' : 'bg-[#e7efe9] text-[#3b4d43]'}"><span class="text-[10px] opacity-70 mr-1">${i + 1}${b.length > 1 ? '-' + (i + b.length) : ''}</span>${escapeHtml(drBlockName(b))}</span>`; }).join('')}</div>`; })() : '';
+            const ord = DR.blocks && DR.ord && DR.ord.length === n ? (() => { let k = 0; const pins = DR.blocks.map((b) => { const i = k; k += b.length; return b.some((_, d) => DR.ordFix.includes(i + d)); }); return `<div id="dr-ord">${drRowsHtml(DR.blocks.map(drBlockName), drLabels(DR.blocks), 'dr-done', pins)}</div>`; })() : '';
             DR.groups = DR.groups.map(g => g.filter(id => DR.sel.has(id))).filter(g => g.length > 1);
             const inGrp = new Set(DR.groups.flat()), gb = 'px-3 py-1.5 rounded-full text-xs font-bold border';
             const grpHtml = `<p class="text-[11px] text-gray-500 mb-1.5">🔗 綁定相鄰：綁定的人排序後會排在一起，組內順序隨機。</p><div class="flex flex-wrap gap-1.5 mb-3">${DR.groups.map((g, i) => `<span class="${gb} bg-[#e7efe9] text-[#3b4d43] border-gray-200">${escapeHtml(g.map(drName).join('+'))} <button type="button" data-da="ungrp" data-i="${i}" aria-label="取消綁定">✕</button></span>`).join('')}${DR.bind ? sel.filter(p => !inGrp.has(p.id)).map(p => `<button type="button" data-da="bindp" data-id="${p.id}" class="${gb} ${DR.bind.has(p.id) ? 'bg-[#b08758] text-white border-[#b08758]' : 'bg-white text-gray-500 border-gray-300'}">${escapeHtml(p.name)}</button>`).join('') + `<button type="button" data-da="bindok" class="${gb} bg-[#3b4d43] text-white border-[#3b4d43]">完成綁定</button><button type="button" data-da="bindx" class="${gb} bg-white text-gray-500 border-gray-300">取消</button>` : `<button type="button" data-da="bindnew" class="${gb} bg-white text-gray-500 border-gray-300" style="border-style:dashed">＋ 新增綁定</button>`}</div>`;
@@ -5551,6 +5583,7 @@
             const el = document.getElementById('draw-wheel'), resEl = document.getElementById('draw-res');
             if (!el) { DR.res = win; drPublish({ type: 'pick', pool: pool.map(p => p.name), win: win.map(drName) }); return drawRender(); }
             const dur = k === 1 ? 4 : 2.2, turns = k === 1 ? 1800 : 720;
+            const ticks = () => { let t = 0; while (t < dur * 1000) { DR.tm.push(setTimeout(sndTick, t)); t += 55 + Math.pow(t / (dur * 1000), 2) * 420; } };
             DR.res = []; DR.spin = true;
             if (resEl) resEl.innerHTML = '';
             let i = 0;
@@ -5560,6 +5593,7 @@
                 const delta = (((-(w + .5 + jit) * a - DR.rot) % 360) + 360) % 360;
                 const target = DR.rot + turns + delta;
                 void el.getBoundingClientRect();
+                ticks();
                 el.style.transition = `transform ${dur}s cubic-bezier(.12,.6,.1,1)`;
                 el.style.transform = `rotate(${target}deg)`;
                 setTimeout(() => {
@@ -5567,7 +5601,8 @@
                     el.style.transition = 'none'; el.style.transform = `rotate(${DR.rot}deg)`;
                     DR.res = win.slice(0, ++i);
                     if (resEl) resEl.innerHTML = drResHtml(DR.res);
-                    if (i < k) setTimeout(step, 450); else { DR.spin = false; drPublish({ type: 'pick', pool: pool.map(p => p.name), win: win.map(drName) }); drawRender(); }
+                    sndLock();
+                    if (i < k) setTimeout(step, 450); else { setTimeout(sndDone, 250); DR.spin = false; drPublish({ type: 'pick', pool: pool.map(p => p.name), win: win.map(drName) }); drawRender(); }
                 }, dur * 1000 + 50);
             };
             step();
@@ -5575,30 +5610,43 @@
         function drawShuffle() {
             const sel = DR.people.filter(p => DR.sel.has(p.id)), n = sel.length, ids = sel.map(p => p.id);
             const grp = DR.groups.map(g => g.filter(id => DR.sel.has(id))).filter(g => g.length > 1), inG = new Set(grp.flat());
+            const pins = Object.entries(DR.fixed).filter(([i]) => +i < n).map(([i, id]) => [+i, id]);
             let out = null;
-            for (let t = 0; t < 30 && !out; t++) {
+            for (let t = 0; t < 40 && !out; t++) {
                 const o = new Array(n).fill(null);
-                Object.entries(DR.fixed).forEach(([i, id]) => { if (+i < n && !inG.has(id)) o[+i] = id; });
+                pins.forEach(([i, id]) => { if (!inG.has(id)) o[i] = id; });
                 let ok = true;
-                for (const g of shuffle(grp)) {
-                    const m = shuffle(g), st = [];
-                    for (let s = 0; s + m.length <= n; s++) if (o.slice(s, s + m.length).every(x => x === null)) st.push(s);
+                const pinned = grp.filter(g => pins.some(([, id]) => g.includes(id))), loose = grp.filter(g => !pinned.includes(g));
+                for (const g of [...shuffle(pinned), ...shuffle(loose)]) {
+                    const ranks = pins.filter(([, id]) => g.includes(id)).map(([i]) => i), fixedIn = new Map(pins.filter(([, id]) => g.includes(id)).map(([i, id]) => [i, id])), st = [];
+                    for (let s0 = 0; s0 + g.length <= n; s0++) {
+                        if (ranks.some(r => r < s0 || r >= s0 + g.length)) continue;
+                        let free = true;
+                        for (let d = 0; d < g.length; d++) { const v = o[s0 + d]; if (v !== null && !fixedIn.has(s0 + d)) free = false; }
+                        if (free) st.push(s0);
+                    }
                     if (!st.length) { ok = false; break; }
-                    const s = st[rnd(st.length)];
-                    m.forEach((id, k) => { o[s + k] = id; });
+                    const s0 = st[rnd(st.length)], rest = shuffle(g.filter(id => ![...fixedIn.values()].includes(id)));
+                    for (let d = 0; d < g.length; d++) o[s0 + d] = fixedIn.get(s0 + d) || rest.shift();
                 }
                 if (ok) out = o;
             }
             if (!out) { DR.omsg = '指定名次與綁定衝突，請取消部分指定名次後再試。'; return drawRender(); }
             const rest = shuffle(ids.filter(id => !out.includes(id)));
             DR.ord = out.map(x => x || rest.shift());
-            DR.ordFix = Object.keys(DR.fixed).map(Number).filter(i => i < n && !inG.has(DR.fixed[i]));
+            DR.ordFix = pins.map(([i]) => i);
             const blocks = [];
             for (let i = 0; i < n;) { const g = grp.find(x => x.includes(DR.ord[i])), len = g ? g.length : 1; blocks.push(DR.ord.slice(i, i + len)); i += len; }
             DR.blocks = blocks; DR.animOrd = true; DR.omsg = '';
             drPublish({ type: 'order', blocks: blocks.map(b => b.map(drName)) });
             drawRender();
         }
+        (function () {
+            const sb = document.getElementById('draw-snd');
+            if (!sb) return;
+            sb.addEventListener('click', (e) => { if (e.target.closest('button[data-da="snd"]')) { SND.on = !SND.on; if (SND.on) sndLock(); drSndRender(); } });
+            drSndRender();
+        })();
         (function () {
             const lv = document.getElementById('draw-live');
             if (!lv) return;
@@ -5624,13 +5672,12 @@
                 else if (a === 'bindx') DR.bind = null;
                 else if (a === 'bindok') {
                     if (!DR.bind || DR.bind.size < 2) DR.omsg = '至少要選 2 個人才能綁定。';
-                    else { const g = DR.people.filter(p => DR.bind.has(p.id)).map(p => p.id); DR.groups.push(g); Object.keys(DR.fixed).forEach(k => { if (g.includes(DR.fixed[k])) delete DR.fixed[k]; }); DR.bind = null; DR.ord = DR.blocks = null; }
+                    else { const g = DR.people.filter(p => DR.bind.has(p.id)).map(p => p.id); DR.groups.push(g); DR.bind = null; DR.ord = DR.blocks = null; }
                 }
                 else if (a === 'ungrp') { DR.groups.splice(+b.dataset.i, 1); DR.ord = DR.blocks = null; }
                 else if (a === 'ocopy') { if (DR.blocks) drCopy(DR.blocks.map(drBlockName).join('>'), b); return; }
                 else if (a === 'pin') {
                     const id = b.dataset.id, i = b.dataset.i;
-                    if (DR.groups.some(g => g.includes(id))) { DR.omsg = '已綁定的人不能指定名次，請先取消綁定。'; return drawRender(); }
                     if (DR.fixed[i] === id) delete DR.fixed[i];
                     else { Object.keys(DR.fixed).forEach(k => { if (DR.fixed[k] === id) delete DR.fixed[k]; }); DR.fixed[i] = id; }
                     DR.ord = DR.blocks = null;
