@@ -105,9 +105,34 @@
             receipt: {
                 name: (String(raw.name || '').trim() || [store, date].filter(Boolean).join(' ') || '未命名收據').slice(0, 50),
                 store, date, taxMode: raw.taxMode === 'incl' || raw.taxMode === 'included' ? 'incl' : 'excl',
-                couponPercent: cp >= 0 && cp <= 100 ? cp : 0, total: total > 0 ? total : null, refund: refund >= 0 ? refund : null, itemCount: ic > 0 ? Math.floor(ic) : null, items
+                couponPercent: cp >= 0 && cp <= 100 ? cp : 0, discounts: (Array.isArray(raw.discounts) ? raw.discounts : []).map((d) => ({ name: String((d && d.name) || '折扣').trim().slice(0, 30), amount: Math.round(Math.abs(parseNum(d && d.amount))) })).filter((d) => d.amount > 0).slice(0, 10), total: total > 0 ? total : null, refund: refund >= 0 ? refund : null, itemCount: ic > 0 ? Math.floor(ic) : null, items
             }
         };
+    }
+    const fixedDisc = (r) => (r.discounts || []).reduce((a, d) => a + d.amount, 0);
+    const discText = (r) => (r.discounts || []).map((d) => `${d.name} −¥${d.amount.toLocaleString('en-US')}`).join('、');
+    // 同一次匯入裡內容相同的收據（店名、日期、合計、品項都一樣）：回傳 [先出現的索引, 重複的索引]
+    function findDupes(list) {
+        const seen = new Map(), out = [];
+        list.forEach((r, i) => {
+            const k = [(r.store || '').trim(), r.date || '', r.total || 0, r.items.map((it) => [it.jp, it.unit, it.qty].join('~')).sort().join('|')].join('#');
+            if (seen.has(k)) out.push([seen.get(k), i]); else seen.set(k, i);
+        });
+        return out;
+    }
+    // 把收據分到草稿：一張收據不拆開，每份草稿盡量不超過 cap 項（單張超過 cap 的自成一份）；同店同日、同日優先放一起。
+    // base：目前草稿 {n: 已有項數, keys: ['店|日期'], dates: [日期]}；回傳 [放進目前草稿的收據, 第二份, …]
+    function packReceipts(list, cap, base) {
+        const mk = (b) => ({ n: (b && b.n) || 0, rs: [], keys: new Set((b && b.keys) || []), dates: new Set((b && b.dates) || []) });
+        const bins = [mk(base)];
+        list.forEach((r) => {
+            const c = r.items.length, st = (r.store || '').trim(), sk = st ? st + '|' + (r.date || '') : '', dk = r.date || '';
+            const ok = bins.filter((b) => b.n === 0 || b.n + c <= cap);
+            let b = (sk && ok.find((x) => x.keys.has(sk))) || (dk && ok.find((x) => x.dates.has(dk))) || ok[0];
+            if (!b) { b = mk(); bins.push(b); }
+            b.rs.push(r); b.n += c; if (sk) b.keys.add(sk); if (dk) b.dates.add(dk);
+        });
+        return bins.map((b) => b.rs);
     }
     function taxLabel(r) {
         const m = new Set(r.items.map((i) => i.taxMode || r.taxMode));
@@ -132,8 +157,8 @@
         let over = !!(r.itemCount && qty > r.itemCount);
         if (!(r.total > 0)) w.push('沒有收據合計，無法核對是否漏拍或混入別張');
         else if (disc < 1 || !(r.couponPercent > 0)) {
-            const gross = calcPerson(items.map((item) => ({ item, n: item.qty })), { basis: 'before', taxMode: r.taxMode, disc }).gross, diff = gross - r.total;
-            if (Math.abs(diff) > 5) { over = over || diff > 0; w.push(`金額對不上：品項加總 ¥${gross.toLocaleString('en-US')}，收據 ¥${r.total.toLocaleString('en-US')}（${diff < 0 ? `少 ¥${-diff}，可能漏拍上／下半部` : `多 ¥${diff}，可能混入別張或重複拍到`}）`); }
+            const gross = calcPerson(items.map((item) => ({ item, n: item.qty })), { basis: 'before', taxMode: r.taxMode, disc }).gross - fixedDisc(r), diff = gross - r.total;
+            if (Math.abs(diff) > 5) { over = over || diff > 0; w.push(`金額對不上：品項加總${fixedDisc(r) ? '（已扣折扣）' : ''} ¥${gross.toLocaleString('en-US')}，收據 ¥${r.total.toLocaleString('en-US')}（${diff < 0 ? `少 ¥${-diff}，可能漏拍上／下半部` : `多 ¥${diff}，可能混入別張或重複拍到`}）`); }
         }
         if (r.refund != null) {
             const rf = calcPerson(items.map((item) => ({ item, n: item.qty })), { basis: 'before', taxMode: r.taxMode, disc }).refund, d = rf - r.refund;
@@ -201,7 +226,7 @@
         return [
             '你是收據資料整理助手。我會附上日本購物收據的照片（可能有多張，是同一張收據的不同段落）。請把所有品項整理成下面格式的 JSON。請只輸出一個 json 程式碼區塊，欄位名稱不要改。',
             '', 'JSON 格式：', '{', '  "receipt": {', '    "name": "店名 日期（例如：唐吉訶德米子店 2026-11-05）",', '    "store": "店名",', '    "date": "YYYY-MM-DD",',
-            '    "taxMode": "excl",', '    "couponPercent": 0,', '    "receiptTotal": 0,', '    "receiptRefund": null,', '    "itemCount": 0,', '    "items": [',
+            '    "taxMode": "excl",', '    "couponPercent": 0,', '    "discounts": [],', '    "receiptTotal": 0,', '    "receiptRefund": null,', '    "itemCount": 0,', '    "items": [',
             '      {"jp": "收據上的原文品名", "zh": "簡短中文品名（可推測）", "unit": 249, "qty": 1, "star": true, "rate": 8' + (withCat ? ', "cat": "餐飲"' : '') + '}', '    ]', '  }', '}', '',
             '欄位規則：',
             '1. items：每個品項一筆。收據寫「3コ×単227 ¥681」就是 unit=227、qty=3。同名但條碼不同的品項要分成兩筆。品名前的部門碼（如 0101、0055）和單獨一行的條碼數字不是品項，品名請去掉這些數字。收據只有一行總價、沒有「單價×數量」時，unit 填該行總價、qty 填 1，品名裡的「9枚」「9コ」等入數留在品名，不要拿來當 qty。',
@@ -209,7 +234,7 @@
             '3. taxMode：品項價格是未稅（合計 ＝ 小計 ＋ 稅額）填 "excl"；價格已含稅（內稅／税込）填 "incl"。請用「小計、稅額、合計」是否相加成立來判斷。價格後面的「外」是外稅、「内」是內稅標記。若同一張收據內有些品項外稅、有些內稅（收據會分別列出「外稅對象額」與「內稅對象額」），收據的 taxMode 填大多數品項的，與它不同的品項各自加上 "taxMode": "incl" 或 "excl"。',
             '4. rate：消費稅率，只填 8 或 10。請看這張收據自己的註腳，找出哪個標記代表軽減稅率（8%）：常見有「*」「軽」「※」「◆」，食品飲料（酒類除外）通常是 8，其餘是 10。若註腳說明某標記是別的意思（例如「*印はセルフメディケーション対象」），不要當成 8%。',
             '5. star：該品項是否為觀光客退稅（免稅）對象。只有收據明確標示免稅／退稅的品項才填 true，其餘一律填 false。注意「★は免税事業者の標準税率商品」是指店家為免稅事業者，不是退稅標記，請填 false。',
-            '6. couponPercent：收據上的整單折扣百分比（例如「クーポン割引 5%」填 5），沒有填 0。若折扣是固定金額而不是百分比，填 0，並在 JSON 外面告訴我金額。',
+            '6. couponPercent：收據上的整單折扣百分比（例如「クーポン割引 5%」填 5），沒有填 0。固定金額的折扣、クーポン、ポイント利用、端數値引等，每一項放進 discounts，例如 [{"name": "クーポン", "amount": 100}]，amount 填正整數日圓（折掉的金額），沒有就填 []。',
             '7. receiptTotal：收據最終合計（含稅總額，日圓整數）。receiptRefund：收據上的免稅返金額／退稅額，沒有就填 null。',
             '8. 請自行核對：所有品項 unit × qty 加總要等於收據的折扣前小計，總件數要等於收據的點數。不一致時，請在 JSON 外面列出可能漏掉或看錯的品項。',
             '9. 看不清楚的品名請用最接近的文字，並在 JSON 外面標註。',
@@ -369,6 +394,7 @@
                 <div class="lg-seg sm lg-mt">${[['before', '免稅前（含稅價）'], ['after', '免稅後（扣預計退稅）']].map(([bk, l]) => `<button type="button" data-a="p-basis" data-k="${k}" data-v="${bk}" class="${x.basis === bk ? 'on' : ''}">${l}</button>`).join('')}</div>
                 ${cp}
                 ${warns.map((w) => `<p class="ld-note warn">⚠️ ${esc(w)}</p>`).join('')}
+                ${(r.couponPercent > 0 || fixedDisc(r)) ? `<p class="lg-muted">🏷️ 折扣／優惠：${esc([r.couponPercent > 0 ? `整單折扣 ${r.couponPercent}%（${x.coupon ? '已套用' : '未套用'}）` : '', discText(r)].filter(Boolean).join('、'))}${fixedDisc(r) ? '。固定金額折扣不會分攤到品項，品項金額為折扣前' : ''}</p>` : ''}
                 <p class="lg-muted">${esc(taxSum(x))}</p>
                 <p class="ld-sec">各品項分類（取消勾選＝不記這一項）</p>
                 <div class="ld-items">${r.items.map((it, i) => `<div class="ld-item"><input type="checkbox" data-a="p-on" data-k="${k}" data-i="${it.id}" ${x.off[it.id] ? '' : 'checked'} aria-label="記入"><div class="ld-i"><b>${esc(it.zh && it.zh !== it.jp ? it.zh : it.jp)}</b><small class="ld-meta">${yen(it.unit)} × ${it.qty}・稅 ${yen(taxOf(x, it).tax)}<button type="button" class="ld-tg" data-a="p-rate" data-k="${k}" data-i="${it.id}">${it.rate}%</button><button type="button" class="ld-tg ${it.star ? 'on' : ''}" data-a="p-star" data-k="${k}" data-i="${it.id}">${it.star ? '★ 退稅' : '不退稅'}</button></small>${x.flag[it.id] ? `<small class="ld-flag">AI 填「${esc(x.flag[it.id])}」不在分類清單，已先歸「${esc(dflt)}」</small>` : ''}</div><div class="ldp-r"><b>${yen(am[i])}</b><select class="lg-in ldp-cat" data-a="p-cat" data-k="${k}" data-i="${it.id}">${cats.map((c) => `<option value="${esc(c)}" ${x.cat[it.id] === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div></div>`).join('')}</div></div>`;
@@ -380,18 +406,31 @@
         function doImport(text, from) {
             const p = parseReceipts(text, false);
             if (p.error) { say(`匯入失敗${from ? '（' + from + '）' : ''}：${p.error}`, true); return; }
+            let list = p.receipts, skipped = 0;
+            const dup = findDupes(list);
+            if (dup.length && confirm(`這次匯入有 ${dup.length} 張收據看起來重複（店名、日期、品項、合計都相同）：\n${dup.map(([i, j]) => `第 ${i + 1} 張與第 ${j + 1} 張「${list[i].name}」`).join('\n')}\n\n按「確定」略過重複的，按「取消」全部保留。`)) {
+                const drop = new Set(dup.map((d) => d[1]));
+                list = list.filter((_, i) => !drop.has(i)); skipped = drop.size;
+            }
             if (st.receipts.length && st.target === 'new') { keepP(); Object.assign(st, fresh()); }
-            let nf = 0, nw = 0;
-            p.receipts.forEach((r) => {
-                const x = { key: rk(), receipt: r, name: r.name, date: r.date || opts.today || '', pay: (st.receipts[st.receipts.length - 1] || {}).pay || '', basis: 'before', coupon: true, cat: {}, flag: {}, off: {} };
-                r.items.forEach((it) => { if (cats.includes(it.cat)) x.cat[it.id] = it.cat; else { x.cat[it.id] = dflt; if (it.cat) x.flag[it.id] = it.cat; } });
-                nf += Object.keys(x.flag).length; nw += checkReceipt(r, true).length;
-                st.receipts.push(x);
+            const first = st.receipts[0] || {}, pay0 = first.pay || '', basis0 = first.basis || 'before';
+            const base = { n: st.receipts.reduce((a, x) => a + x.receipt.items.length, 0), keys: st.receipts.filter((x) => (x.receipt.store || '').trim()).map((x) => x.receipt.store.trim() + '|' + (x.receipt.date || '')), dates: st.receipts.map((x) => x.receipt.date).filter(Boolean) };
+            let nf = 0, nw = 0, extra = 0;
+            packReceipts(list, 10, base).forEach((g, gi) => {
+                if (!g.length) return;
+                const xs = g.map((r) => {
+                    const x = { key: rk(), receipt: r, name: r.name, date: r.date || opts.today || '', pay: pay0, basis: basis0, coupon: true, cat: {}, flag: {}, off: {} };
+                    r.items.forEach((it) => { if (cats.includes(it.cat)) x.cat[it.id] = it.cat; else { x.cat[it.id] = dflt; if (it.cat) x.flag[it.id] = it.cat; } });
+                    nf += Object.keys(x.flag).length; nw += checkReceipt(r, true).length;
+                    return x;
+                });
+                if (gi === 0) st.receipts.push(...xs);
+                else { const d = Object.assign(fresh(), { receipts: xs }); PDB.drafts[d.id] = d; extra++; }
             });
             st.target = 'add';
             renderMain();
-            say([`已匯入 ${p.receipts.length} 張收據：${p.receipts.map((r) => `「${r.name}」${r.items.length} 項`).join('、')}。`, p.errs.length ? `有 ${p.errs.length} 張無法匯入：${p.errs.join('；')}` : '', nf ? `${nf} 項的分類不在清單內，已先歸「${dflt}」，請確認。` : '', nw ? '⚠️ 有收據可能不完整，請看各張收據下方的警告（仍可繼續）。' : ''].filter(Boolean).join('\n'), p.errs.length > 0 || nf > 0 || nw > 0);
-            keepP();
+            say([`已匯入 ${list.length} 張收據：${list.map((r) => `「${r.name}」${r.items.length} 項`).join('、')}。`, skipped ? `已略過 ${skipped} 張重複收據。` : '', extra ? `每份草稿最多約 10 項（一張收據不拆開），已多分出 ${extra} 份草稿，在「待處理的收據匯入」清單裡。` : '', p.errs.length ? `有 ${p.errs.length} 張無法匯入：${p.errs.join('；')}` : '', nf ? `${nf} 項的分類不在清單內，已先歸「${dflt}」，請確認。` : '', nw ? '⚠️ 有收據可能不完整，請看各張收據下方的警告（仍可繼續）。' : ''].filter(Boolean).join('\n'), p.errs.length > 0 || nf > 0 || nw > 0);
+            keepP(); flushP();
             $('#ldp-imp').open = false;
             $('#ldp-paste').value = '';
         }
@@ -403,12 +442,12 @@
             if (a === 'p-close') closePersonal();
             else if (a === 'p-import') doImport($('#ldp-paste').value);
             else if (a === 'p-target') { st.target = b.dataset.v; renderTarget(); }
-            else if (a === 'p-pay' && x) { x.pay = b.dataset.v; keepP(); renderMain(); }
+            else if (a === 'p-pay' && x) { st.receipts.forEach((y) => { y.pay = b.dataset.v; }); keepP(); renderMain(); }
             else if ((a === 'p-rate' || a === 'p-star') && x) {
                 const it = x.receipt.items.find((y) => y.id === +b.dataset.i);
                 if (it) { if (a === 'p-star') it.star = !it.star; else it.rate = it.rate === 8 ? 10 : 8; keepP(); renderMain(); }
             }
-            else if (a === 'p-basis' && x) { x.basis = b.dataset.v; keepP(); renderMain(); }
+            else if (a === 'p-basis' && x) { st.receipts.forEach((y) => { y.basis = b.dataset.v; }); keepP(); renderMain(); }
             else if (a === 'p-rm' && x) {
                 if (!confirm(`移除「${x.name || x.receipt.name}」這張收據？`)) return;
                 st.receipts = st.receipts.filter((y) => y !== x);
@@ -435,7 +474,7 @@
             else if (d.a === 'p-cat') { x.cat[+d.i] = t.value; keepP(); }
             else if (d.a === 'p-on') { if (t.checked) delete x.off[+d.i]; else x.off[+d.i] = true; keepP(); renderFoot(); }
             else if (d.a === 'p-coupon') { x.coupon = t.checked; keepP(); renderMain(); }
-            else if (d.a === 'p-date') { x.date = t.value; keepP(); renderFoot(); }
+            else if (d.a === 'p-date') { st.receipts.forEach((y) => { y.date = t.value; }); keepP(); renderMain(); }
         });
         el.addEventListener('input', (ev) => { const t = ev.target, x = t.dataset && t.dataset.a === 'p-name' && byKey(t.dataset.k); if (x) { x.name = t.value; keepP(); } });
         renderMain();
@@ -543,6 +582,7 @@
             const cp = r.couponPercent > 0 ? `<label class="ld-chk"><input type="checkbox" data-a="coupon" ${st.coupon ? 'checked' : ''}> 套用收據上的 ${r.couponPercent}% 折扣</label>` : '';
             const q = items().reduce((a, i) => a + i.qty, 0);
             box.innerHTML = `<p class="lg-h">${esc(r.name)}<small>　${items().length} 項／${q} 件・價格為${taxLabel(r)}${r.total ? '・收據合計 ' + yen(r.total) : ''}</small></p>
+                ${r.discounts && r.discounts.length ? `<p class="lg-muted">🏷️ 收據折扣／優惠：${esc(discText(r))}（僅供參考，不影響分帳金額）</p>` : ''}
                 <div class="lg-seg sm">${[['before', '免稅前（含稅價）'], ['after', '免稅後（扣預計退稅）']].map(([k, l]) => `<button type="button" data-a="basis" data-v="${k}" class="${st.basis === k ? 'on' : ''}">${l}</button>`).join('')}</div>
                 <p class="lg-muted">${st.basis === 'before' ? '依刷卡當下的價格記帳，預計退稅會一併記下，旅程結束後可在支出明細用「退稅分配」還給大家。' : '直接扣掉預計退稅後記帳，之後不需要再分配退稅。'}</p>
                 ${cp}
@@ -755,5 +795,5 @@
         const o = curOpts; cur = curOpts = null;
         if (o && o.onClose) o.onClose();
     }
-    return { open, close, openPersonal, closePersonal, listPersonal, removePersonal, itemAmounts, parseReceipts, list, remove, calcPerson, alignTotals, fmtQty, mergeShares, buildNote, parseReceipt, parseImport, buildPrompt, parseNum, checkReceipt };
+    return { open, close, openPersonal, closePersonal, listPersonal, removePersonal, itemAmounts, packReceipts, findDupes, parseReceipts, list, remove, calcPerson, alignTotals, fmtQty, mergeShares, buildNote, parseReceipt, parseImport, buildPrompt, parseNum, checkReceipt };
 });
