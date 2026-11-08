@@ -183,6 +183,13 @@
         }
         return String(Math.round(n * 100) / 100);
     }
+    // 品項分配 = 手動分配的件數 + 每筆平分（k 件平均分給 ids）
+    function mergeShares(man, batches) {
+        const o = {};
+        Object.entries(man || {}).forEach(([p, n]) => { if (n > 1e-6) o[p] = (o[p] || 0) + n; });
+        (batches || []).forEach((b) => { if (b.ids && b.ids.length) b.ids.forEach((p) => { o[p] = (o[p] || 0) + b.k / b.ids.length; }); });
+        return o;
+    }
     function buildPrompt(cats, multi) {
         const withCat = Array.isArray(cats) && cats.length;
         return [
@@ -459,8 +466,31 @@
         const cfg = () => { const r = st.receipt; return { basis: st.basis, taxMode: r.taxMode, disc: st.coupon && r.couponPercent > 0 ? 1 - r.couponPercent / 100 : 1 }; };
         const edited = (it) => { const m = []; if (it.rate0 != null && it.rate !== it.rate0) m.push(`稅率原 ${it.rate0}%`); if (it.star0 != null && it.star !== it.star0) m.push(`退稅原${it.star0 ? '為 ★' : '為不退稅'}`); return m.length ? `<span class="ld-edt">✎ 已手動改（${m.join('、')}）</span>` : ''; };
         const shut = {};
-        let itemsShut = false, splitIid = null;
-        const splitSel = new Set(), bulkSel = new Set();
+        let itemsShut = false, splitIid = null, amode = 'manual', confirmK = null, editIid = null, draft = null, editErr = '';
+        const splitSel = new Set(), bulkSel = new Set(), pickSel = new Set(), pot = {};
+        st.man = st.man || {}; st.spl = st.spl || {};
+        const manOf = (iid) => st.man[iid] || {}, splOf = (iid) => st.spl[iid] || [];
+        const manTot = (iid) => Object.values(manOf(iid)).reduce((a, b) => a + b, 0), splTot = (iid) => splOf(iid).reduce((a, b) => a + b.k, 0);
+        const hasMan = (iid) => manTot(iid) > EPS, lockedIt = (it) => splTot(it.id) > EPS && remain(it) === 0;
+        const potOf = (it) => { const r = remain(it), v = pot[it.id] == null ? r : pot[it.id]; return Math.max(Math.min(v, r), Math.min(1, r)); };
+        function recompute(iid) { const o = mergeShares(manOf(iid), splOf(iid)); if (Object.keys(o).length) st.assign[iid] = o; else delete st.assign[iid]; }
+        // 匯入、清除等動作直接改了 assign 時，把它當成手動分配重建
+        function normalize() {
+            items().forEach((it) => {
+                const a = st.assign[it.id] || {}, d = mergeShares(manOf(it.id), splOf(it.id)), ks = new Set([...Object.keys(a), ...Object.keys(d)]);
+                if ([...ks].some((k) => Math.abs((a[k] || 0) - (d[k] || 0)) > EPS)) { delete st.spl[it.id]; if (Object.keys(a).length) st.man[it.id] = { ...a }; else delete st.man[it.id]; }
+            });
+        }
+        function setMan(iid, pid, n) {
+            const it = items().find((x) => x.id === iid); if (!it) return;
+            n = Math.max(0, Math.min(n, (manOf(iid)[pid] || 0) + remain(it)));
+            st.man[iid] = st.man[iid] || {};
+            if (n > EPS) st.man[iid][pid] = n; else delete st.man[iid][pid];
+            if (!hasMan(iid)) delete st.man[iid];
+            recompute(iid);
+        }
+        function addBatch(iid, ids, k) { (st.spl[iid] = st.spl[iid] || []).push({ k, ids: [...ids] }); delete pot[iid]; recompute(iid); }
+        const dMax = (it, ri) => it.qty - manTot(it.id) - draft.reduce((a, b, j) => a + (j === ri ? 0 : b.k), 0);
         // 每人結果；品項全部分完、收據有合計、折扣設定一致、差距在 5 円內時，把每人金額對齊收據合計
         const rows = () => {
             const S = cfg(), r = st.receipt, out = [];
@@ -475,24 +505,21 @@
             return out;
         };
         const color = (pid) => COLORS[Math.max(0, people.findIndex((p) => p.id === pid)) % COLORS.length];
-        function setQty(iid, pid, n) {
-            const it = items().find((x) => x.id === iid); if (!it) return;
-            n = Math.max(0, Math.min(n, it.qty - (tot(iid) - asg(iid, pid))));
-            const row = st.assign[iid] = st.assign[iid] || {};
-            if (n > EPS) row[pid] = n; else delete row[pid];
-        }
-        function doSplit(iid, ids) {
-            const it = items().find((x) => x.id === iid), n = ids.length;
-            if (!it) return;
-            if (n < 2) return say('請至少選 2 個人來平分。', true);
-            st.assign[iid] = {}; ids.forEach((id) => { st.assign[iid][id] = it.qty / n; });
-            splitIid = null; splitSel.clear(); renderAll();
-            say(`已平分「${it.zh || it.jp}」給 ${n} 人，每人 ${fmtQty(it.qty / n)} 件（依金額平均，最後的進位會自動對齊收據合計）。`);
-        }
         function say(t, bad) { const m = $('#ld-msg'); m.textContent = t; m.className = 'ld-msg' + (bad ? ' bad' : ''); }
 
+        function editPanel(it) {
+            const rows = draft.map((b, ri) => `<div class="ld-brow"><div class="ld-brow-h"><b>第 ${ri + 1} 筆</b><span class="ld-pot">件數 <button type="button" data-a="d-k" data-r="${ri}" data-d="-1" aria-label="減少">−</button><b>${fmtQty(b.k)}</b><button type="button" data-a="d-k" data-r="${ri}" data-d="1" aria-label="增加">＋</button></span><button type="button" class="ld-tg on" data-a="d-del" data-r="${ri}">刪除此筆</button></div>
+                <div class="lg-chips">${people.map((p) => `<button type="button" data-a="d-m" data-r="${ri}" data-id="${esc(p.id)}" class="lg-chip ${b.ids.includes(p.id) ? 'on' : ''}" style="--c:${color(p.id)}">${esc(p.name)}</button>`).join('')}</div>
+                <div class="ld-bdgs">${b.ids.length ? b.ids.map((id) => { const p = people.find((x) => x.id === id); return p ? `<span class="ld-bdg" style="--c:${color(id)}">${esc(p.name)}×${fmtQty(b.k / b.ids.length)}</span>` : ''; }).join('') : '<span class="lg-muted">尚未選人</span>'}</div></div>`).join('');
+            const sum = mergeShares(manOf(it.id), draft), cf = confirmK && confirmK.k === 'e-unsplit' && confirmK.i === it.id;
+            return `<div class="ld-split"><p class="ld-sec">編輯「${esc(it.zh || it.jp)}」的平分</p>${rows || '<p class="lg-muted">沒有平分紀錄了，儲存後會清空這個品項的平分。</p>'}
+                <div class="ld-sum"><p class="lg-muted">每人加總（含手動分配）</p><div class="ld-bdgs">${Object.keys(sum).map((id) => { const p = people.find((x) => x.id === id); return p ? `<span class="ld-bdg" style="--c:${color(id)}">${esc(p.name)}×${fmtQty(sum[id])}</span>` : ''; }).join('') || '<span class="lg-muted">無</span>'}</div></div>
+                ${editErr ? `<p class="ld-msg bad">${esc(editErr)}</p>` : ''}
+                <div class="ld-btns">${cf ? `<span class="ld-tg on">確定取消整個品項的平分？</span><button type="button" class="ld-tg sel" data-a="e-unsplit-ok" data-i="${it.id}">確定</button><button type="button" class="ld-tg" data-a="cf-no">返回</button>` : `<button type="button" class="lg-btn sm" data-a="e-save" data-i="${it.id}">儲存修改</button><button type="button" class="lg-btn sm ghost" data-a="e-back">返回</button><button type="button" class="ld-tg on" data-a="e-unsplit" data-i="${it.id}">取消平分</button>`}</div></div>`;
+        }
         function renderMain() {
             const r = st.receipt, box = $('#ld-main');
+            if (r) normalize();
             if (!r) { box.innerHTML = '<p class="lg-muted">還沒有收據。請先展開上方「匯入收據」。</p>'; return; }
             const cp = r.couponPercent > 0 ? `<label class="ld-chk"><input type="checkbox" data-a="coupon" ${st.coupon ? 'checked' : ''}> 套用收據上的 ${r.couponPercent}% 折扣</label>` : '';
             const q = items().reduce((a, i) => a + i.qty, 0);
@@ -501,20 +528,29 @@
                 <p class="lg-muted">${st.basis === 'before' ? '依刷卡當下的價格記帳，預計退稅會一併記下，旅程結束後可在支出明細用「退稅分配」還給大家。' : '直接扣掉預計退稅後記帳，之後不需要再分配退稅。'}</p>
                 ${cp}
                 <p class="lg-muted">品項右邊的「★ 退稅／不退稅」和「8%／10%」可以點一下切換，用來修正 AI 看錯的地方。</p>
-                <p class="ld-sec">分配給誰</p>
-                <div class="lg-chips">${people.map((p) => `<button type="button" data-a="pick" data-id="${esc(p.id)}" class="lg-chip ${p.id === st.active ? 'on' : ''}" style="--c:${color(p.id)}">${esc(p.name)} ${fmtQty(cnt(p.id))}</button>`).join('')}</div>
-                <p class="lg-muted">平分成員：先選人，再按下方品項的「平分 N 人」，一次分給這些人。</p>
-                <div class="lg-chips">${people.map((p) => `<button type="button" data-a="bulkp" data-id="${esc(p.id)}" class="lg-chip ${bulkSel.has(p.id) ? 'on' : ''}" style="--c:${color(p.id)}">${esc(p.name)}</button>`).join('')}<button type="button" class="lg-chip ghost" data-a="bulkall">全選</button>${bulkSel.size ? '<button type="button" class="lg-chip ghost" data-a="bulkclr">清除</button>' : ''}</div>
-                <div class="ld-btns"><button type="button" class="lg-btn sm ghost" data-a="takeall">拿走剩餘</button><button type="button" class="lg-btn sm ghost" data-a="clearp">清除此人</button><button type="button" class="lg-btn sm ghost danger" data-a="resetall">清除全部</button><button type="button" class="lg-btn sm ghost" data-a="items">${itemsShut ? '展開品項' : '全部收合'}</button></div>
+                <div class="lg-seg sm">${[['manual', '手動分配'], ['split', '選擇品項與成員']].map(([k, l]) => `<button type="button" data-a="amode" data-v="${k}" class="${amode === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+                ${amode === 'manual' ? `<p class="ld-sec">分配給誰</p>
+                <div class="lg-chips">${people.map((p) => `<button type="button" data-a="actp" data-id="${esc(p.id)}" class="lg-chip ${p.id === st.active ? 'on' : ''}" style="--c:${color(p.id)}">${esc(p.name)} ${fmtQty(cnt(p.id))}</button>`).join('')}</div>` : `<p class="ld-sec">選擇成員</p>
+                <p class="lg-muted">先選人，再勾選下方想平分的品項，按「平分」一次套用。手動分配過的品項會鎖住，要先取消手動分配。</p>
+                <div class="lg-chips">${people.map((p) => `<button type="button" data-a="bulkp" data-id="${esc(p.id)}" class="lg-chip ${bulkSel.has(p.id) ? 'on' : ''}" style="--c:${color(p.id)}">${esc(p.name)}</button>`).join('')}<button type="button" class="lg-chip ghost" data-a="bulkall">全選</button>${bulkSel.size ? '<button type="button" class="lg-chip ghost" data-a="bulkclr">清除</button>' : ''}</div>`}
+                <div class="ld-btns">${amode === 'manual' ? '<button type="button" class="lg-btn sm ghost" data-a="takeall">拿走剩餘</button><button type="button" class="lg-btn sm ghost" data-a="clearp">清除此人</button>' : ''}<button type="button" class="lg-btn sm ghost danger" data-a="resetall">清除全部</button><button type="button" class="lg-btn sm ghost" data-a="items">${itemsShut ? '展開品項' : '全部收合'}</button></div>
                 <div class="ld-items">${itemsShut ? `<p class="lg-muted">品項已收合（共 ${items().length} 項）。</p>` : items().map((it) => {
-                    const mine = asg(it.id, st.active), rem = remain(it);
+                    const mine = asg(it.id, st.active), rem = remain(it), lk = lockedIt(it), man = hasMan(it.id), sp = splTot(it.id) > EPS, picked = pickSel.has(it.id), open = splitIid === it.id;
                     const badges = people.map((p) => (asg(it.id, p.id) ? `<span class="ld-bdg" style="--c:${color(p.id)}">${esc(p.name)}×${fmtQty(asg(it.id, p.id))}</span>` : '')).join('');
+                    const cfm = (k, label) => (confirmK && confirmK.k === k && confirmK.i === it.id ? `<span class="ld-tg on">確定${label}？</span><button type="button" class="ld-tg sel" data-a="${k}-ok" data-i="${it.id}">確定</button><button type="button" class="ld-tg" data-a="cf-no">返回</button>` : '');
+                    let acts = '';
+                    if (man) acts += cfm('unman', '取消手動分配') || `<button type="button" class="ld-tg on" data-a="unman" data-i="${it.id}">🔒 取消手動分配</button>`;
+                    if (sp) acts += `<button type="button" class="ld-tg ${lk ? 'on' : ''}" data-a="edit" data-i="${it.id}">${lk ? '🔒 ' : ''}編輯已平分</button>`;
+                    if (amode === 'split' && !lk && !man) acts += `<button type="button" class="ld-tg ${picked ? 'sel' : ''}" data-a="pickit" data-i="${it.id}" ${bulkSel.size < 2 ? 'disabled' : ''}>${picked ? '☑ 已勾選' : '☐ 勾選平分'}</button><button type="button" class="ld-tg ${open ? 'sel' : ''}" data-a="split" data-i="${it.id}">自選人平分</button>`;
+                    const potUi = (picked || open) && !lk && !man && it.qty > 1 ? `<div class="ld-pot">平分件數 <button type="button" data-a="potm" data-i="${it.id}" aria-label="減少">−</button><b>${fmtQty(potOf(it))}</b><button type="button" data-a="potp" data-i="${it.id}" aria-label="增加">＋</button>／剩 ${fmtQty(rem)}</div>` : '';
                     return `<div class="ld-item ${mine ? 'sel' : ''}"><div class="ld-i"><b>${esc(it.jp)}</b>${it.zh && it.zh !== it.jp ? `<small>${esc(it.zh)}</small>` : ''}
-                        <small class="ld-meta">${yen(it.unit)} × ${it.qty}<button type="button" class="ld-tg ${it.star ? 'on' : ''}" data-a="star" data-i="${it.id}">${it.star ? '★ 退稅' : '不退稅'}</button><button type="button" class="ld-tg" data-a="rate" data-i="${it.id}">${it.rate}%</button><button type="button" class="ld-tg ${splitIid === it.id ? 'on' : ''}" data-a="split" data-i="${it.id}">平分</button>${bulkSel.size >= 2 ? `<button type="button" class="ld-tg on" data-a="splitb" data-i="${it.id}">平分 ${bulkSel.size} 人</button>` : ''}${edited(it)}${it.qty > 1 || rem !== it.qty ? `剩 ${fmtQty(rem)}` : ''}</small>${badges ? `<span class="ld-bdgs">${badges}</span>` : ''}</div>
-                        <div class="ld-step"><button type="button" data-a="dec" data-i="${it.id}" ${mine ? '' : 'disabled'} aria-label="減少">−</button><span>${fmtQty(mine)}</span><button type="button" data-a="inc" data-i="${it.id}" ${rem > 0 ? '' : 'disabled'} aria-label="增加">＋</button></div></div>${splitIid === it.id ? `<div class="ld-split"><p class="lg-muted">選擇要平分「${esc(it.zh || it.jp)}」（${it.qty} 件）的人：</p>
-                        <div class="lg-chips">${people.map((p) => `<button type="button" data-a="splitp" data-id="${esc(p.id)}" class="lg-chip ${splitSel.has(p.id) ? 'on' : ''}" style="--c:${color(p.id)}">${esc(p.name)}</button>`).join('')}</div>
-                        <div class="ld-btns"><button type="button" class="lg-btn sm" data-a="splitgo" data-i="${it.id}">平分（${splitSel.size} 人）</button><button type="button" class="lg-btn sm ghost" data-a="splitall">全選</button><button type="button" class="lg-btn sm ghost" data-a="splitx">取消</button></div></div>` : ''}`;
-                }).join('')}</div>`;
+                        <small class="ld-meta">${yen(it.unit)} × ${it.qty}<button type="button" class="ld-tg ${it.star ? 'on' : ''}" data-a="star" data-i="${it.id}">${it.star ? '★ 退稅' : '不退稅'}</button><button type="button" class="ld-tg" data-a="rate" data-i="${it.id}">${it.rate}%</button>${edited(it)}${it.qty > 1 || rem !== it.qty ? `剩 ${fmtQty(rem)}` : ''}</small>
+                        ${acts ? `<div class="ld-acts">${acts}</div>` : ''}${badges ? `<span class="ld-bdgs">${badges}</span>` : ''}${picked ? potUi : ''}</div>
+                        ${amode === 'manual' ? `<div class="ld-step"><button type="button" data-a="dec" data-i="${it.id}" ${lk || !(manOf(it.id)[st.active]) ? 'disabled' : ''} aria-label="減少">−</button><span>${lk ? '–' : fmtQty(mine)}</span><button type="button" data-a="inc" data-i="${it.id}" ${lk || rem <= 0 ? 'disabled' : ''} aria-label="增加">＋</button></div>` : ''}</div>${open && !lk && !man ? `<div class="ld-split"><p class="lg-muted">選擇要平分「${esc(it.zh || it.jp)}」的人：</p>
+                        <div class="lg-chips">${people.map((p) => `<button type="button" data-a="splitp" data-id="${esc(p.id)}" class="lg-chip ${splitSel.has(p.id) ? 'on' : ''}" style="--c:${color(p.id)}">${esc(p.name)}</button>`).join('')}</div>${potUi}
+                        <div class="ld-btns"><button type="button" class="lg-btn sm" data-a="splitgo" data-i="${it.id}">平分（${splitSel.size} 人）</button><button type="button" class="lg-btn sm ghost" data-a="splitall">全選</button><button type="button" class="lg-btn sm ghost" data-a="splitx">取消</button></div></div>` : ''}${editIid === it.id ? editPanel(it) : ''}`;
+                }).join('')}</div>
+                ${amode === 'split' && pickSel.size ? `<div class="ld-bar"><span class="lg-muted">已勾選 ${pickSel.size} 個品項，${bulkSel.size} 人</span><button type="button" class="lg-btn sm" data-a="sp-apply" ${bulkSel.size < 2 ? 'disabled' : ''}>平分 ${bulkSel.size} 人</button></div>` : ''}`;
         }
         function renderRes() {
             const box = $('#ld-res'), btn = $('#ld-apply');
@@ -601,6 +637,7 @@
         el.addEventListener('click', (ev) => {
             const b = ev.target.closest('[data-a]'); if (!b || b.disabled || b.tagName === 'INPUT') return;
             const a = b.dataset.a, iid = +b.dataset.i;
+            if (!['unman', 'e-unsplit'].includes(a)) confirmK = null;
             if (a === 'close') close();
             else if (a === 'basis') { st.basis = b.dataset.v; renderAll(); }
             else if (a === 'star' || a === 'rate') {
@@ -610,20 +647,48 @@
             else if (a === 'items') { itemsShut = !itemsShut; renderMain(); }
             else if (a === 'rall') { const RW = rows(), anyOpen = RW.some((x) => !shut[x.p.id]); RW.forEach((x) => { shut[x.p.id] = anyOpen; }); renderRes(); }
             else if (a === 'rexp') { shut[b.dataset.id] = !shut[b.dataset.id]; renderRes(); }
-            else if (a === 'pick') { st.active = b.dataset.id; renderAll(); }
-            else if (a === 'inc' || a === 'dec') { setQty(iid, st.active, asg(iid, st.active) + (a === 'inc' ? 1 : -1)); renderAll(); }
-            else if (a === 'split') { splitSel.clear(); if (splitIid === iid) splitIid = null; else { splitIid = iid; people.forEach((p) => { if (asg(iid, p.id) > 0) splitSel.add(p.id); }); } renderMain(); }
+            else if (a === 'amode') { amode = b.dataset.v; bulkSel.clear(); pickSel.clear(); splitIid = null; splitSel.clear(); editIid = null; draft = null; confirmK = null; renderMain(); say(amode === 'split' ? '已切到「選擇品項與成員」。' : '已切到手動分配。'); }
+            else if (a === 'actp') { st.active = b.dataset.id; renderAll(); }
+            else if (a === 'bulkp') { const id = b.dataset.id; bulkSel.has(id) ? bulkSel.delete(id) : bulkSel.add(id); if (!bulkSel.size) pickSel.clear(); renderMain(); }
+            else if (a === 'bulkall') { people.forEach((p) => bulkSel.add(p.id)); renderMain(); }
+            else if (a === 'bulkclr') { bulkSel.clear(); pickSel.clear(); renderMain(); }
+            else if (a === 'pickit') { pickSel.has(iid) ? pickSel.delete(iid) : pickSel.add(iid); renderMain(); }
+            else if (a === 'potp' || a === 'potm') { const it = items().find((x) => x.id === iid); if (it) { const r = remain(it), v = potOf(it) + (a === 'potp' ? 1 : -1); pot[iid] = Math.max(Math.min(1, r), Math.min(v, r)); renderMain(); } }
+            else if (a === 'sp-apply') {
+                const ids = people.filter((p) => bulkSel.has(p.id)).map((p) => p.id); let n = 0;
+                if (ids.length < 2) return say('請至少選 2 個人來平分。', true);
+                items().forEach((it) => { if (pickSel.has(it.id) && remain(it) > 0 && !hasMan(it.id)) { addBatch(it.id, ids, potOf(it)); n++; } });
+                pickSel.clear(); renderAll(); say(`已把 ${n} 個品項平分給 ${ids.length} 人（每次平分是獨立一筆，可在「編輯已平分」逐筆修改）。`);
+            }
+            else if (a === 'split') { splitSel.clear(); if (splitIid === iid) splitIid = null; else { splitIid = iid; bulkSel.clear(); pickSel.clear(); editIid = null; draft = null; } renderMain(); }
             else if (a === 'splitp') { const id = b.dataset.id; splitSel.has(id) ? splitSel.delete(id) : splitSel.add(id); renderMain(); }
             else if (a === 'splitall') { people.forEach((p) => splitSel.add(p.id)); renderMain(); }
             else if (a === 'splitx') { splitIid = null; splitSel.clear(); renderMain(); }
-            else if (a === 'splitgo') doSplit(iid, people.filter((p) => splitSel.has(p.id)).map((p) => p.id));
-            else if (a === 'splitb') doSplit(iid, people.filter((p) => bulkSel.has(p.id)).map((p) => p.id));
-            else if (a === 'bulkp') { const id = b.dataset.id; bulkSel.has(id) ? bulkSel.delete(id) : bulkSel.add(id); renderMain(); }
-            else if (a === 'bulkall') { people.forEach((p) => bulkSel.add(p.id)); renderMain(); }
-            else if (a === 'bulkclr') { bulkSel.clear(); renderMain(); }
-            else if (a === 'takeall') { items().forEach((it) => { const rem = it.qty - tot(it.id); if (rem > 0) setQty(it.id, st.active, asg(it.id, st.active) + rem); }); renderAll(); }
-            else if (a === 'clearp') { items().forEach((it) => setQty(it.id, st.active, 0)); renderAll(); }
-            else if (a === 'resetall') { if (confirm('清除所有人的品項分配？')) { st.assign = {}; renderAll(); } }
+            else if (a === 'splitgo') {
+                const it = items().find((x) => x.id === iid), ids = people.filter((p) => splitSel.has(p.id)).map((p) => p.id);
+                if (!it) return;
+                if (ids.length < 2) return say('請至少選 2 個人來平分。', true);
+                addBatch(iid, ids, potOf(it)); splitIid = null; splitSel.clear(); renderAll(); say(`已平分「${it.zh || it.jp}」給 ${ids.length} 人。`);
+            }
+            else if (a === 'cf-no') { confirmK = null; renderMain(); }
+            else if (a === 'unman') { confirmK = { k: 'unman', i: iid }; renderMain(); }
+            else if (a === 'unman-ok') { delete st.man[iid]; recompute(iid); confirmK = null; renderAll(); say('已取消手動分配，可以改用平分。'); }
+            else if (a === 'edit') { editIid = iid; editErr = ''; splitIid = null; splitSel.clear(); bulkSel.clear(); pickSel.clear(); draft = splOf(iid).map((x) => ({ k: x.k, ids: [...x.ids] })); renderMain(); say('每次平分是獨立一筆，可分別改人員和件數。'); }
+            else if (a === 'e-back') { editIid = null; draft = null; confirmK = null; editErr = ''; renderMain(); }
+            else if (a === 'd-k') { const it = items().find((x) => x.id === editIid), ri = +b.dataset.r; if (it && draft[ri]) { draft[ri].k = Math.max(1, Math.min(draft[ri].k + +b.dataset.d, dMax(it, ri))); renderMain(); } }
+            else if (a === 'd-m') { const bt = draft[+b.dataset.r], id = b.dataset.id; if (bt) { const j = bt.ids.indexOf(id); j >= 0 ? bt.ids.splice(j, 1) : bt.ids.push(id); bt.ids.sort((x, y) => people.findIndex((p) => p.id === x) - people.findIndex((p) => p.id === y)); renderMain(); } }
+            else if (a === 'd-del') { draft.splice(+b.dataset.r, 1); renderMain(); }
+            else if (a === 'e-save') {
+                if (draft.some((x) => x.ids.length < 2)) { editErr = '每一筆至少要選 2 個人，或刪除該筆。'; return renderMain(); }
+                if (draft.length) st.spl[iid] = draft.map((x) => ({ k: x.k, ids: [...x.ids] })); else delete st.spl[iid];
+                recompute(iid); editIid = null; draft = null; editErr = ''; renderAll(); say('已更新平分。');
+            }
+            else if (a === 'e-unsplit') { confirmK = { k: 'e-unsplit', i: iid }; renderMain(); }
+            else if (a === 'e-unsplit-ok') { delete st.spl[iid]; recompute(iid); editIid = null; draft = null; confirmK = null; renderAll(); say('已取消這個品項的平分，可以重新分配。'); }
+            else if (a === 'inc' || a === 'dec') { setMan(iid, st.active, (manOf(iid)[st.active] || 0) + (a === 'inc' ? 1 : -1)); renderAll(); }
+            else if (a === 'takeall') { items().forEach((it) => { const r = remain(it); if (r > 0) setMan(it.id, st.active, (manOf(it.id)[st.active] || 0) + r); }); renderAll(); }
+            else if (a === 'clearp') { items().forEach((it) => { if (st.man[it.id]) { delete st.man[it.id][st.active]; if (!hasMan(it.id)) delete st.man[it.id]; } if (st.spl[it.id]) { st.spl[it.id] = st.spl[it.id].map((x) => ({ ...x, ids: x.ids.filter((p) => p !== st.active) })).filter((x) => x.ids.length); if (!st.spl[it.id].length) delete st.spl[it.id]; } recompute(it.id); }); renderAll(); }
+            else if (a === 'resetall') { if (confirm('清除所有人的品項分配？')) { st.assign = {}; st.man = {}; st.spl = {}; renderAll(); } }
             else if (a === 'import') doImport($('#ld-paste').value);
             else if (a === 'apply') {
                 const S = cfg(), parts = {}, rf = {}, members = [];
@@ -671,5 +736,5 @@
         const o = curOpts; cur = curOpts = null;
         if (o && o.onClose) o.onClose();
     }
-    return { open, close, openPersonal, closePersonal, listPersonal, removePersonal, itemAmounts, parseReceipts, list, remove, calcPerson, alignTotals, fmtQty, buildNote, parseReceipt, parseImport, buildPrompt, parseNum, checkReceipt };
+    return { open, close, openPersonal, closePersonal, listPersonal, removePersonal, itemAmounts, parseReceipts, list, remove, calcPerson, alignTotals, fmtQty, mergeShares, buildNote, parseReceipt, parseImport, buildPrompt, parseNum, checkReceipt };
 });
