@@ -280,6 +280,19 @@ t('個人逐品項：收據不拆開、依 10 項分草稿、同店同日放一�
     assert.deepStrictEqual(r.discounts, [{ name: 'クーポン', amount: 100 }]);
     assert.deepStrictEqual(LD.checkReceipt(r), []);
 });
+t('個人逐品項：整張收據編輯還原（新資料帶稅資訊、舊資料只能改基本欄位）', () => {
+    const r = LD.parseReceipt(JSON.stringify({ receiptTotal: 2200, taxMode: 'excl', items: [{ jp: 'A', unit: 1000, qty: 1, rate: 10, star: false }, { jp: 'B', unit: 1000, qty: 1, rate: 10, star: true }] })).receipt;
+    const am = LD.itemAmounts(r, true, 'before');
+    const rows = r.items.map((it, i) => ({ id: 'k' + i, e: { title: it.jp, amount: am[i], cat: '購物', date: '2026-11-05', pay: 'cash', rgName: '店', rcp: { u: it.unit, q: it.qty, r: it.rate, s: it.star ? 1 : 0, t: '' }, rgm: { tm: 'excl', cp: 0, ca: 1, b: 'before', tot: 2200 } } }));
+    const ed = LD.editFromRows(rows);
+    assert.ok(!ed.legacy);
+    assert.deepStrictEqual(LD.itemAmounts(ed.receipt, ed.coupon, ed.basis), am);
+    assert.deepStrictEqual(ed.receipt.items.map((i) => i.star), [false, true]);
+    const old = LD.editFromRows(rows.map((x) => ({ id: x.id, e: { title: x.e.title, amount: x.e.amount, cat: '購物', date: '2026-11-05', rgName: '店' } })));
+    assert.ok(old.legacy);
+    assert.deepStrictEqual(old.rowIds, ['k0', 'k1']);
+    assert.deepStrictEqual(old.fixed, { 1: am[0], 2: am[1] });
+});
 t('退稅分配：依預計退稅比例拆開，加總等於實際退稅', () => {
     const r = C.allocate(1500, [54, 120, 30]);
     assert.strictEqual(r.reduce((x, y) => x + y, 0), 1500);

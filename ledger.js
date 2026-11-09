@@ -20,7 +20,7 @@
         rosterOpen: false, open: null, showVoid: false, showDel: false,
         stMode: 'all', stBal: 'all', stSug: 'all', stDays: [], stCats: [], stPays: [], stCur: 'JPY', pdata: null, pref: null, pcb: null, fold: { bal: false, sug: false, tr: false },
         listShut: (cacheLoad('ledger_fold') || {}).days || {}, fs: null,
-        stOpen: {}, filter: { scope: 'group', sort: 'desc', dates: [], cats: [], pays: [], payer: '', members: [], cur: '', q: '' },
+        stOpen: {}, filter: { scope: 'group', sort: 'desc', dates: [], cats: [], pays: [], payer: '', members: [], cur: '', origin: '', q: '' },
         fx: cacheLoad('fx'), fxBusy: false, fxErr: ''
     };
 
@@ -712,8 +712,8 @@
     }
 
     // ---------- 支出紀錄 ----------
-    const FL_KEYS = ['date', 'cat', 'payer', 'members', 'cur', 'pay', 'sort'];
-    const FL_T = { imp: '匯入我的分攤（可複選）', date: '日期（可複選）', stdate: '日期（可複選）', cat: '類別（可複選）', pay: '支付方式（可複選）', stpay: '支付方式（可複選）', payer: '付款人', members: '分攤成員（可複選）', cur: '幣別', sort: '排序' };
+    const FL_KEYS = ['date', 'cat', 'payer', 'members', 'cur', 'pay', 'origin', 'sort'];
+    const FL_T = { imp: '匯入我的分攤（可複選）', date: '日期（可複選）', stdate: '日期（可複選）', cat: '類別（可複選）', pay: '支付方式（可複選）', stpay: '支付方式（可複選）', payer: '付款人', members: '分攤成員（可複選）', cur: '幣別', origin: '記帳來源', sort: '排序' };
     function buildFilters() {
         $('lg-filters').innerHTML = `
             <input id="lg-q" class="lg-in" placeholder="🔍 搜尋名稱或備註">
@@ -732,6 +732,7 @@
         if (k === 'members') return f.members.length ? f.members.map(pname).join('、') : '全部分攤成員';
         if (k === 'cur') return f.cur ? curLabel(f.cur) : '全部幣別';
         if (k === 'pay') return f.pays.length ? f.pays.map(payName).join('、') : '全部支付方式';
+        if (k === 'origin') return f.origin === 'self' ? '自己記' : f.origin === 'group' ? '團體記' : '全部來源';
         return f.sort === 'asc' ? '日期：舊 → 新' : '日期：新 → 舊';
     }
     function renderFilterOpts() {
@@ -742,7 +743,7 @@
             const b = $('lg-fl-' + k);
             b.textContent = flLabel(k);
             b.classList.toggle('on', k === 'members' ? f.members.length > 0 : k === 'cat' ? f.cats.length > 0 : k === 'date' ? f.dates.length > 0 : k === 'pay' ? f.pays.length > 0 : k !== 'sort' && !!f[k]);
-            b.classList.toggle('hidden', f.scope === 'personal' && (k === 'payer' || k === 'members'));
+            b.classList.toggle('hidden', f.scope === 'personal' ? (k === 'payer' || k === 'members') : k === 'origin');
         });
     }
     function flOpts(k) {
@@ -754,6 +755,7 @@
         if (k === 'members') return order().map((p) => [p, pname(p)]);
         if (k === 'imp') { const pid = myPid(); return impCands().map(([id, e]) => [id, `${e.date ? mdLabel(e.date) : ''}｜${e.title || ''}｜${money(e.shares[pid].o, e.cur)}`]); }
         if (k === 'cur') return [['', '全部幣別'], ...[...new Set([...curs(), ...usedCurs()])].map((c) => [c, curLabel(c)])];
+        if (k === 'origin') return [['', '全部來源'], ['self', '自己記'], ['group', '團體記（從團體匯入）']];
         return [['desc', '日期：新 → 舊'], ['asc', '日期：舊 → 新']];
     }
     function flBox() {
@@ -874,13 +876,46 @@
                 up[ref.push().key] = {
                     title: x.title.slice(0, 50), amount: x.amount, cur: 'JPY', dec, rate: r.s, rateRef: `table:JPY@${t.ts || 0}`, base: BASE, baseAmt: sp.baseAmt,
                     date: rc.date, pay: rc.pay, payer: 'me', mode: 'equal', unit: null, parts: null, rf: null, shares: sp.shares, seed: 0, cat: x.cat,
-                    note: x.jp && x.jp !== x.title ? `${rc.name}｜${x.jp}` : rc.name, rg: rc.rid, rgName: rc.name.slice(0, 50),
+                    note: x.jp && x.jp !== x.title ? `${rc.name}｜${x.jp}` : rc.name, rg: rc.rid, rgName: rc.name.slice(0, 50), ...(x.rc ? { rcp: x.rc, rgm: rc.meta } : {}),
                     by: m.uid, byName: m.name, ts: TS(), updBy: m.uid, updName: m.name, uts: TS()
                 };
                 n++;
             }
         }
         return ref.update(up).then(() => { toast(`已新增 ${p.receipts.length} 張收據、${n} 筆個人支出`); S.filter.scope = 'personal'; return true; }).catch((e) => { fail(e); return false; });
+    }
+    // 整張收據一起編輯（同一個 rg 的所有品項）
+    function openReceiptEdit(rid) {
+        if (!guard()) return;
+        if (!window.LedgerDetail || !LedgerDetail.openPersonal) return toast('明細分帳模組載入中，請稍後再試');
+        const rows = Object.entries(PE()).filter(([, e]) => e && e.rg === rid).sort(([ia, a], [ib, b]) => ((a.ts || 0) - (b.ts || 0)) || (ia < ib ? -1 : 1)).map(([id, e]) => ({ id, e }));
+        if (!rows.length) return;
+        LedgerDetail.openPersonal({ edit: { rid, rows }, cats: cats(), pays: PAYS, today: today(), onApply: saveReceiptEdit, onClose: refreshPersonalPending });
+    }
+    function saveReceiptEdit(p) {
+        if (!guard()) return false;
+        const m = me(), up = {}, t = R().JPY, cr = C.parseRate(t && t.rate);
+        let n = 0, d = 0;
+        for (const x of p.rows) {
+            const e = PE()[x.rowId];
+            if (!e) continue;
+            if (x.del) { up[x.rowId] = null; d++; continue; }
+            const f = (k, v) => { up[`${x.rowId}/${k}`] = v; };
+            if (!p.legacy && x.amount > 0 && x.amount !== e.amount) {
+                const rate = e.rate != null ? e.rate : cr.s;
+                if (rate == null) { alert('JPY 匯率無效，請先到「匯率」頁確認。'); return false; }
+                const sp = C.computeSplit({ amount: x.amount, dec: Number.isInteger(e.dec) ? e.dec : decOf('JPY'), mode: 'equal', members: ['me'], rate, baseDec: BASE_DEC, seed: 0, bias: [0] });
+                if (!sp.ok) { alert(`「${e.title || ''}」無法換算：${sp.errors.join('、')}`); return false; }
+                f('amount', x.amount); f('baseAmt', sp.baseAmt); f('shares', sp.shares);
+            }
+            f('date', p.date); f('pay', p.pay); f('cat', x.cat); f('rgName', p.name.slice(0, 50));
+            if (p.name !== e.rgName) { const jp = String(e.note || '').split('｜').slice(1).join('｜'); f('note', jp ? `${p.name}｜${jp}` : p.name); }
+            if (!p.legacy) { f('rcp', x.rc); f('rgm', p.meta); }
+            f('updBy', m.uid); f('updName', m.name); f('uts', TS());
+            n++;
+        }
+        if (!n && !d) return true;
+        return xref(true).update(up).then(() => { toast(`已更新收據（${n} 筆${d ? `，刪除 ${d} 筆` : ''}）`); return true; }).catch((er) => { fail(er); return false; });
     }
     function delReceipt(rid) {
         const ids = Object.entries(PE()).filter(([, e]) => e && e.rg === rid).map(([id]) => id);
@@ -897,7 +932,7 @@
             seen[e.rg] = 1;
             const mem = items.filter(([, x]) => x.rg === e.rg), open = !!ro[e.rg];
             const base = mem.reduce((a, [, x]) => a + (Number.isInteger(x.baseAmt) ? x.baseAmt : 0), 0), jpy = mem.reduce((a, [, x]) => a + (x.cur === 'JPY' && Number.isInteger(x.amount) ? x.amount : 0), 0);
-            return `<div class="card lg-item lg-rg ${open ? 'open' : ''}"><button type="button" class="lg-item-h" data-act="rg-open" data-id="${esc(e.rg)}"><span class="lg-item-l"><b>🧾 ${esc(e.rgName || '收據')}</b><small>${esc(e.date || '')}・🔒 個人・${mem.length} 項${open ? '' : '（點開展開）'}</small></span><span class="lg-item-r"><b>${jpy ? money(jpy, 'JPY') : money(base, BASE)}</b>${jpy ? `<small>≈ ${money(base, BASE)}</small>` : ''}</span></button>${open ? `<div class="lg-stack sm lg-mt">${mem.map(([i, x]) => itemHtml(i, x, ti)).join('')}</div><div class="lg-actions"><button type="button" class="lg-btn sm danger" data-act="rg-del" data-id="${esc(e.rg)}">🗑️ 刪除整張收據</button></div>` : ''}</div>`;
+            return `<div class="card lg-item lg-rg ${open ? 'open' : ''}"><button type="button" class="lg-item-h" data-act="rg-open" data-id="${esc(e.rg)}"><span class="lg-item-l"><b>🧾 ${esc(e.rgName || '收據')}</b><small>${esc(e.date || '')}・🔒 個人・${mem.length} 項${open ? '' : '（點開展開）'}</small></span><span class="lg-item-r"><b>${jpy ? money(jpy, 'JPY') : money(base, BASE)}</b>${jpy ? `<small>≈ ${money(base, BASE)}</small>` : ''}</span></button>${open ? `<div class="lg-stack sm lg-mt">${mem.map(([i, x]) => itemHtml(i, x, ti)).join('')}</div><div class="lg-actions"><button type="button" class="lg-btn sm" data-act="rg-edit" data-id="${esc(e.rg)}">✏️ 編輯整張收據</button><button type="button" class="lg-btn sm danger" data-act="rg-del" data-id="${esc(e.rg)}">🗑️ 刪除整張收據</button></div>` : ''}</div>`;
         }).join('');
     }
     function flApply() { renderFilterOpts(); renderItems(); renderDeleted(); }
@@ -905,7 +940,7 @@
     function filtered(anyMember) {
         const f = S.filter, q = f.q.trim().toLowerCase(), pe = f.scope === 'personal';
         return Object.entries(src())
-            .filter(([, e]) => (!f.cats.length || f.cats.includes(e.cat)) && (!f.dates.length || f.dates.includes(e.date)) && (pe || ((!f.payer || e.payer === f.payer) && (anyMember || !f.members.length || f.members.some((p) => e.shares && e.shares[p])))) &&
+            .filter(([, e]) => (!f.cats.length || f.cats.includes(e.cat)) && (!f.dates.length || f.dates.includes(e.date)) && (!pe || !f.origin || (f.origin === 'group') === !!e.src) && (pe || ((!f.payer || e.payer === f.payer) && (anyMember || !f.members.length || f.members.some((p) => e.shares && e.shares[p])))) &&
                 (!f.cur || e.cur === f.cur) && (!f.pays.length || f.pays.includes(e.pay || 'none')) && (!q || `${e.title || ''} ${e.note || ''}`.toLowerCase().includes(q)))
             .sort(([ia, a], [ib, b]) => {
                 const d = (a.date || '').localeCompare(b.date || '') || ((a.ts || 0) - (b.ts || 0)) || (ia < ib ? -1 : 1);
@@ -1710,10 +1745,11 @@
             else if (act === 'rcpt-open') openReceiptImport(id);
             else if (act === 'rcpt-del') { if (confirm('刪除這份待處理的收據匯入？')) { LedgerDetail.removePersonal(id); refreshPersonalPending(); } }
             else if (act === 'rg-open') { const ro = S.rgOpen || (S.rgOpen = {}); ro[id] = !ro[id]; renderItems(); }
+            else if (act === 'rg-edit') openReceiptEdit(id);
             else if (act === 'rg-del') delReceipt(id);
             else if (act === 'del-toggle') { S.showDel = !S.showDel; renderDeleted(); }
             else if (act === 'export') exportCsv();
-            else if (act === 'fl-clear') { S.filter = { scope: 'group', sort: S.filter.sort, dates: [], cats: [], pays: [], payer: '', members: [], cur: '', q: '' }; $('lg-q').value = ''; renderFilterOpts(); renderItems(); }
+            else if (act === 'fl-clear') { S.filter = { scope: 'group', sort: S.filter.sort, dates: [], cats: [], pays: [], payer: '', members: [], cur: '', origin: '', q: '' }; $('lg-q').value = ''; renderFilterOpts(); renderItems(); }
             else if (act === 'st-pay') markPaid(b.dataset.from, b.dataset.to, +b.dataset.amt, null, b.dataset.pk);
             else if (act === 'plan-lock') lockPlan();
             else if (act === 'plan-unlock') unlockPlan();
@@ -1762,7 +1798,7 @@
         build(); bind();
         const useEx = ex.length > 0;
         if (useEx) {
-            S.filter = { ...S.filter, scope: 'group', dates: [], cats: [], payer: '', members: [], cur: '', q: '' };
+            S.filter = { ...S.filter, scope: 'group', dates: [], cats: [], payer: '', members: [], cur: '', origin: '', q: '' };
             ex.forEach((id) => { const e = E()[id]; if (e && e.date) S.listShut[e.date] = false; });
             renderFilterOpts(); setTab('list'); setSub('list'); renderItems();
         } else {
