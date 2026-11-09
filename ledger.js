@@ -20,7 +20,7 @@
         rosterOpen: false, open: null, showVoid: false, showDel: false,
         stMode: 'all', stBal: 'all', stSug: 'all', stDays: [], stCats: [], stPays: [], stCur: 'JPY', pdata: null, pref: null, pcb: null, fold: { bal: false, sug: false, tr: false },
         listShut: (cacheLoad('ledger_fold') || {}).days || {}, fs: null,
-        stOpen: {}, filter: { scope: 'group', sort: 'desc', dates: [], cats: [], pays: [], payer: '', members: [], cur: '', q: '' },
+        stOpen: {}, filter: { scope: 'group', sort: 'desc', dates: [], cats: [], pays: [], payer: '', members: [], cur: '', origin: '', q: '' },
         fx: cacheLoad('fx'), fxBusy: false, fxErr: ''
     };
 
@@ -712,8 +712,8 @@
     }
 
     // ---------- 支出紀錄 ----------
-    const FL_KEYS = ['date', 'cat', 'payer', 'members', 'cur', 'pay', 'sort'];
-    const FL_T = { imp: '匯入我的分攤（可複選）', date: '日期（可複選）', stdate: '日期（可複選）', cat: '類別（可複選）', pay: '支付方式（可複選）', stpay: '支付方式（可複選）', payer: '付款人', members: '分攤成員（可複選）', cur: '幣別', sort: '排序' };
+    const FL_KEYS = ['date', 'cat', 'payer', 'members', 'cur', 'pay', 'origin', 'sort'];
+    const FL_T = { imp: '匯入我的分攤（可複選）', date: '日期（可複選）', stdate: '日期（可複選）', cat: '類別（可複選）', pay: '支付方式（可複選）', stpay: '支付方式（可複選）', payer: '付款人', members: '分攤成員（可複選）', cur: '幣別', origin: '記帳來源', sort: '排序' };
     function buildFilters() {
         $('lg-filters').innerHTML = `
             <input id="lg-q" class="lg-in" placeholder="🔍 搜尋名稱或備註">
@@ -732,6 +732,7 @@
         if (k === 'members') return f.members.length ? f.members.map(pname).join('、') : '全部分攤成員';
         if (k === 'cur') return f.cur ? curLabel(f.cur) : '全部幣別';
         if (k === 'pay') return f.pays.length ? f.pays.map(payName).join('、') : '全部支付方式';
+        if (k === 'origin') return f.origin === 'self' ? '自己記' : f.origin === 'group' ? '團體記' : '全部來源';
         return f.sort === 'asc' ? '日期：舊 → 新' : '日期：新 → 舊';
     }
     function renderFilterOpts() {
@@ -742,7 +743,7 @@
             const b = $('lg-fl-' + k);
             b.textContent = flLabel(k);
             b.classList.toggle('on', k === 'members' ? f.members.length > 0 : k === 'cat' ? f.cats.length > 0 : k === 'date' ? f.dates.length > 0 : k === 'pay' ? f.pays.length > 0 : k !== 'sort' && !!f[k]);
-            b.classList.toggle('hidden', f.scope === 'personal' && (k === 'payer' || k === 'members'));
+            b.classList.toggle('hidden', f.scope === 'personal' ? (k === 'payer' || k === 'members') : k === 'origin');
         });
     }
     function flOpts(k) {
@@ -754,6 +755,7 @@
         if (k === 'members') return order().map((p) => [p, pname(p)]);
         if (k === 'imp') { const pid = myPid(); return impCands().map(([id, e]) => [id, `${e.date ? mdLabel(e.date) : ''}｜${e.title || ''}｜${money(e.shares[pid].o, e.cur)}`]); }
         if (k === 'cur') return [['', '全部幣別'], ...[...new Set([...curs(), ...usedCurs()])].map((c) => [c, curLabel(c)])];
+        if (k === 'origin') return [['', '全部來源'], ['self', '自己記'], ['group', '團體記（從團體匯入）']];
         return [['desc', '日期：新 → 舊'], ['asc', '日期：舊 → 新']];
     }
     function flBox() {
@@ -905,7 +907,7 @@
     function filtered(anyMember) {
         const f = S.filter, q = f.q.trim().toLowerCase(), pe = f.scope === 'personal';
         return Object.entries(src())
-            .filter(([, e]) => (!f.cats.length || f.cats.includes(e.cat)) && (!f.dates.length || f.dates.includes(e.date)) && (pe || ((!f.payer || e.payer === f.payer) && (anyMember || !f.members.length || f.members.some((p) => e.shares && e.shares[p])))) &&
+            .filter(([, e]) => (!f.cats.length || f.cats.includes(e.cat)) && (!f.dates.length || f.dates.includes(e.date)) && (!pe || !f.origin || (f.origin === 'group') === !!e.src) && (pe || ((!f.payer || e.payer === f.payer) && (anyMember || !f.members.length || f.members.some((p) => e.shares && e.shares[p])))) &&
                 (!f.cur || e.cur === f.cur) && (!f.pays.length || f.pays.includes(e.pay || 'none')) && (!q || `${e.title || ''} ${e.note || ''}`.toLowerCase().includes(q)))
             .sort(([ia, a], [ib, b]) => {
                 const d = (a.date || '').localeCompare(b.date || '') || ((a.ts || 0) - (b.ts || 0)) || (ia < ib ? -1 : 1);
@@ -1713,7 +1715,7 @@
             else if (act === 'rg-del') delReceipt(id);
             else if (act === 'del-toggle') { S.showDel = !S.showDel; renderDeleted(); }
             else if (act === 'export') exportCsv();
-            else if (act === 'fl-clear') { S.filter = { scope: 'group', sort: S.filter.sort, dates: [], cats: [], pays: [], payer: '', members: [], cur: '', q: '' }; $('lg-q').value = ''; renderFilterOpts(); renderItems(); }
+            else if (act === 'fl-clear') { S.filter = { scope: 'group', sort: S.filter.sort, dates: [], cats: [], pays: [], payer: '', members: [], cur: '', origin: '', q: '' }; $('lg-q').value = ''; renderFilterOpts(); renderItems(); }
             else if (act === 'st-pay') markPaid(b.dataset.from, b.dataset.to, +b.dataset.amt, null, b.dataset.pk);
             else if (act === 'plan-lock') lockPlan();
             else if (act === 'plan-unlock') unlockPlan();
@@ -1762,7 +1764,7 @@
         build(); bind();
         const useEx = ex.length > 0;
         if (useEx) {
-            S.filter = { ...S.filter, scope: 'group', dates: [], cats: [], payer: '', members: [], cur: '', q: '' };
+            S.filter = { ...S.filter, scope: 'group', dates: [], cats: [], payer: '', members: [], cur: '', origin: '', q: '' };
             ex.forEach((id) => { const e = E()[id]; if (e && e.date) S.listShut[e.date] = false; });
             renderFilterOpts(); setTab('list'); setSub('list'); renderItems();
         } else {
