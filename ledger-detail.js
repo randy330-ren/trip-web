@@ -134,6 +134,24 @@
         });
         return bins.map((b) => b.rs);
     }
+    // 寫進每筆個人支出的收據快照（之後整張編輯用）
+    const rcOf = (it) => ({ u: it.unit, q: it.qty, r: it.rate, s: it.star ? 1 : 0, t: it.taxMode || '' });
+    const metaOf = (y) => ({ tm: y.receipt.taxMode, cp: y.receipt.couponPercent || 0, ca: y.coupon ? 1 : 0, b: y.basis, tot: y.receipt.total || 0, st: y.receipt.store || '', ds: y.receipt.discounts || [], ic: y.receipt.itemCount || 0 });
+    // 把已記的一張收據（同一個 rg 的幾筆個人支出）還原成編輯畫面的資料；舊資料沒有快照（legacy），只能改名稱、日期、支付方式、分類、刪除
+    function editFromRows(rows) {
+        const first = rows[0].e, legacy = rows.some((r) => !(r.e.rcp && r.e.rcp.u >= 0 && r.e.rcp.q >= 1)), m = (!legacy && first.rgm) || {};
+        const cat = {}, fixed = {};
+        const items = rows.map(({ e }, i) => {
+            const c = legacy ? {} : e.rcp, id = i + 1;
+            cat[id] = e.cat || ''; fixed[id] = e.amount;
+            return { id, jp: String(e.title || '品項'), zh: '', unit: legacy ? e.amount : c.u, qty: legacy ? 1 : c.q, rate: legacy ? 10 : c.r, star: !legacy && !!c.s, taxMode: legacy ? '' : (c.t || ''), cat: e.cat || '' };
+        });
+        return {
+            legacy, rowIds: rows.map((r) => r.id), cat, fixed, name: first.rgName || '收據', date: first.date || '', pay: first.pay || '',
+            basis: m.b === 'after' ? 'after' : 'before', coupon: m.ca !== 0,
+            receipt: { name: first.rgName || '收據', store: m.st || '', date: first.date || '', taxMode: m.tm === 'incl' ? 'incl' : 'excl', couponPercent: m.cp > 0 ? m.cp : 0, discounts: Array.isArray(m.ds) ? m.ds : [], total: m.tot > 0 ? m.tot : null, refund: null, itemCount: m.ic > 0 ? m.ic : null, items }
+        };
+    }
     function taxLabel(r) {
         const m = new Set(r.items.map((i) => i.taxMode || r.taxMode));
         return m.size > 1 ? '含稅與未稅混合' : m.has('incl') ? '含稅' : '未稅';
@@ -338,38 +356,47 @@
         closePersonal();
         const cats = opts.cats || [], pays = opts.pays || [], dflt = cats.includes('其他') ? '其他' : cats[0];
         curPOpts = opts;
+        const ed = opts.edit ? editFromRows(opts.edit.rows) : null;
         const fresh = () => ({ id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), ts: Date.now(), receipts: [], target: 'add' });
-        const st = Object.assign(fresh(), migrateP((opts.id && PDB.drafts[opts.id]) || {}));
-        st.receipts.forEach((x) => x.receipt.items.forEach((it) => { if (!cats.includes(x.cat[it.id])) x.cat[it.id] = dflt; }));
-        const keepP = () => { if (st.receipts.length) { st.ts = Date.now(); PDB.drafts[st.id] = { ...st }; flushP(); } };
+        const st = ed ? { id: 'edit', ts: Date.now(), target: 'add', receipts: [{ key: rk(), receipt: ed.receipt, name: ed.name, date: ed.date, pay: ed.pay, basis: ed.basis, coupon: ed.coupon, cat: ed.cat, flag: {}, off: {}, legacy: ed.legacy, fixed: ed.fixed }] } : Object.assign(fresh(), migrateP((opts.id && PDB.drafts[opts.id]) || {}));
+        if (!ed) st.receipts.forEach((x) => x.receipt.items.forEach((it) => { if (!cats.includes(x.cat[it.id])) x.cat[it.id] = dflt; }));
+        const keepP = () => { if (!ed && st.receipts.length) { st.ts = Date.now(); PDB.drafts[st.id] = { ...st }; flushP(); } };
         const el = document.createElement('div');
         el.id = 'ldp-root'; el.className = 'ld';
-        el.innerHTML = `<div class="ld-head"><b>🧾 逐品項匯入個人記帳</b><button type="button" data-a="p-close" aria-label="關閉">✕</button></div>
+        el.innerHTML = `<div class="ld-head"><b>${ed ? '✏️ 編輯整張收據' : '🧾 逐品項匯入個人記帳'}</b><button type="button" data-a="p-close" aria-label="關閉">✕</button></div>
             <div class="ld-scroll">
-                <details class="ld-card" id="ldp-imp" open><summary>匯入收據（AI 整理的 JSON，可一次多張）</summary>
+                ${ed ? '' : `<details class="ld-card" id="ldp-imp" open><summary>匯入收據（AI 整理的 JSON，可一次多張）</summary>
                     <p class="lg-muted lg-mt">每個品項會各記一筆個人支出（日圓），並由 AI 先分好類，匯入後可逐項修改分類，也可點品項右邊的稅率、退稅標記修正 AI 看錯的地方。可一次匯入多張收據，每張各自選支付方式。</p>
                     <div id="ldp-target"></div>
                     ${aiToolsHtml('ldp-file')}
                     <textarea id="ldp-paste" class="lg-in lg-mt" rows="4" placeholder="把 AI 回傳的 JSON 貼在這裡"></textarea>
                     <button type="button" class="lg-btn sm lg-mt" data-a="p-import">匯入貼上的內容</button>
-                </details>
+                </details>`}
                 <p class="ld-msg" id="ldp-msg" role="status"></p>
                 <div id="ldp-main"></div>
             </div>
-            <div class="ld-foot"><button type="button" class="lg-btn wide" id="ldp-apply" data-a="p-apply" disabled>寫入個人記帳</button></div>`;
+            <div class="ld-foot"><button type="button" class="lg-btn wide" id="ldp-apply" data-a="p-apply" disabled>${ed ? '儲存修改' : '寫入個人記帳'}</button></div>`;
         document.body.appendChild(el);
         document.body.style.overflow = 'hidden';
         const $ = (q) => el.querySelector(q);
         const say = (t, bad) => { const m = $('#ldp-msg'); m.textContent = t; m.className = 'ld-msg' + (bad ? ' bad' : ''); };
         const byKey = (k) => st.receipts.find((x) => x.key === k);
-        const amts = (x) => itemAmounts(x.receipt, x.coupon, x.basis);
+        const amts = (x) => (x.legacy ? x.receipt.items.map((it) => x.fixed[it.id]) : itemAmounts(x.receipt, x.coupon, x.basis));
         const picked = (x) => { const am = amts(x); return x.receipt.items.map((it, i) => ({ it, amount: am[i] })).filter((y) => !x.off[y.it.id] && y.amount > 0); };
         const okDate = (x) => /^\d{4}-\d{2}-\d{2}$/.test(x.date);
         function renderTarget() {
+            if (!$('#ldp-target')) return;
             $('#ldp-target').innerHTML = st.receipts.length ? `<p class="ld-sec">這次匯入的收據要放在</p><div class="lg-seg sm">${[['add', '加入目前這份草稿'], ['new', '另存為新草稿']].map(([k, l]) => `<button type="button" data-a="p-target" data-v="${k}" class="${st.target === k ? 'on' : ''}">${l}</button>`).join('')}</div>` : '';
         }
         function renderFoot() {
-            const b = $('#ldp-apply'), act = st.receipts.map((x) => ({ x, ps: picked(x) })).filter((y) => y.ps.length);
+            const b = $('#ldp-apply');
+            if (ed) {
+                const x = st.receipts[0], ps = picked(x), d = Object.keys(x.off).length, sum = ps.reduce((a, y) => a + y.amount, 0);
+                b.disabled = !ps.length || !x.pay || !okDate(x);
+                b.textContent = !ps.length ? '至少要留一個品項' : !x.pay ? '請先選擇支付方式' : !okDate(x) ? '請選擇日期' : `儲存修改（${ps.length} 筆・${yen(sum)}${d ? `・刪除 ${d} 筆` : ''}）`;
+                return;
+            }
+            const act = st.receipts.map((x) => ({ x, ps: picked(x) })).filter((y) => y.ps.length);
             if (!st.receipts.length) { b.disabled = true; b.textContent = '寫入個人記帳'; return; }
             const n = act.reduce((a, y) => a + y.ps.length, 0), sum = act.reduce((a, y) => a + y.ps.reduce((u, v) => u + v.amount, 0), 0);
             const noPay = act.some((y) => !y.x.pay), noDate = act.some((y) => !okDate(y.x));
@@ -385,19 +412,20 @@
             return `🧾 試算稅額：${ks.map((k) => `${k}% ${yen(by[k])}`).join('・') || '—'}（共 ${yen(all)}）${rf > 0 ? `・預計可退 ${yen(rf)}` : ''}`;
         }
         function recHtml(x, idx) {
-            const r = x.receipt, am = amts(x), q = r.items.reduce((a, i) => a + i.qty, 0), warns = checkReceipt(r, x.coupon), k = esc(x.key);
+            const r = x.receipt, am = amts(x), q = r.items.reduce((a, i) => a + i.qty, 0), warns = x.legacy ? [] : checkReceipt(r, x.coupon), k = esc(x.key);
             const cp = r.couponPercent > 0 ? `<label class="ld-chk"><input type="checkbox" data-a="p-coupon" data-k="${k}" ${x.coupon ? 'checked' : ''}> 套用收據上的 ${r.couponPercent}% 折扣</label>` : '';
-            return `<div class="ld-card ldp-rec"><div class="ldp-rh"><p class="lg-h">${st.receipts.length > 1 ? `第 ${idx + 1} 張　` : ''}${esc(r.name)}<small>　${r.items.length} 項／${q} 件・價格為${taxLabel(r)}${r.total ? '・收據合計 ' + yen(r.total) : ''}</small></p><button type="button" class="lg-btn sm ghost danger" data-a="p-rm" data-k="${k}">移除這張</button></div>
+            return `<div class="ld-card ldp-rec"><div class="ldp-rh"><p class="lg-h">${st.receipts.length > 1 ? `第 ${idx + 1} 張　` : ''}${esc(r.name)}<small>　${r.items.length} 項／${q} 件${x.legacy ? '' : `・價格為${taxLabel(r)}`}${r.total ? '・收據合計 ' + yen(r.total) : ''}</small></p>${ed ? '' : `<button type="button" class="lg-btn sm ghost danger" data-a="p-rm" data-k="${k}">移除這張</button>`}</div>
                 <label class="lg-lbl">收據名稱（列表群組標題）</label><input class="lg-in" data-a="p-name" data-k="${k}" maxlength="50" value="${esc(x.name)}">
                 <label class="lg-lbl">日期</label><input type="date" class="lg-in" data-a="p-date" data-k="${k}" value="${esc(x.date)}">
                 <label class="lg-lbl">支付方式</label><div class="lg-seg sm">${pays.map(([pk, l]) => `<button type="button" data-a="p-pay" data-k="${k}" data-v="${esc(pk)}" class="${x.pay === pk ? 'on' : ''}">${esc(l)}</button>`).join('')}</div>
-                <div class="lg-seg sm lg-mt">${[['before', '免稅前（含稅價）'], ['after', '免稅後（扣預計退稅）']].map(([bk, l]) => `<button type="button" data-a="p-basis" data-k="${k}" data-v="${bk}" class="${x.basis === bk ? 'on' : ''}">${l}</button>`).join('')}</div>
+                ${x.legacy ? '' : `<div class="lg-seg sm lg-mt">${[['before', '免稅前（含稅價）'], ['after', '免稅後（扣預計退稅）']].map(([bk, l]) => `<button type="button" data-a="p-basis" data-k="${k}" data-v="${bk}" class="${x.basis === bk ? 'on' : ''}">${l}</button>`).join('')}</div>`}
                 ${cp}
                 ${warns.map((w) => `<p class="ld-note warn">⚠️ ${esc(w)}</p>`).join('')}
-                ${(r.couponPercent > 0 || fixedDisc(r)) ? `<p class="lg-muted">🏷️ 折扣／優惠：${esc([r.couponPercent > 0 ? `整單折扣 ${r.couponPercent}%（${x.coupon ? '已套用' : '未套用'}）` : '', discText(r)].filter(Boolean).join('、'))}${fixedDisc(r) ? '。固定金額折扣不會分攤到品項，品項金額為折扣前' : ''}</p>` : ''}
-                <p class="lg-muted">${esc(taxSum(x))}</p>
-                <p class="ld-sec">各品項分類（取消勾選＝不記這一項）</p>
-                <div class="ld-items">${r.items.map((it, i) => `<div class="ld-item"><input type="checkbox" data-a="p-on" data-k="${k}" data-i="${it.id}" ${x.off[it.id] ? '' : 'checked'} aria-label="記入"><div class="ld-i"><b>${esc(it.zh && it.zh !== it.jp ? it.zh : it.jp)}</b><small class="ld-meta">${yen(it.unit)} × ${it.qty}・稅 ${yen(taxOf(x, it).tax)}<button type="button" class="ld-tg" data-a="p-rate" data-k="${k}" data-i="${it.id}">${it.rate}%</button><button type="button" class="ld-tg ${it.star ? 'on' : ''}" data-a="p-star" data-k="${k}" data-i="${it.id}">${it.star ? '★ 退稅' : '不退稅'}</button></small>${x.flag[it.id] ? `<small class="ld-flag">AI 填「${esc(x.flag[it.id])}」不在分類清單，已先歸「${esc(dflt)}」</small>` : ''}</div><div class="ldp-r"><b>${yen(am[i])}</b><select class="lg-in ldp-cat" data-a="p-cat" data-k="${k}" data-i="${it.id}">${cats.map((c) => `<option value="${esc(c)}" ${x.cat[it.id] === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div></div>`).join('')}</div></div>`;
+                ${x.legacy ? '<p class="lg-muted">這張收據是舊版匯入的，沒有儲存稅與折扣資料，只能修改名稱、日期、支付方式與分類。</p>' : ''}
+                ${!x.legacy && (r.couponPercent > 0 || fixedDisc(r)) ? `<p class="lg-muted">🏷️ 折扣／優惠：${esc([r.couponPercent > 0 ? `整單折扣 ${r.couponPercent}%（${x.coupon ? '已套用' : '未套用'}）` : '', discText(r)].filter(Boolean).join('、'))}${fixedDisc(r) ? '。固定金額折扣不會分攤到品項，品項金額為折扣前' : ''}</p>` : ''}
+                ${x.legacy ? '' : `<p class="lg-muted">${esc(taxSum(x))}</p>`}
+                <p class="ld-sec">${ed ? '各品項分類（取消勾選＝刪除這筆個人支出）' : '各品項分類（取消勾選＝不記這一項）'}</p>
+                <div class="ld-items">${r.items.map((it, i) => `<div class="ld-item"><input type="checkbox" data-a="p-on" data-k="${k}" data-i="${it.id}" ${x.off[it.id] ? '' : 'checked'} aria-label="記入"><div class="ld-i"><b>${esc(it.zh && it.zh !== it.jp ? it.zh : it.jp)}</b><small class="ld-meta">${x.legacy ? '' : `${yen(it.unit)} × ${it.qty}・稅 ${yen(taxOf(x, it).tax)}<button type="button" class="ld-tg" data-a="p-rate" data-k="${k}" data-i="${it.id}">${it.rate}%</button><button type="button" class="ld-tg ${it.star ? 'on' : ''}" data-a="p-star" data-k="${k}" data-i="${it.id}">${it.star ? '★ 退稅' : '不退稅'}</button>`}</small>${x.flag[it.id] ? `<small class="ld-flag">AI 填「${esc(x.flag[it.id])}」不在分類清單，已先歸「${esc(dflt)}」</small>` : ''}</div><div class="ldp-r"><b>${yen(am[i])}</b><select class="lg-in ldp-cat" data-a="p-cat" data-k="${k}" data-i="${it.id}">${(cats.includes(x.cat[it.id]) || !x.cat[it.id] ? cats : [...cats, x.cat[it.id]]).map((c) => `<option value="${esc(c)}" ${x.cat[it.id] === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div></div>`).join('')}</div></div>`;
         }
         function renderMain() {
             $('#ldp-main').innerHTML = st.receipts.length ? st.receipts.map(recHtml).join('') : '<div class="ld-card"><p class="lg-muted">還沒有收據。請先匯入。</p></div>';
@@ -434,7 +462,7 @@
             $('#ldp-imp').open = false;
             $('#ldp-paste').value = '';
         }
-        wireAi(el, { prompt: () => buildPrompt(cats, true), onText: doImport, say });
+        if (!ed) wireAi(el, { prompt: () => buildPrompt(cats, true), onText: doImport, say });
         el.addEventListener('click', (ev) => {
             const b = ev.target.closest && ev.target.closest('[data-a^="p-"]');
             if (!b) return;
@@ -456,8 +484,16 @@
             }
             else if (a === 'p-apply') {
                 if (b.disabled) return;
+                if (ed) {
+                    const y = st.receipts[0], am = amts(y), dels = Object.keys(y.off).length;
+                    if (dels && !confirm(`有 ${dels} 個品項取消勾選，儲存後會刪除這 ${dels} 筆個人支出，確定嗎？`)) return;
+                    b.disabled = true;
+                    Promise.resolve(opts.onApply({ edit: true, rid: opts.edit.rid, legacy: y.legacy, name: y.name.trim() || y.receipt.name, date: y.date, pay: y.pay, meta: metaOf(y),
+                        rows: y.receipt.items.map((it, i) => ({ rowId: ed.rowIds[i], del: !!y.off[it.id], amount: am[i], cat: y.cat[it.id] || dflt, rc: rcOf(it) })) })).then((ok) => { if (ok !== false) closePersonal(); else renderFoot(); }, () => renderFoot());
+                    return;
+                }
                 const receipts = st.receipts.map((y) => ({ rid: 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name: y.name.trim() || y.receipt.name, date: y.date, pay: y.pay,
-                    rows: picked(y).map((z) => ({ title: (z.it.zh && z.it.zh !== z.it.jp ? z.it.zh : z.it.jp) + (z.it.qty > 1 ? ` ×${z.it.qty}` : ''), jp: z.it.jp, amount: z.amount, cat: y.cat[z.it.id] || dflt })) })).filter((y) => y.rows.length);
+                    meta: metaOf(y), rows: picked(y).map((z) => ({ rc: rcOf(z.it), title: (z.it.zh && z.it.zh !== z.it.jp ? z.it.zh : z.it.jp) + (z.it.qty > 1 ? ` ×${z.it.qty}` : ''), jp: z.it.jp, amount: z.amount, cat: y.cat[z.it.id] || dflt })) })).filter((y) => y.rows.length);
                 b.disabled = true;
                 Promise.resolve(opts.onApply({ receipts })).then((ok) => { if (ok !== false) { removePersonal(st.id); closePersonal(); } else renderFoot(); }, () => renderFoot());
             }
@@ -478,7 +514,11 @@
         });
         el.addEventListener('input', (ev) => { const t = ev.target, x = t.dataset && t.dataset.a === 'p-name' && byKey(t.dataset.k); if (x) { x.name = t.value; keepP(); } });
         renderMain();
-        if (st.receipts.length) $('#ldp-imp').open = false;
+        if (!ed && st.receipts.length) $('#ldp-imp').open = false;
+        if (ed && !ed.legacy) {
+            const x = st.receipts[0], am = amts(x), n = x.receipt.items.filter((it, i) => am[i] !== ed.fixed[it.id]).length;
+            if (n) say(`有 ${n} 項的金額與匯入時不同（可能曾單獨修改過）。儲存後會以這裡的計算結果為準。`, true);
+        }
     }
 
     function open(opts) {
@@ -795,5 +835,5 @@
         const o = curOpts; cur = curOpts = null;
         if (o && o.onClose) o.onClose();
     }
-    return { open, close, openPersonal, closePersonal, listPersonal, removePersonal, itemAmounts, packReceipts, findDupes, parseReceipts, list, remove, calcPerson, alignTotals, fmtQty, mergeShares, buildNote, parseReceipt, parseImport, buildPrompt, parseNum, checkReceipt };
+    return { open, close, openPersonal, editFromRows, closePersonal, listPersonal, removePersonal, itemAmounts, packReceipts, findDupes, parseReceipts, list, remove, calcPerson, alignTotals, fmtQty, mergeShares, buildNote, parseReceipt, parseImport, buildPrompt, parseNum, checkReceipt };
 });

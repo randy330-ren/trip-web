@@ -876,13 +876,46 @@
                 up[ref.push().key] = {
                     title: x.title.slice(0, 50), amount: x.amount, cur: 'JPY', dec, rate: r.s, rateRef: `table:JPY@${t.ts || 0}`, base: BASE, baseAmt: sp.baseAmt,
                     date: rc.date, pay: rc.pay, payer: 'me', mode: 'equal', unit: null, parts: null, rf: null, shares: sp.shares, seed: 0, cat: x.cat,
-                    note: x.jp && x.jp !== x.title ? `${rc.name}｜${x.jp}` : rc.name, rg: rc.rid, rgName: rc.name.slice(0, 50),
+                    note: x.jp && x.jp !== x.title ? `${rc.name}｜${x.jp}` : rc.name, rg: rc.rid, rgName: rc.name.slice(0, 50), ...(x.rc ? { rcp: x.rc, rgm: rc.meta } : {}),
                     by: m.uid, byName: m.name, ts: TS(), updBy: m.uid, updName: m.name, uts: TS()
                 };
                 n++;
             }
         }
         return ref.update(up).then(() => { toast(`已新增 ${p.receipts.length} 張收據、${n} 筆個人支出`); S.filter.scope = 'personal'; return true; }).catch((e) => { fail(e); return false; });
+    }
+    // 整張收據一起編輯（同一個 rg 的所有品項）
+    function openReceiptEdit(rid) {
+        if (!guard()) return;
+        if (!window.LedgerDetail || !LedgerDetail.openPersonal) return toast('明細分帳模組載入中，請稍後再試');
+        const rows = Object.entries(PE()).filter(([, e]) => e && e.rg === rid).sort(([ia, a], [ib, b]) => ((a.ts || 0) - (b.ts || 0)) || (ia < ib ? -1 : 1)).map(([id, e]) => ({ id, e }));
+        if (!rows.length) return;
+        LedgerDetail.openPersonal({ edit: { rid, rows }, cats: cats(), pays: PAYS, today: today(), onApply: saveReceiptEdit, onClose: refreshPersonalPending });
+    }
+    function saveReceiptEdit(p) {
+        if (!guard()) return false;
+        const m = me(), up = {}, t = R().JPY, cr = C.parseRate(t && t.rate);
+        let n = 0, d = 0;
+        for (const x of p.rows) {
+            const e = PE()[x.rowId];
+            if (!e) continue;
+            if (x.del) { up[x.rowId] = null; d++; continue; }
+            const f = (k, v) => { up[`${x.rowId}/${k}`] = v; };
+            if (!p.legacy && x.amount > 0 && x.amount !== e.amount) {
+                const rate = e.rate != null ? e.rate : cr.s;
+                if (rate == null) { alert('JPY 匯率無效，請先到「匯率」頁確認。'); return false; }
+                const sp = C.computeSplit({ amount: x.amount, dec: Number.isInteger(e.dec) ? e.dec : decOf('JPY'), mode: 'equal', members: ['me'], rate, baseDec: BASE_DEC, seed: 0, bias: [0] });
+                if (!sp.ok) { alert(`「${e.title || ''}」無法換算：${sp.errors.join('、')}`); return false; }
+                f('amount', x.amount); f('baseAmt', sp.baseAmt); f('shares', sp.shares);
+            }
+            f('date', p.date); f('pay', p.pay); f('cat', x.cat); f('rgName', p.name.slice(0, 50));
+            if (p.name !== e.rgName) { const jp = String(e.note || '').split('｜').slice(1).join('｜'); f('note', jp ? `${p.name}｜${jp}` : p.name); }
+            if (!p.legacy) { f('rcp', x.rc); f('rgm', p.meta); }
+            f('updBy', m.uid); f('updName', m.name); f('uts', TS());
+            n++;
+        }
+        if (!n && !d) return true;
+        return xref(true).update(up).then(() => { toast(`已更新收據（${n} 筆${d ? `，刪除 ${d} 筆` : ''}）`); return true; }).catch((er) => { fail(er); return false; });
     }
     function delReceipt(rid) {
         const ids = Object.entries(PE()).filter(([, e]) => e && e.rg === rid).map(([id]) => id);
@@ -899,7 +932,7 @@
             seen[e.rg] = 1;
             const mem = items.filter(([, x]) => x.rg === e.rg), open = !!ro[e.rg];
             const base = mem.reduce((a, [, x]) => a + (Number.isInteger(x.baseAmt) ? x.baseAmt : 0), 0), jpy = mem.reduce((a, [, x]) => a + (x.cur === 'JPY' && Number.isInteger(x.amount) ? x.amount : 0), 0);
-            return `<div class="card lg-item lg-rg ${open ? 'open' : ''}"><button type="button" class="lg-item-h" data-act="rg-open" data-id="${esc(e.rg)}"><span class="lg-item-l"><b>🧾 ${esc(e.rgName || '收據')}</b><small>${esc(e.date || '')}・🔒 個人・${mem.length} 項${open ? '' : '（點開展開）'}</small></span><span class="lg-item-r"><b>${jpy ? money(jpy, 'JPY') : money(base, BASE)}</b>${jpy ? `<small>≈ ${money(base, BASE)}</small>` : ''}</span></button>${open ? `<div class="lg-stack sm lg-mt">${mem.map(([i, x]) => itemHtml(i, x, ti)).join('')}</div><div class="lg-actions"><button type="button" class="lg-btn sm danger" data-act="rg-del" data-id="${esc(e.rg)}">🗑️ 刪除整張收據</button></div>` : ''}</div>`;
+            return `<div class="card lg-item lg-rg ${open ? 'open' : ''}"><button type="button" class="lg-item-h" data-act="rg-open" data-id="${esc(e.rg)}"><span class="lg-item-l"><b>🧾 ${esc(e.rgName || '收據')}</b><small>${esc(e.date || '')}・🔒 個人・${mem.length} 項${open ? '' : '（點開展開）'}</small></span><span class="lg-item-r"><b>${jpy ? money(jpy, 'JPY') : money(base, BASE)}</b>${jpy ? `<small>≈ ${money(base, BASE)}</small>` : ''}</span></button>${open ? `<div class="lg-stack sm lg-mt">${mem.map(([i, x]) => itemHtml(i, x, ti)).join('')}</div><div class="lg-actions"><button type="button" class="lg-btn sm" data-act="rg-edit" data-id="${esc(e.rg)}">✏️ 編輯整張收據</button><button type="button" class="lg-btn sm danger" data-act="rg-del" data-id="${esc(e.rg)}">🗑️ 刪除整張收據</button></div>` : ''}</div>`;
         }).join('');
     }
     function flApply() { renderFilterOpts(); renderItems(); renderDeleted(); }
@@ -1712,6 +1745,7 @@
             else if (act === 'rcpt-open') openReceiptImport(id);
             else if (act === 'rcpt-del') { if (confirm('刪除這份待處理的收據匯入？')) { LedgerDetail.removePersonal(id); refreshPersonalPending(); } }
             else if (act === 'rg-open') { const ro = S.rgOpen || (S.rgOpen = {}); ro[id] = !ro[id]; renderItems(); }
+            else if (act === 'rg-edit') openReceiptEdit(id);
             else if (act === 'rg-del') delReceipt(id);
             else if (act === 'del-toggle') { S.showDel = !S.showDel; renderDeleted(); }
             else if (act === 'export') exportCsv();
