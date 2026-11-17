@@ -1481,11 +1481,13 @@
         };
 
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
+        const TRIP_ID = 'tottori';
+        const tripDb = (d) => ({ ref: (p) => (!p ? d.ref('trips/' + TRIP_ID) : /^(\.info|secrets)(\/|$)/.test(p) ? d.ref(p) : d.ref('trips/' + TRIP_ID + '/' + p)) });
+        const db = tripDb(firebase.database());
         const auth = firebase.auth();
         const adminApp = firebase.apps.find(a => a.name === 'admin') || firebase.initializeApp(firebaseConfig, 'admin');
         const adminAuth = adminApp.auth();
-        const adminDb = adminApp.database();
+        const adminDb = tripDb(adminApp.database());
         let memberUser = null, adminUser = null;
         const createDb = () => (memberUser ? db : adminDb);
         const manageDb = () => ((isEditor || !memberUser) ? adminDb : db);
