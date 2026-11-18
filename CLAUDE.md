@@ -106,7 +106,9 @@
 
 **階段進度**
 - ✅ 第 1 階段（PR #45，已合併）：所有讀寫加上旅程前綴，鳥取固定為 `trips/tottori`；規則檔入 repo（保留舊規則並新增 `trips/tottori` 對應規則）；資料用 Firebase 後台「匯入 JSON」搬到新位置。登入帳號與圖床金鑰（`secrets`）留在根目錄。
-- ⬜ 第 2 階段：成員名單、每趟管理員、邀請碼；重寫規則（取代寫死的管理員信箱 `sanin-editor-2026@trip.local`，約 25 處），移除固定管理員帳號與第二個 Firebase 連線；修掉邀請碼 `SANIN2026` 只在瀏覽器檢查的漏洞。
+- 🟡 第 2 階段（PR 開啟中，合併後改 ✅）：規則改為 `trips/$trip` 通用寫法；成員限定讀取（未登入只看到登入畫面）；成員名單 `members`、管理員名單 `admins`、邀請碼 `secret/invite`＋`joins`、管理員密碼 `secret/adminPw`，全由規則驗證；前端移除第二個 Firebase 連線與固定管理員登入，改為「成員輸入管理員密碼升級、可退出」，設定頁可複製／重新產生邀請碼與管理員密碼、移除管理員。**過渡期規則仍保留舊管理員信箱 `sanin-editor-2026@trip.local`**，穩定後移除。
+  - 上線順序：①Firebase 後台手動貼 `trips/tottori/secret/invite` 與 `secret/adminPw`（各 12～64 字元）→ ②`firebase deploy --only database` → ③立刻合併 PR → ④確認正式站正常、用管理員密碼升級自己 → ⑤另開任務移除舊信箱規則並刪除舊管理員帳號。
+  - 已知限制：最後一位管理員退出後只能從 Firebase 後台手動補 `admins/{uid}`；根目錄 `secrets` 目前任何登入者可讀。
 - ⬜ 第 3 階段：行程內容、標題、天數、幣別、地圖中心改成每趟的設定資料，由管理員在網頁建立新旅程（規則中 `TWD` 基準幣別也要參數化）。
 - ⬜ 第 4 階段：旅程列表與切換、封存旅程、匯出／匯入 JSON 備份；`sw.js` 與 `manifest.json` 標題跟著旅程走。
 
