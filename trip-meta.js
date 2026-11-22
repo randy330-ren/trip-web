@@ -99,7 +99,14 @@
         if (!m || !Array.isArray(m.days) || !m.days.length) return null;
         const days = m.days.map((d) => d && d.month && d.day && d.week ? Object.assign({ secTag: '', tag: '', title: '', foodLabel: '', wx: 'x', steps: [], meals: ['', '', ''] }, d, { meals: [0, 1, 2].map((i) => (d.meals && d.meals[i]) || '') }) : null);
         if (days.includes(null)) return null;
-        return Object.assign({ year: new Date().getFullYear(), shortName: '旅程', pageTitle: m.title || '旅程', splash: { from: '', to: '', eyebrow: '', title: m.title || '' }, eyebrow: '', title: '', subtitle: '', notes: [], weather: { places: { x: ['東京', 35.68, 139.76] } }, map: { center: [35.68, 139.76], zoom: 5, farKm: 3000, region: '目的地' } }, m, { id, days });
+        const dm = { center: [35.68, 139.76], zoom: 5, farKm: 3000, region: '目的地' };
+        return Object.assign({ year: new Date().getFullYear(), shortName: '旅程', pageTitle: m.title || '旅程', eyebrow: '', title: '', subtitle: '', notes: [] }, m, {
+            id, days,
+            splash: Object.assign({ from: '', to: '', eyebrow: '', title: m.title || '' }, m.splash),
+            map: Object.assign(dm, m.map),
+            weather: { places: m.weather && m.weather.places && Object.keys(m.weather.places).length ? m.weather.places : { x: ['東京', 35.68, 139.76] } },
+            notes: m.notes || []
+        });
     };
     const placeholder = (id) => {
         const t = new Date();
@@ -107,6 +114,86 @@
             map: { center: [35.68, 139.76], zoom: 5, farKm: 3000, region: '目的地' }, weather: { places: { x: ['東京', 35.68, 139.76] } },
             days: [{ month: t.getMonth() + 1, day: t.getDate(), week: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][t.getDay()], tag: '', secTag: '', title: '', meals: ['', '', ''], foodLabel: '', wx: 'x', steps: [] }] };
     };
+    // ---- 給 AI 的提示詞與範例（視窗上的複製按鈕、docs/trip-import-format.md 共用同一份）----
+    const EXAMPLE = {"pageTitle": "2027 沖繩自由行", "title": "沖繩・春日紀行", "subtitle": "那霸 ｜ 2027.03.10 - 03.12", "eyebrow": "2027 JAPAN / OKINAWA", "shortName": "沖繩", "year": 2027, "splash": {"from": "TPE", "to": "OKA", "eyebrow": "2027 JAPAN / OKINAWA", "title": "沖繩・春日紀行"}, "map": {"center": [26.2124, 127.6809], "zoom": 10, "farKm": 150, "region": "沖繩地區"}, "weather": {"places": {"naha": ["那霸", 26.2124, 127.6809], "motobu": ["本部", 26.6577, 127.8985]}}, "notes": ["3/10 抵達後先到飯店寄放行李。", "3/12 退房後前往機場。"], "days": [{"month": 3, "day": 10, "tag": "抵達・市區", "title": "抵達那霸・國際通散步", "note": "貼心提醒：第一天請輕裝。", "meals": ["機上", "機場輕食", "國際通居酒屋"], "foodLabel": "那霸", "wx": "naha", "steps": ["08:40 桃園出發", "12:30 抵達那霸機場", "搭單軌電車前往飯店", "國際通散步"]}, {"month": 3, "day": 11, "tag": "海洋・景點", "title": "美麗海水族館", "meals": ["飯店早餐", "備瀨福木並木道午餐", "自由用餐"], "foodLabel": "本部", "wx": "motobu", "steps": ["自駕前往本部", "美麗海水族館", "備瀨福木並木道"]}]};
+    const PROMPT = [
+        "請把我提供的旅遊行程整理成一份 JSON，只輸出 JSON 本身（不要加說明文字或程式碼框）。",
+        "格式與欄位如下：pageTitle、title、subtitle、eyebrow、shortName、year、splash（from、to、eyebrow、title）、map（center 為 [緯度, 經度]、zoom、farKm、region）、weather.places（每個地點為 \"代碼\": [\"名稱\", 緯度, 經度]，代碼用英文小寫）、notes（出發前提醒字串陣列）、days（陣列）。",
+        "days 每一天包含：month、day（數字）、tag（8 字內短標籤）、title（當天主題）、note（可省略）、meals（[早餐, 午餐, 晚餐] 三個字串，未知填「待確認」）、foodLabel（地點名稱）、wx（天氣地點代碼，必須存在於 weather.places）、steps（當天路線，每個項目一個字串，保留時間與重點）。",
+        "規則：日期依先後排列、不可跨年；不要輸出 week；經緯度請給大致正確的數字；沒有資訊的欄位請省略，不要編造；請勿輸出任何個人資料。",
+        "行程內容在我附加的檔案中；如果沒有附檔案，則以下方文字為準："
+    ].join('\n');
+
+    // ---- 匯入／建立旅程：檢查並整理成標準格式（星期自動由日期算出）----
+    const WEEK = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    function validate(raw, id) {
+        const o = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+        if (!o) return { ok: false, errors: ['內容不是有效的 JSON 物件'], meta: null };
+        const errors = [];
+        const s = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+        const num = (v, lo, hi) => (typeof v === 'number' && isFinite(v) && v >= lo && v <= hi ? v : null);
+        if (!Array.isArray(o.days) || !o.days.length) errors.push('days 必須是至少一天的陣列');
+        else if (o.days.length > 31) errors.push('days 最多 31 天');
+        const year = Number.isInteger(o.year) && o.year >= 2000 && o.year <= 2100 ? o.year : new Date().getFullYear();
+        const places = {};
+        const wp = o.weather && o.weather.places && typeof o.weather.places === 'object' ? o.weather.places : {};
+        Object.entries(wp).slice(0, 12).forEach(([k, p]) => {
+            if (!/^[A-Za-z0-9_-]{1,20}$/.test(k)) return errors.push('天氣地點代碼「' + k + '」只能用英數、底線、連字號');
+            if (!Array.isArray(p) || typeof p[0] !== 'string' || num(p[1], -90, 90) === null || num(p[2], -180, 180) === null) return errors.push('天氣地點「' + k + '」格式應為 ["名稱", 緯度, 經度]');
+            places[k] = [s(p[0], 20), p[1], p[2]];
+        });
+        if (!Object.keys(places).length) places.x = ['東京', 35.68, 139.76];
+        const first = Object.keys(places)[0];
+        let prev = 0;
+        const days = (Array.isArray(o.days) ? o.days.slice(0, 31) : []).map((d, i) => {
+            const n = i + 1;
+            if (!d || typeof d !== 'object') { errors.push('第 ' + n + ' 天不是物件'); return null; }
+            const { month, day } = d;
+            if (!Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1 || day > 31) { errors.push('第 ' + n + ' 天的 month／day 不正確'); return null; }
+            const dt = new Date(year, month - 1, day);
+            if (dt.getMonth() !== month - 1) { errors.push('第 ' + n + ' 天的日期不存在（' + month + '/' + day + '）'); return null; }
+            if (month * 100 + day <= prev) errors.push('第 ' + n + ' 天的日期必須晚於前一天（目前不支援跨年）');
+            prev = month * 100 + day;
+            const tag = s(d.tag, 20), out = {
+                month, day, week: WEEK[dt.getDay()], tag, secTag: s(d.secTag, 20) || tag, title: s(d.title, 60) || '第 ' + n + ' 天', foodLabel: s(d.foodLabel, 20),
+                wx: places[d.wx] ? d.wx : first, meals: [0, 1, 2].map((j) => s(Array.isArray(d.meals) ? d.meals[j] : '', 60)),
+                steps: (Array.isArray(d.steps) ? d.steps : []).slice(0, 40).map((t) => s(t, 200)).filter(Boolean)
+            };
+            if (s(d.note, 200)) out.note = s(d.note, 200);
+            return out;
+        });
+        const pageTitle = s(o.pageTitle, 60) || s(o.title, 40);
+        if (!pageTitle) errors.push('需要 pageTitle（旅程名稱）');
+        const m = o.map && typeof o.map === 'object' ? o.map : {};
+        const c = Array.isArray(m.center) && num(m.center[0], -90, 90) !== null && num(m.center[1], -180, 180) !== null ? [m.center[0], m.center[1]] : [places[first][1], places[first][2]];
+        const sp = o.splash && typeof o.splash === 'object' ? o.splash : {};
+        const title = s(o.title, 40) || pageTitle, eyebrow = s(o.eyebrow, 60);
+        const meta = {
+            year, shortName: s(o.shortName, 10) || pageTitle.slice(0, 4), pageTitle, eyebrow, title, subtitle: s(o.subtitle, 80),
+            splash: { from: s(sp.from, 5), to: s(sp.to, 5), eyebrow: s(sp.eyebrow, 60) || eyebrow, title: s(sp.title, 40) || title },
+            map: { center: c, zoom: num(m.zoom, 1, 18) || 10, farKm: num(m.farKm, 10, 20000) || 300, region: s(m.region, 20) || '目的地' },
+            weather: { places }, notes: (Array.isArray(o.notes) ? o.notes : []).slice(0, 20).map((t) => s(t, 200)).filter(Boolean),
+            days: days.filter(Boolean)
+        };
+        return { ok: !errors.length, errors, meta };
+    }
+    // 空白旅程：只有日期與標題，內容之後在網頁上補
+    function blank(name, start, n) {
+        const t = new Date(start + 'T00:00:00');
+        if (isNaN(t) || !(n >= 1 && n <= 31)) return { ok: false, errors: ['請填寫正確的起始日期與天數（1～31）'] };
+        const end = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n - 1);
+        if (end.getFullYear() !== t.getFullYear()) return { ok: false, errors: ['目前不支援跨年的旅程'] };
+        const p2 = (x) => String(x).padStart(2, '0');
+        const r = validate({
+            pageTitle: name, title: name, year: t.getFullYear(), eyebrow: t.getFullYear() + ' TRIP',
+            subtitle: t.getFullYear() + '.' + p2(t.getMonth() + 1) + '.' + p2(t.getDate()) + ' - ' + p2(end.getMonth() + 1) + '.' + p2(end.getDate()),
+            days: Array.from({ length: n }, (_, i) => { const d = new Date(t.getFullYear(), t.getMonth(), t.getDate() + i); return { month: d.getMonth() + 1, day: d.getDate(), title: '第 ' + (i + 1) + ' 天', meals: ['待確認', '待確認', '待確認'] }; })
+        });
+        if (r.meta) r.meta.blank = true; // 空白旅程：管理員會看到「匯入行程」提示卡，匯入後這個標記就消失
+        return r;
+    }
+    const canon = (v) => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.keys(x).sort().reduce((a, y) => { a[y] = x[y]; return a; }, {}) : x));
+
     let T = has(id) ? TRIPS[id] : null;
     if (!T) { try { T = normalize(JSON.parse(ls('meta_' + id)), id); } catch (e) { T = null; } }
     if (T) lsSet('lastTrip', id); else T = placeholder(id);
@@ -124,5 +211,5 @@
     g.TRIPS = TRIPS;
     g.TRIP = T;
     g.TRIP_NS = id === 'tottori' ? '' : id + ':';
-    g.tripRender = { days: daysHtml, food: foodHtml, header: applyHeader, normalize };
+    g.tripRender = { days: daysHtml, food: foodHtml, header: applyHeader, normalize, validate, blank, canon, example: EXAMPLE, prompt: PROMPT };
 })(typeof window !== 'undefined' ? window : globalThis);

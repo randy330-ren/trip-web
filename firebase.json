@@ -8,7 +8,8 @@
       "package.json",
       "package-lock.json",
       "input.css",
-      "database.rules.json"
+      "database.rules.json",
+      "docs/**"
     ],
     "rewrites": [
       {
