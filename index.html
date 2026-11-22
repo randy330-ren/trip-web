@@ -765,6 +765,9 @@
             </button>
             <div id="member-menu"
                 class="hidden id-menu absolute bottom-full left-0 mb-2 bg-white border border-gray-200 rounded-xl shadow-lg p-1.5">
+                <button onclick="toggleMemberMenu();openTripPicker();"
+                    class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold text-left">🧳
+                    切換旅程</button>
                 <button onclick="toggleMemberMenu();changeMemberName();"
                     class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold text-left">🪪
                     修改名稱</button>
@@ -999,8 +1002,21 @@
                 <input id="gate-invite" type="text" placeholder="邀請碼" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2">
                 <p id="gate-error" class="hidden text-xs text-red-500 mb-2">邀請碼錯誤。</p>
                 <button onclick="gateJoin()" class="w-full bg-[#3b4d43] text-white rounded-lg py-2.5 text-sm font-bold mb-2">加入旅程</button>
+            </div>
+            <div id="gate-other" class="hidden space-y-2 mt-2">
+                <button onclick="openTripPicker()" class="w-full bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold">🧳 切換旅程</button>
                 <button onclick="logoutMember()" class="w-full bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold">換個帳號</button>
             </div>
+        </div>
+    </div>
+
+    <!-- 切換旅程 Modal -->
+    <div id="trip-modal" class="hidden fixed inset-0 z-[63] flex items-center justify-center p-4"
+        style="background:rgba(0,0,0,0.45);" onclick="if(event.target===this) closeTripPicker()">
+        <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl max-h-[85vh] overflow-y-auto">
+            <h3 class="text-sm font-bold text-[#3b4d43] mb-3">🧳 我的旅程</h3>
+            <div id="trip-list" class="space-y-2"></div>
+            <button onclick="closeTripPicker()" class="w-full bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold mt-3">關閉</button>
         </div>
     </div>
 
@@ -1120,7 +1136,8 @@
 
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const TRIP_ID = TRIP.id;
-        const tripDb = (d) => ({ ref: (p) => (!p ? d.ref('trips/' + TRIP_ID) : /^(\.info|secrets)(\/|$)/.test(p) ? d.ref(p) : d.ref('trips/' + TRIP_ID + '/' + p)) });
+        const BUNDLED = Object.prototype.hasOwnProperty.call(TRIPS, TRIP_ID);
+        const tripDb = (d) => ({ ref: (p) => (!p ? d.ref('trips/' + TRIP_ID) : /^(\.info|secrets|user_trips)(\/|$)/.test(p) ? d.ref(p) : d.ref('trips/' + TRIP_ID + '/' + p)) });
         const db = tripDb(firebase.database());
         const auth = firebase.auth();
         const adminDb = db;
@@ -1280,10 +1297,10 @@
             return null;
         }
         function cacheSave(name, data) {
-            try { localStorage.setItem('cache_' + name, JSON.stringify(data)); } catch (e) { }
+            try { localStorage.setItem('cache_' + TRIP_NS + name, JSON.stringify(data)); } catch (e) { }
         }
         function cacheLoad(name) {
-            try { const v = localStorage.getItem('cache_' + name); return v ? JSON.parse(v) : null; } catch (e) { return null; }
+            try { const v = localStorage.getItem('cache_' + TRIP_NS + name); return v ? JSON.parse(v) : null; } catch (e) { return null; }
         }
 
         // ---------- 背景捲動鎖定 ----------
@@ -1524,19 +1541,59 @@
                 refreshIdentity();
             }, () => { });
         }
-        function showGate(mode) {
+        const GATE_MSG = { login: '本旅程僅限成員查看，請登入，或用邀請碼註冊。', join: '此帳號尚未加入這趟旅程，請輸入邀請碼。', loading: '正在載入旅程資料…', nometa: '這趟旅程的行程資料尚未建立，請聯絡旅程管理員。' };
+        function showGate(mode, why) {
             document.getElementById('login-gate').classList.toggle('hidden', !mode);
             document.getElementById('gate-join').classList.toggle('hidden', mode !== 'join');
-            document.getElementById('gate-login').classList.toggle('hidden', mode === 'join');
-            document.getElementById('gate-msg').textContent = mode === 'join' ? '此帳號尚未加入旅程，請輸入邀請碼。' : '本旅程僅限成員查看，請登入，或用邀請碼註冊。';
+            document.getElementById('gate-login').classList.toggle('hidden', mode !== 'login');
+            document.getElementById('gate-other').classList.toggle('hidden', !mode || mode === 'login');
+            document.getElementById('gate-msg').textContent = (GATE_MSG[mode] || '') + (why ? `（${why}）` : '');
         }
+        // 確認是成員後：登記到「我的旅程」；非內建旅程再同步旅程資料（變了就存下來並重新整理一次）
+        function onMemberConfirmed(user) {
+            if (!TRIP.placeholder) db.ref('user_trips/' + user.uid + '/' + TRIP_ID).set({ name: TRIP.pageTitle, ts: TS() }).catch(() => { });
+            if (BUNDLED) return;
+            const fail = (why) => { if (TRIP.placeholder && auth.currentUser === user) showGate('nometa', why); };
+            db.ref('meta').once('value').then((s) => {
+                const v = tripRender.normalize(s.val(), TRIP_ID);
+                if (!v) return fail(s.exists() ? '資料格式不符，請確認 meta 內有 days' : '資料庫裡找不到 meta');
+                const txt = JSON.stringify(s.val());
+                try {
+                    if (!TRIP.placeholder && localStorage.getItem('meta_' + TRIP_ID) === txt) return;
+                    localStorage.setItem('meta_' + TRIP_ID, txt);
+                    localStorage.setItem('lastTrip', TRIP_ID);
+                } catch (e) { return fail('瀏覽器無法儲存資料'); }
+                location.reload();
+            }).catch((e) => fail(e && e.code === 'PERMISSION_DENIED' ? '沒有讀取權限，請確認規則已發布、且你已加入這趟旅程' : ((e && e.message) || '讀取失敗')));
+        }
+        window.openTripPicker = async function () {
+            const u = auth.currentUser;
+            if (!u) return;
+            const box = document.getElementById('trip-list');
+            box.innerHTML = '<p class="text-xs text-gray-400">載入中…</p>';
+            lockScroll();
+            document.getElementById('trip-modal').classList.remove('hidden');
+            let list = {};
+            try { list = (await db.ref('user_trips/' + u.uid).once('value')).val() || {}; } catch (e) { }
+            const rows = Object.entries(list).sort((a, b) => ((b[1] && b[1].ts) || 0) - ((a[1] && a[1].ts) || 0));
+            box.innerHTML = rows.length ? rows.map(([id, v]) => `<button type="button" onclick="goTrip('${id}')" class="w-full text-left rounded-lg px-3 py-2.5 text-xs font-bold ${id === TRIP_ID ? 'bg-[#3b4d43] text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}">${escapeHtml((v && v.name) || id)}${id === TRIP_ID ? '（目前）' : ''}</button>`).join('') : '<p class="text-xs text-gray-400">還沒有加入任何旅程。用旅程的分享連結並輸入邀請碼即可加入。</p>';
+        };
+        window.closeTripPicker = function () {
+            document.getElementById('trip-modal').classList.add('hidden');
+            unlockScroll();
+        };
+        window.goTrip = function (id) {
+            if (!/^[a-z0-9][a-z0-9-]{2,19}$/.test(id)) return;
+            location.href = location.pathname + '?trip=' + id;
+        };
         auth.onAuthStateChanged((user) => {
             memberUser = user;
             watchAdmin(user);
-            showGate(user ? '' : 'login');
+            showGate(!user ? 'login' : (TRIP.placeholder ? 'loading' : ''));
             if (user) {
-                startMemberSession(user);
-                db.ref('members/' + user.uid).once('value').then((s) => { if (!s.exists() && user.displayName && auth.currentUser === user) showGate('join'); }).catch(() => { if (user.displayName && auth.currentUser === user) showGate('join'); });
+                // 先檢查是不是成員，確認後才寫入成員資料（否則本機暫時的寫入會讓檢查誤判）
+                const joinNeeded = () => { if (user.displayName && auth.currentUser === user) showGate('join'); };
+                db.ref('members/' + user.uid).once('value').then((s) => { if (auth.currentUser !== user) return; if (s.exists()) { startMemberSession(user); onMemberConfirmed(user); } else joinNeeded(); }).catch(joinNeeded);
             }
             refreshIdentity();
         });
@@ -2153,7 +2210,7 @@
             }
             ledgerLoading.then(() => { if (window.LEDGER) LEDGER.open(); });
         }
-        const HL_V = '12';
+        const HL_V = '13';
         let hlLoading = null;
         function loadHL() {
             if (!hlLoading) {
@@ -5382,7 +5439,7 @@
 
         // ---------- 帳務提醒：有你分攤的新增／修改支出、待你確認的轉帳 ----------
         const REM = { refs: [], key: '', people: null, exps: null, trs: null, timer: 0, max: 0, fresh: [] };
-        const remSeenKey = (uid) => 'lg_rem_' + uid;
+        const remSeenKey = (uid) => TRIP_NS + 'lg_rem_' + uid;
         function remStop() { REM.refs.forEach(([r, f]) => r.off('value', f)); REM.refs = []; REM.key = ''; REM.people = REM.exps = REM.trs = null; clearTimeout(REM.timer); remHide(); }
         function remSync() {
             const key = memberUser ? memberUser.uid : '';

@@ -46,7 +46,7 @@
     const guard = () => { if (isOffline()) { offlineAlert(); return false; } return true; };
 
     // ---------- 離線上傳佇列（IndexedDB，撐得過關 App / 重開機） ----------
-    const QDB = 'hl-queue', QST = 'q', QMAX = 6;
+    const QDB = 'hl-queue' + (TRIP_NS ? '-' + TRIP.id : ''), QST = 'q', QMAX = 6;
     let qdbP = null;
     function qdb() {
         if (!qdbP) qdbP = new Promise((res, rej) => {
@@ -464,7 +464,7 @@
     function checkWins() {
         const me = memberUser && memberUser.uid;
         if (!me || !S.photosLive || S.winOpen || !S.ready.react || !S.ready.comments || !S.ready.members || !S.ready.award || (S.sheet && S.sheet.busy)) return;
-        const lsKey = 'hl_won_' + me, bKey = 'hl_wonb_' + me;
+        const lsKey = TRIP_NS + 'hl_won_' + me, bKey = TRIP_NS + 'hl_wonb_' + me;
         let seen = {}, based = false;
         try { seen = JSON.parse(localStorage.getItem(lsKey) || '{}') || {}; based = localStorage.getItem(bKey) === '1'; } catch (e) { }
         const groups = [];
@@ -511,7 +511,7 @@
 
     // ---------- 頂部提示（按讚／留言／新貼文／標注／得獎） ----------
     const allReady = () => !!(S.photosLive && S.ready.react && S.ready.comments && S.ready.members && S.ready.rts && S.ready.award);
-    const seenKey = () => 'hl_seen_' + currentUserUid;
+    const seenKey = () => TRIP_NS + 'hl_seen_' + currentUserUid;
     function loadSeen() {
         try { const v = localStorage.getItem(seenKey()); return v === null ? null : (+v || 0); } catch (e) { return null; }
     }
@@ -547,7 +547,7 @@
         return out.filter(n => !S.dis.has(n.key)).sort((a, b) => b.ts - a.ts);
     }
     // ---------- 發文提醒（日本時間：8:00 起提醒昨天、12:00 起提醒今天；打開 App 時判斷） ----------
-    const prKey = () => 'hl_pr_' + currentUserUid;
+    const prKey = () => TRIP_NS + 'hl_pr_' + currentUserUid;
     function prLoad() { try { return JSON.parse(localStorage.getItem(prKey()) || '{}') || {}; } catch (e) { return {}; } }
     function prView(keys) {
         const v = prLoad();
