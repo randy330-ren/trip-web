@@ -106,7 +106,7 @@
 
 **階段進度**
 - ✅ 第 1 階段（PR #45，已合併）：所有讀寫加上旅程前綴，鳥取固定為 `trips/tottori`；規則檔入 repo（保留舊規則並新增 `trips/tottori` 對應規則）；資料用 Firebase 後台「匯入 JSON」搬到新位置。登入帳號與圖床金鑰（`secrets`）留在根目錄。
-- ✅ 第 2 階段（PR #47，已合併）：規則改為 `trips/$trip` 通用寫法；成員限定讀取（未登入只看到登入畫面）；成員名單 `members`、管理員名單 `admins`、邀請碼 `secret/invite`＋`joins`、管理員密碼 `secret/adminPw`，全由規則驗證；前端移除第二個 Firebase 連線與固定管理員登入，改為「成員輸入管理員密碼升級、可退出」，設定頁可複製／重新產生邀請碼與管理員密碼、移除管理員。**過渡期規則仍保留舊管理員信箱 `sanin-editor-2026@trip.local`**，穩定後移除。
+- ✅ 第 2 階段（PR #47，已合併）：規則改為 `trips/$trip` 通用寫法；成員限定讀取（未登入只看到登入畫面）；成員名單 `members`、管理員名單 `admins`、邀請碼 `secret/invite`＋`joins`、管理員密碼 `secret/adminPw`，全由規則驗證；前端移除第二個 Firebase 連線與固定管理員登入，改為「成員輸入管理員密碼升級、可退出」，設定頁可複製／重新產生邀請碼與管理員密碼、移除管理員。**舊管理員信箱 `sanin-editor-2026@trip.local` 已在「安全清理」移除。**
   - 上線順序：①Firebase 後台手動貼 `trips/tottori/secret/invite` 與 `secret/adminPw`（各 12～64 字元）→ ②到 Firebase 後台貼上規則並發布（已完成）→ ③立刻合併 PR → ④確認正式站正常、用管理員密碼升級自己 → ⑤另開任務移除舊信箱規則並刪除舊管理員帳號。
   - 已知限制：最後一位管理員退出後只能從 Firebase 後台手動補 `admins/{uid}`；根目錄 `secrets` 目前任何登入者可讀。
 - 🟡 第 3 階段（拆三個 PR）：已定案——第二趟旅程與鳥取並存；切換用「網址帶旅程代碼＋選擇畫面」；建立旅程需「建立密碼」；第二趟先用日幣／台幣，其他旅程可自選幣別。
@@ -117,7 +117,9 @@
   - ⬜ 3d：**基準／結算幣別參數化**（`ledger.js`／`ledger-core.js` 的 `TWD`、`JPY`、匯率 API、規則中的 `TWD`）；目前新旅程固定台幣基準、日圓結算。
 - ⬜ 第 4 階段：旅程列表與切換、封存旅程、匯出／匯入 JSON 備份；`sw.js` 與 `manifest.json` 標題跟著旅程走。
 
-**待清理（第 2 階段穩定後另開任務）**
-- 根目錄舊路徑資料（`ledger`、`highlights`、`members` 等）與舊規則。
-- `trips/tottori` 內多帶過來的舊節點（`itinerary`、`route_steps_backup`）。
+- 🟡 安全清理（PR 開啟中）：規則移除舊管理員信箱（管理員只認 `admins` 名單）、移除根目錄 25 個舊節點的規則（資料仍在但無法讀寫）、`secrets` 改為只有「加入過至少一趟旅程」（`user_trips/{uid}` 存在）的人可讀。**未改任何網站程式碼**。
+  - **使用者要手動做**：①先匯出完整備份 → ②貼上新規則並發布、測試鳥取（登入、編輯、傳照片、記帳）→ ③Authentication 刪除舊帳號 `sanin-editor-2026@trip.local` → ④後台刪除根目錄舊資料（`trip_content`、`ledger`、`ledger_personal`、`map_spots`、`trip_notes`、`meal_links`、`route_steps`、`todos`、`todo_done`、`todos_personal`、`settings`、`members`、`presence`、`day_photos`、`highlights`、`buys`、`buy_done`、`buys_personal`、`img_del`、`draws`、`geo`、`hl_react`、`hl_comments`、`hl_rts`、`hl_award`；**保留 `secrets`、`trips`、`user_trips`、`creators`、`config`**）→ ⑤選擇性刪除 `trips/tottori/itinerary`、`route_steps_backup`。
+  - 已知限制：任何成員的瀏覽器都能取得圖床金鑰（純前端上傳的限制）；某趟旅程的管理員名單變空時，只能從後台手動補 `admins/{uid}`。
+
+**待清理**
 - 備份檔 `jp-tottori-default-rtdb-export.json` 請另存雲端硬碟或電腦，勿只留手機。
