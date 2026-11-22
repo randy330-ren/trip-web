@@ -526,7 +526,7 @@
           ".read": "(auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())",
           "$uid": {
             ".read": "auth != null && auth.uid == $uid",
-            ".write": "auth != null && ((auth.uid == $uid && (!newData.exists() || (!data.exists() && root.child('trips/' + $trip + '/members/' + auth.uid).exists() && newData.val() == root.child('trips/' + $trip + '/secret/adminPw').val()))) || (!newData.exists() && (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
+            ".write": "auth != null && ((auth.uid == $uid && (!newData.exists() || (!data.exists() && root.child('trips/' + $trip + '/members/' + auth.uid).exists() && newData.val() == root.child('trips/' + $trip + '/secret/adminPw').val()) || (!data.exists() && !root.child('trips/' + $trip).exists() && $trip.matches(/^[a-z0-9][a-z0-9-]{2,19}$/) && root.child('config/createPw').exists() && root.child('creators/' + auth.uid).exists() && root.child('creators/' + auth.uid).val() == root.child('config/createPw').val()))) || (!newData.exists() && (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
             ".validate": "newData.isString()"
           }
         },
@@ -544,6 +544,12 @@
           ".write": "auth != null && auth.uid == $uid && (!newData.exists() || root.child('trips/' + $tid + '/members/' + auth.uid).exists())",
           ".validate": "newData.hasChildren(['name', 'ts']) && newData.child('name').isString() && newData.child('name').val().length <= 60 && newData.child('ts').isNumber()"
         }
+      }
+    },
+    "creators": {
+      "$uid": {
+        ".write": "auth != null && auth.uid == $uid && (!newData.exists() || newData.val() == root.child('config/createPw').val())",
+        ".validate": "newData.isString() && newData.val().length <= 64"
       }
     }
   }

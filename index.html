@@ -984,6 +984,9 @@
                 <button onclick="openAccessModal()"
                     class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg py-2.5 text-xs font-bold text-left px-3">🔑
                     邀請碼與管理員</button>
+                <button onclick="openImportModal()"
+                    class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg py-2.5 text-xs font-bold text-left px-3">📥
+                    匯入旅程資料（JSON）</button>
             </div>
             <button onclick="closeSettingsModal()"
                 class="w-full bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold mt-3">關閉</button>
@@ -1010,13 +1013,58 @@
         </div>
     </div>
 
+    <!-- 建立新旅程 Modal -->
+    <div id="create-modal" class="hidden fixed inset-0 z-[64] flex items-center justify-center p-4" style="background:rgba(0,0,0,0.45);">
+        <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl max-h-[88vh] overflow-y-auto">
+            <h3 class="text-sm font-bold text-[#3b4d43] mb-3">＋ 建立新旅程</h3>
+            <div id="create-form" class="space-y-2">
+                <input id="cr-id" type="text" placeholder="旅程代碼（小寫英數與連字號，例：okinawa-2027）" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <input id="cr-name" type="text" placeholder="旅程名稱，例：2027 沖繩自由行" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <div class="flex gap-2">
+                    <input id="cr-start" type="date" class="min-w-0 flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <input id="cr-days" type="number" min="1" max="31" placeholder="天數" class="w-20 border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <textarea id="cr-json" rows="3" placeholder="（選填）貼上 AI 產生的旅程 JSON；有填時以 JSON 為準，上面的名稱、日期、天數可留空" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs"></textarea>
+                <input id="cr-pw" type="password" placeholder="建立密碼" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <p id="cr-error" class="hidden text-xs text-red-500"></p>
+                <div class="flex gap-2 pt-1">
+                    <button onclick="closeCreateModal()" class="flex-1 bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold">取消</button>
+                    <button id="cr-submit" onclick="submitCreate()" class="flex-1 bg-[#3b4d43] text-white rounded-lg py-2 text-xs font-bold disabled:opacity-50">建立</button>
+                </div>
+            </div>
+            <div id="create-done" class="hidden space-y-2 text-xs text-gray-700">
+                <p class="font-bold text-emerald-700">✅ 旅程已建立，你是這趟的管理員。</p>
+                <div id="cr-done-body" class="space-y-2"></div>
+                <p class="text-[11px] text-gray-400">請把「分享連結」和「邀請碼」傳給旅伴；管理員密碼之後也能在「管理設定 → 邀請碼與管理員」查看。</p>
+                <button id="cr-go" class="w-full bg-[#3b4d43] text-white rounded-lg py-2 text-xs font-bold">前往旅程</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 匯入旅程資料 Modal -->
+    <div id="import-modal" class="hidden fixed inset-0 z-[62] flex items-center justify-center p-4" style="background:rgba(0,0,0,0.45);">
+        <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl max-h-[88vh] overflow-y-auto">
+            <h3 class="text-sm font-bold text-[#3b4d43] mb-1">📥 匯入旅程資料</h3>
+            <p class="text-[11px] text-gray-500 mb-2">貼上 AI 產生的旅程 JSON，先檢查再匯入。匯入前會自動下載一份備份檔。</p>
+            <textarea id="imp-json" rows="6" placeholder="貼上 JSON" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs"></textarea>
+            <div id="imp-result" class="text-xs mt-2"></div>
+            <label class="flex items-start gap-2 text-[11px] text-gray-600 mt-2"><input id="imp-reset" type="checkbox" class="mt-0.5">同時清除目前已編輯的路線、標題、餐食與提醒內容（改用匯入的內容）</label>
+            <div class="flex gap-2 mt-3">
+                <button onclick="closeImportModal()" class="flex-1 bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold">取消</button>
+                <button onclick="checkImport()" class="flex-1 bg-gray-600 text-white rounded-lg py-2 text-xs font-bold">檢查</button>
+                <button onclick="runImport()" class="flex-1 bg-[#3b4d43] text-white rounded-lg py-2 text-xs font-bold">匯入</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 切換旅程 Modal -->
     <div id="trip-modal" class="hidden fixed inset-0 z-[63] flex items-center justify-center p-4"
         style="background:rgba(0,0,0,0.45);" onclick="if(event.target===this) closeTripPicker()">
         <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl max-h-[85vh] overflow-y-auto">
             <h3 class="text-sm font-bold text-[#3b4d43] mb-3">🧳 我的旅程</h3>
             <div id="trip-list" class="space-y-2"></div>
-            <button onclick="closeTripPicker()" class="w-full bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold mt-3">關閉</button>
+            <button onclick="openCreateModal()" class="w-full bg-[#3b4d43] text-white rounded-lg py-2 text-xs font-bold mt-3">＋ 建立新旅程</button>
+            <button onclick="closeTripPicker()" class="w-full bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold mt-2">關閉</button>
         </div>
     </div>
 
@@ -1559,13 +1607,106 @@
                 if (!v) return fail(s.exists() ? '資料格式不符，請確認 meta 內有 days' : '資料庫裡找不到 meta');
                 const txt = JSON.stringify(s.val());
                 try {
-                    if (!TRIP.placeholder && localStorage.getItem('meta_' + TRIP_ID) === txt) return;
+                    let old = null;
+                    try { old = tripRender.normalize(JSON.parse(localStorage.getItem('meta_' + TRIP_ID)), TRIP_ID); } catch (e) { }
+                    if (!TRIP.placeholder && old && tripRender.canon(old) === tripRender.canon(v)) return;
                     localStorage.setItem('meta_' + TRIP_ID, txt);
                     localStorage.setItem('lastTrip', TRIP_ID);
                 } catch (e) { return fail('瀏覽器無法儲存資料'); }
                 location.reload();
             }).catch((e) => fail(e && e.code === 'PERMISSION_DENIED' ? '沒有讀取權限，請確認規則已發布、且你已加入這趟旅程' : ((e && e.message) || '讀取失敗')));
         }
+        // ---------- 建立新旅程／匯入旅程資料 ----------
+        const gid = (id) => document.getElementById(id);
+        const downloadJson = (name, obj) => {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' }));
+            a.download = name;
+            document.body.appendChild(a); a.click(); a.remove();
+        };
+        window.openCreateModal = function () {
+            if (!auth.currentUser) return;
+            closeTripPicker();
+            gid('create-form').classList.remove('hidden'); gid('create-done').classList.add('hidden'); gid('cr-error').classList.add('hidden');
+            lockScroll();
+            gid('create-modal').classList.remove('hidden');
+        };
+        window.closeCreateModal = function () { gid('create-modal').classList.add('hidden'); unlockScroll(); };
+        window.submitCreate = async function () {
+            const u = auth.currentUser, btn = gid('cr-submit'), eEl = gid('cr-error');
+            const err = (m) => { eEl.textContent = m; eEl.classList.remove('hidden'); };
+            eEl.classList.add('hidden');
+            if (!u || !u.displayName) return err('請先登入。');
+            const id = gid('cr-id').value.trim(), pw = gid('cr-pw').value, txt = gid('cr-json').value.trim();
+            if (!/^[a-z0-9][a-z0-9-]{2,19}$/.test(id)) return err('旅程代碼需為 3～20 字，只能用小寫英文、數字與連字號。');
+            if (!pw) return err('請輸入建立密碼。');
+            let r;
+            if (txt) {
+                let obj;
+                try { obj = JSON.parse(txt); } catch (e) { return err('JSON 格式不正確：' + e.message); }
+                r = tripRender.validate(obj, id);
+            } else {
+                const name = gid('cr-name').value.trim();
+                if (!name) return err('請輸入旅程名稱，或貼上旅程 JSON。');
+                r = tripRender.blank(name, gid('cr-start').value, parseInt(gid('cr-days').value, 10));
+            }
+            if (!r.ok) return err(r.errors.slice(0, 3).join('；'));
+            btn.disabled = true;
+            const R = firebase.database().ref(), taken = () => err('這個旅程代碼已被使用，請換一個。');
+            try {
+                try { await R.child('creators/' + u.uid).set(pw); } catch (e) { return err('建立密碼不正確，或尚未設定建立密碼。'); }
+                const adm = R.child(`trips/${id}/admins/${u.uid}`);
+                if (!(await adm.once('value')).exists()) {
+                    try { await adm.set('creator'); } catch (e) { return taken(); }
+                } else if ((await R.child(`trips/${id}/meta`).once('value')).exists()) return taken();
+                const invite = accRand(), adminPw = accRand();
+                await R.update({ [`trips/${id}/members/${u.uid}`]: { name: u.displayName }, [`trips/${id}/secret/invite`]: invite, [`trips/${id}/secret/adminPw`]: adminPw, [`trips/${id}/meta`]: r.meta });
+                await R.child(`user_trips/${u.uid}/${id}`).set({ name: r.meta.pageTitle, ts: TS() });
+                const link = location.origin + location.pathname + '?trip=' + id;
+                const row = (label, v) => `<div><div class="font-bold mb-1">${label}</div><div class="flex items-center gap-1.5"><code class="flex-1 min-w-0 break-all bg-gray-100 rounded px-2 py-1.5">${escapeHtml(v)}</code><button type="button" onclick="drCopy('${v}', this)" class="shrink-0 bg-gray-100 rounded-lg px-2.5 py-1.5 font-bold">📋</button></div></div>`;
+                gid('cr-done-body').innerHTML = row('分享連結', link) + row('邀請碼', invite) + row('管理員密碼', adminPw);
+                gid('cr-go').onclick = () => goTrip(id);
+                gid('create-form').classList.add('hidden'); gid('create-done').classList.remove('hidden');
+            } catch (e) { err('建立失敗：' + (e.message || e.code) + '（可用同一個代碼再試一次）'); }
+            finally { btn.disabled = false; }
+        };
+        let IMP = null;
+        window.openImportModal = function () {
+            if (!isEditor) return;
+            if (BUNDLED) { alert('內建旅程的資料寫在程式裡，無法匯入。請用「建立新旅程」。'); return; }
+            IMP = null; gid('imp-result').innerHTML = ''; gid('imp-json').value = ''; gid('imp-reset').checked = false;
+            gid('settings-modal').classList.add('hidden');
+            lockScroll();
+            gid('import-modal').classList.remove('hidden');
+        };
+        window.closeImportModal = function () { gid('import-modal').classList.add('hidden'); unlockScroll(); };
+        window.checkImport = function () {
+            const box = gid('imp-result'), red = (m) => `<p class="text-red-500">${escapeHtml(m)}</p>`;
+            IMP = null;
+            let obj;
+            try { obj = JSON.parse(gid('imp-json').value); } catch (e) { box.innerHTML = red('JSON 格式不正確：' + e.message); return false; }
+            const r = tripRender.validate(obj, TRIP_ID);
+            if (!r.ok) { box.innerHTML = r.errors.slice(0, 6).map(red).join(''); return false; }
+            IMP = r.meta;
+            box.innerHTML = `<p class="text-emerald-700 font-bold">✅ 格式正確：${escapeHtml(r.meta.pageTitle)}，共 ${r.meta.days.length} 天</p>` +
+                `<ul class="mt-1 text-gray-600 space-y-0.5">${r.meta.days.map((d, i) => `<li>D${i + 1} ${d.month}/${d.day} ${d.week}・${escapeHtml(d.title)}</li>`).join('')}</ul>`;
+            return true;
+        };
+        window.runImport = async function () {
+            if (!isEditor || !IMP && !checkImport()) return;
+            if (!confirm('確定匯入？目前的旅程資料會先下載成備份檔。')) return;
+            try {
+                const nodes = gid('imp-reset').checked ? ['route_steps', 'trip_content', 'trip_notes', 'meal_links'] : [];
+                const old = { meta: (await db.ref('meta').once('value')).val() };
+                for (const k of nodes) old[k] = (await db.ref(k).once('value')).val();
+                downloadJson(`${TRIP_ID}-backup-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.json`, old);
+                const up = { meta: IMP };
+                nodes.forEach((k) => { up[k] = null; });
+                await db.ref().update(up);
+                try { localStorage.setItem('meta_' + TRIP_ID, JSON.stringify(IMP)); } catch (e) { }
+                location.reload();
+            } catch (e) { alert('匯入失敗：' + (e.code === 'PERMISSION_DENIED' ? '沒有權限（需要是這趟旅程的管理員）' : e.message)); }
+        };
         window.openTripPicker = async function () {
             const u = auth.currentUser;
             if (!u) return;
@@ -2766,6 +2907,7 @@
 
         // ---------- 行程地圖（Leaflet，延遲載入） ----------
         const MP_COLORS = ['#8a6fb5', '#4f9a6a', '#d9913e', '#4e86b8', '#c0564b', '#3d9a9a', '#a07a3a', '#6b7280'];
+        const mpColor = (n) => (n >= 1 ? MP_COLORS[(n - 1) % MP_COLORS.length] : '#9ca3af');
         const MP_STYLES = [
             ['標準', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', '© OpenStreetMap'],
             ['地形', 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', '© Esri'],
@@ -2900,7 +3042,7 @@
             const tagHtml = (tag ? `<span class="mpl-tag" style="${tag.style}">${escapeHtml(tag.text)}</span>` : '') + (cand ? '<span class="mpl-tag cand">備選</span>' : '');
             const extra = [sub, e.name && e.name !== e.title ? e.name : '', nopos ? '尚無座標' : ''].filter(Boolean).join('・');
             return `<div class="mpl-row${nopos ? ' nopos' : ''}${cand ? ' cand' : ''}" data-k="${escapeHtml(k)}" data-key="${escapeHtml(e.key)}" data-n="${n}" onclick="mpListGo(this)">
-                <span class="mpl-n" style="background:${MP_COLORS[n - 1]}">${badge}</span>
+                <span class="mpl-n" style="background:${mpColor(n)}">${badge}</span>
                 <div class="mpl-b"><p class="mpl-t">${tagHtml}${escapeHtml(e.title || e.name)}</p>${extra ? `<p class="mpl-s">${escapeHtml(extra)}</p>` : ''}</div>
                 <a href="${escapeHtml(e.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="mpl-a">導航</a></div>`;
         }
@@ -2916,7 +3058,7 @@
                     const e = MP.entries.find(x => x.key === 's:' + id);
                     if (e) rows.push(mpRow(e, n === e.span[0] ? e.key : `${e.key}@${n}`, n, '🏨', st));
                 });
-                return `<div ${all ? `id="map-day${n}" ` : ''}class="mpl-day"><p class="mpl-h"><i style="background:${MP_COLORS[n - 1]}"></i>D${n}・${d.month}/${d.day} ${d.week}</p>${rows.join('') || '<p class="mpl-s px-2 py-1">這天還沒有安排。</p>'}</div>`;
+                return `<div ${all ? `id="map-day${n}" ` : ''}class="mpl-day"><p class="mpl-h"><i style="background:${mpColor(n)}"></i>D${n}・${d.month}/${d.day} ${d.week}</p>${rows.join('') || '<p class="mpl-s px-2 py-1">這天還沒有安排。</p>'}</div>`;
             }).join('') + '<p class="mpl-swipe">‹ 左右滑切換不同天 ›</p>';
             mpHighlight();
         }
@@ -2969,7 +3111,7 @@
         function mpMarker(e, p, k = e.key) {
             const sq = e.src === 'spot';
             const d = k.includes('@') ? +k.split('@')[1] : e.day;
-            const color = MP_COLORS[d - 1] || '#9ca3af';
+            const color = mpColor(d);
             const label = sq ? (e.kind === 'lodging' ? '🏨' : e.kind === 'station' ? '🚉' : '★') : e.order;
             const m = L.marker([p.lat, p.lng], {
                 bubblingMouseEvents: false, zIndexOffset: sq ? 0 : 1000 - e.order * 10,
@@ -2995,7 +3137,7 @@
             dayMeta.forEach(d => {
                 const pts = routes.filter(([e]) => e.day === d.n).map(([, p]) => [p.lat, p.lng]);
                 if (pts.length < 2) return;
-                const pl = L.polyline(pts, { color: MP_COLORS[d.n - 1], weight: 3, dashArray: '6 8', opacity: MP.line ? .85 : 0, interactive: false });
+                const pl = L.polyline(pts, { color: mpColor(d.n), weight: 3, dashArray: '6 8', opacity: MP.line ? .85 : 0, interactive: false });
                 MP.lines.push(pl);
                 grp(d.n).addLayer(pl);
             });
@@ -3088,7 +3230,7 @@
         }
         function mpRenderPills() {
             const html = `<button type="button" class="mp-pill ${MP.day === 'all' ? 'on' : ''}" onclick="mpDay('all')">全部</button>` +
-                dayMeta.map(d => `<button type="button" class="mp-pill ${MP.day === d.n ? 'on' : ''}" onclick="mpDay(${d.n})"><i style="background:${MP_COLORS[d.n - 1]}"></i>D${d.n} ${d.month}/${d.day}</button>`).join('');
+                dayMeta.map(d => `<button type="button" class="mp-pill ${MP.day === d.n ? 'on' : ''}" onclick="mpDay(${d.n})"><i style="background:${mpColor(d.n)}"></i>D${d.n} ${d.month}/${d.day}</button>`).join('');
             const changed = MP.pillDay !== MP.day;
             MP.pillDay = MP.day;
             ['mp-fs-pills'].forEach(id => {

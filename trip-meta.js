@@ -99,7 +99,14 @@
         if (!m || !Array.isArray(m.days) || !m.days.length) return null;
         const days = m.days.map((d) => d && d.month && d.day && d.week ? Object.assign({ secTag: '', tag: '', title: '', foodLabel: '', wx: 'x', steps: [], meals: ['', '', ''] }, d, { meals: [0, 1, 2].map((i) => (d.meals && d.meals[i]) || '') }) : null);
         if (days.includes(null)) return null;
-        return Object.assign({ year: new Date().getFullYear(), shortName: '旅程', pageTitle: m.title || '旅程', splash: { from: '', to: '', eyebrow: '', title: m.title || '' }, eyebrow: '', title: '', subtitle: '', notes: [], weather: { places: { x: ['東京', 35.68, 139.76] } }, map: { center: [35.68, 139.76], zoom: 5, farKm: 3000, region: '目的地' } }, m, { id, days });
+        const dm = { center: [35.68, 139.76], zoom: 5, farKm: 3000, region: '目的地' };
+        return Object.assign({ year: new Date().getFullYear(), shortName: '旅程', pageTitle: m.title || '旅程', eyebrow: '', title: '', subtitle: '', notes: [] }, m, {
+            id, days,
+            splash: Object.assign({ from: '', to: '', eyebrow: '', title: m.title || '' }, m.splash),
+            map: Object.assign(dm, m.map),
+            weather: { places: m.weather && m.weather.places && Object.keys(m.weather.places).length ? m.weather.places : { x: ['東京', 35.68, 139.76] } },
+            notes: m.notes || []
+        });
     };
     const placeholder = (id) => {
         const t = new Date();
@@ -107,6 +114,74 @@
             map: { center: [35.68, 139.76], zoom: 5, farKm: 3000, region: '目的地' }, weather: { places: { x: ['東京', 35.68, 139.76] } },
             days: [{ month: t.getMonth() + 1, day: t.getDate(), week: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][t.getDay()], tag: '', secTag: '', title: '', meals: ['', '', ''], foodLabel: '', wx: 'x', steps: [] }] };
     };
+    // ---- 匯入／建立旅程：檢查並整理成標準格式（星期自動由日期算出）----
+    const WEEK = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    function validate(raw, id) {
+        const o = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+        if (!o) return { ok: false, errors: ['內容不是有效的 JSON 物件'], meta: null };
+        const errors = [];
+        const s = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+        const num = (v, lo, hi) => (typeof v === 'number' && isFinite(v) && v >= lo && v <= hi ? v : null);
+        if (!Array.isArray(o.days) || !o.days.length) errors.push('days 必須是至少一天的陣列');
+        else if (o.days.length > 31) errors.push('days 最多 31 天');
+        const year = Number.isInteger(o.year) && o.year >= 2000 && o.year <= 2100 ? o.year : new Date().getFullYear();
+        const places = {};
+        const wp = o.weather && o.weather.places && typeof o.weather.places === 'object' ? o.weather.places : {};
+        Object.entries(wp).slice(0, 12).forEach(([k, p]) => {
+            if (!/^[A-Za-z0-9_-]{1,20}$/.test(k)) return errors.push('天氣地點代碼「' + k + '」只能用英數、底線、連字號');
+            if (!Array.isArray(p) || typeof p[0] !== 'string' || num(p[1], -90, 90) === null || num(p[2], -180, 180) === null) return errors.push('天氣地點「' + k + '」格式應為 ["名稱", 緯度, 經度]');
+            places[k] = [s(p[0], 20), p[1], p[2]];
+        });
+        if (!Object.keys(places).length) places.x = ['東京', 35.68, 139.76];
+        const first = Object.keys(places)[0];
+        let prev = 0;
+        const days = (Array.isArray(o.days) ? o.days.slice(0, 31) : []).map((d, i) => {
+            const n = i + 1;
+            if (!d || typeof d !== 'object') { errors.push('第 ' + n + ' 天不是物件'); return null; }
+            const { month, day } = d;
+            if (!Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1 || day > 31) { errors.push('第 ' + n + ' 天的 month／day 不正確'); return null; }
+            const dt = new Date(year, month - 1, day);
+            if (dt.getMonth() !== month - 1) { errors.push('第 ' + n + ' 天的日期不存在（' + month + '/' + day + '）'); return null; }
+            if (month * 100 + day <= prev) errors.push('第 ' + n + ' 天的日期必須晚於前一天（目前不支援跨年）');
+            prev = month * 100 + day;
+            const tag = s(d.tag, 20), out = {
+                month, day, week: WEEK[dt.getDay()], tag, secTag: s(d.secTag, 20) || tag, title: s(d.title, 60) || '第 ' + n + ' 天', foodLabel: s(d.foodLabel, 20),
+                wx: places[d.wx] ? d.wx : first, meals: [0, 1, 2].map((j) => s(Array.isArray(d.meals) ? d.meals[j] : '', 60)),
+                steps: (Array.isArray(d.steps) ? d.steps : []).slice(0, 40).map((t) => s(t, 200)).filter(Boolean)
+            };
+            if (s(d.note, 200)) out.note = s(d.note, 200);
+            return out;
+        });
+        const pageTitle = s(o.pageTitle, 60) || s(o.title, 40);
+        if (!pageTitle) errors.push('需要 pageTitle（旅程名稱）');
+        const m = o.map && typeof o.map === 'object' ? o.map : {};
+        const c = Array.isArray(m.center) && num(m.center[0], -90, 90) !== null && num(m.center[1], -180, 180) !== null ? [m.center[0], m.center[1]] : [places[first][1], places[first][2]];
+        const sp = o.splash && typeof o.splash === 'object' ? o.splash : {};
+        const title = s(o.title, 40) || pageTitle, eyebrow = s(o.eyebrow, 60);
+        const meta = {
+            year, shortName: s(o.shortName, 10) || pageTitle.slice(0, 4), pageTitle, eyebrow, title, subtitle: s(o.subtitle, 80),
+            splash: { from: s(sp.from, 5), to: s(sp.to, 5), eyebrow: s(sp.eyebrow, 60) || eyebrow, title: s(sp.title, 40) || title },
+            map: { center: c, zoom: num(m.zoom, 1, 18) || 10, farKm: num(m.farKm, 10, 20000) || 300, region: s(m.region, 20) || '目的地' },
+            weather: { places }, notes: (Array.isArray(o.notes) ? o.notes : []).slice(0, 20).map((t) => s(t, 200)).filter(Boolean),
+            days: days.filter(Boolean)
+        };
+        return { ok: !errors.length, errors, meta };
+    }
+    // 空白旅程：只有日期與標題，內容之後在網頁上補
+    function blank(name, start, n) {
+        const t = new Date(start + 'T00:00:00');
+        if (isNaN(t) || !(n >= 1 && n <= 31)) return { ok: false, errors: ['請填寫正確的起始日期與天數（1～31）'] };
+        const end = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n - 1);
+        if (end.getFullYear() !== t.getFullYear()) return { ok: false, errors: ['目前不支援跨年的旅程'] };
+        const p2 = (x) => String(x).padStart(2, '0');
+        return validate({
+            pageTitle: name, title: name, year: t.getFullYear(), eyebrow: t.getFullYear() + ' TRIP',
+            subtitle: t.getFullYear() + '.' + p2(t.getMonth() + 1) + '.' + p2(t.getDate()) + ' - ' + p2(end.getMonth() + 1) + '.' + p2(end.getDate()),
+            days: Array.from({ length: n }, (_, i) => { const d = new Date(t.getFullYear(), t.getMonth(), t.getDate() + i); return { month: d.getMonth() + 1, day: d.getDate(), title: '第 ' + (i + 1) + ' 天', meals: ['待確認', '待確認', '待確認'] }; })
+        });
+    }
+    const canon = (v) => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.keys(x).sort().reduce((a, y) => { a[y] = x[y]; return a; }, {}) : x));
+
     let T = has(id) ? TRIPS[id] : null;
     if (!T) { try { T = normalize(JSON.parse(ls('meta_' + id)), id); } catch (e) { T = null; } }
     if (T) lsSet('lastTrip', id); else T = placeholder(id);
@@ -124,5 +199,5 @@
     g.TRIPS = TRIPS;
     g.TRIP = T;
     g.TRIP_NS = id === 'tottori' ? '' : id + ':';
-    g.tripRender = { days: daysHtml, food: foodHtml, header: applyHeader, normalize };
+    g.tripRender = { days: daysHtml, food: foodHtml, header: applyHeader, normalize, validate, blank, canon };
 })(typeof window !== 'undefined' ? window : globalThis);
