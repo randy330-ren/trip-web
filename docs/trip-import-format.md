@@ -125,4 +125,4 @@
 > 格式與欄位如下：pageTitle、title、subtitle、eyebrow、shortName、year、splash（from、to、eyebrow、title）、map（center 為 [緯度, 經度]、zoom、farKm、region）、weather.places（每個地點為 "代碼": ["名稱", 緯度, 經度]，代碼用英文小寫）、notes（出發前提醒字串陣列）、days（陣列）。
 > days 每一天包含：month、day（數字）、tag（8 字內短標籤）、title（當天主題）、note（可省略）、meals（[早餐, 午餐, 晚餐] 三個字串，未知填「待確認」）、foodLabel（地點名稱）、wx（天氣地點代碼，必須存在於 weather.places）、steps（當天路線，每個項目一個字串，保留時間與重點）。
 > 規則：日期依先後排列、不可跨年；不要輸出 week；經緯度請給大致正確的數字；沒有資訊的欄位請省略，不要編造；請勿輸出任何個人資料。
-> 以下是我的行程內容：
+> 行程內容在我附加的檔案中；如果沒有附檔案，則以下方文字為準：
