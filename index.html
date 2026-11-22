@@ -443,6 +443,7 @@
         .mp-pinbtn:active { opacity: .8; }
         #mp-wrap.fs .mp-pinbtn, #mp-wrap.fs .mp-hbtn { display: none; }
     </style>
+    <script src="trip-meta.js"></script>
 </head>
 
 <body class="pb-32">
@@ -452,9 +453,10 @@
         <button id="add-choice-stay" class="text-amber-800 hover:bg-amber-50">🏨 新增住宿</button>
     </div>
     <div id="splash">
-        <div class="sp-route"><small style="left:0">TPE</small><small style="right:0">YGJ</small><span class="sp-plane">✈️</span></div>
-        <span class="text-[10px] tracking-widest opacity-70">2026 JAPAN / SAN-IN</span>
-        <span class="text-lg font-bold mt-1">山陰・秋日紀行</span>
+        <div class="sp-route"><small id="splash-from" style="left:0"></small><small id="splash-to" style="right:0"></small><span class="sp-plane">✈️</span></div>
+        <span id="splash-eyebrow" class="text-[10px] tracking-widest opacity-70"></span>
+        <span id="splash-title" class="text-lg font-bold mt-1"></span>
+        <script>tripRender.header(TRIP);</script>
         <div class="sp-dots mt-4"><span></span><span></span><span></span></div>
     </div>
     <script>
@@ -467,12 +469,11 @@
         <div id="offline-bar" class="hidden bg-amber-500 text-white text-[11px] font-bold text-center py-1">⚡ 離線中・顯示最後同步資料</div>
         <header id="site-header" class="bg-[#3b4d43] text-white px-4 text-center shadow-md">
             <button type="button" id="nt-bell" onclick="NOTI.openList()" aria-label="提醒">🔔<b id="nt-bell-n"></b></button>
-            <span id="site-eyebrow" class="block text-[10px] tracking-widest uppercase opacity-70">2026 JAPAN /
-                SAN-IN</span>
-            <h1 id="site-title" class="text-lg font-bold tracking-wide mt-1" data-key="title">山陰・秋日紀行</h1>
-            <p id="site-subtitle" class="text-[11px] opacity-95 mt-1" data-key="subtitle">島根 × 鳥取 ｜ 2026.11.02 - 11.09
-            </p>
+            <span id="site-eyebrow" class="block text-[10px] tracking-widest uppercase opacity-70"></span>
+            <h1 id="site-title" class="text-lg font-bold tracking-wide mt-1" data-key="title"></h1>
+            <p id="site-subtitle" class="text-[11px] opacity-95 mt-1" data-key="subtitle"></p>
         </header>
+        <script>tripRender.header(TRIP);</script>
         <div id="date-strip-fade" class="fade-wrap">
         <div id="date-strip" style="background-color: rgba(247, 246, 242, 0.25)"
             class="backdrop-blur-md py-2 overflow-x-auto no-scrollbar border-b border-black/5">
@@ -488,265 +489,7 @@
         <div id="page-itinerary" class="space-y-3">
             <div id="trip-countdown" class="hidden card px-4 py-2.5 flex items-center justify-between" style="border-left:4px solid var(--gold)"></div>
 
-            <!-- DAY 1 -->
-            <section id="day1" class="card p-5 border-t-4 border-[#3b4d43]">
-                <div class="flex justify-between items-center mb-3">
-                    <span class="text-xs font-bold text-[#3b4d43] bg-[#3b4d43]/10 px-2.5 py-1 rounded-full">11/02 MON
-                        D1</span>
-                    <span class="text-xs text-gray-500">溫泉・移動</span>
-                </div>
-                <h2 class="text-lg font-bold mb-3" data-key="d1_title">抵達米子・溫泉初日</h2>
-                <div class="space-y-1 text-sm">
-                    <div class="flex justify-between items-center mb-1">
-                        <p class="font-medium text-gray-700">📍 今日路線：</p>
-                        <button onclick="openAddChoice('d1', this)"
-                            class="hidden add-route-btn bg-[#3b4d43] text-white px-2 py-1 rounded-md text-[10px] font-bold hover:bg-[#2c3b33]">＋新增</button>
-                    </div>
-                    <div id="route-list-d1" class="space-y-1"></div>
-                    <div class="mt-3 bg-amber-50 border-l-4 border-amber-400 p-2 text-xs text-amber-800"
-                        data-key="d1_note">
-                        💡 貼心提醒：今日請攜帶後背包，輕裝上陣。
-                    </div>
-                </div>
-                <div class="meal-strip">
-                    <div>
-                        <div class="meal-label">早餐</div>
-                        <div class="meal-value" data-key="d1_breakfast">自行解決</div>
-                    </div>
-                    <div>
-                        <div class="meal-label">午餐</div>
-                        <div class="meal-value" data-key="d1_lunch">視情況</div>
-                    </div>
-                    <div>
-                        <div class="meal-label">晚餐</div>
-                        <div class="meal-value" data-key="d1_dinner">A Coopm 超市</div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- DAY 2 -->
-            <section id="day2" class="card p-5 border-t-4 border-[#3b4d43]">
-                <div class="flex justify-between items-center mb-3">
-                    <span class="text-xs font-bold text-[#3b4d43] bg-[#3b4d43]/10 px-2.5 py-1 rounded-full">11/03 TUE
-                        D2</span>
-                    <span class="text-xs text-gray-500">自駕・購物</span>
-                </div>
-                <h2 class="text-lg font-bold mb-3" data-key="d2_title">松江取車・慢遊採買</h2>
-                <div class="space-y-1 text-sm">
-                    <div class="flex justify-between items-center mb-1">
-                        <p class="font-medium text-gray-700">📍 今日路線：</p>
-                        <button onclick="openAddChoice('d2', this)"
-                            class="hidden add-route-btn bg-[#3b4d43] text-white px-2 py-1 rounded-md text-[10px] font-bold hover:bg-[#2c3b33]">＋新增</button>
-                    </div>
-                    <div id="route-list-d2" class="space-y-1"></div>
-                </div>
-                <div class="meal-strip">
-                    <div>
-                        <div class="meal-label">早餐</div>
-                        <div class="meal-value" data-key="d2_breakfast">待確認</div>
-                    </div>
-                    <div>
-                        <div class="meal-label">午餐</div>
-                        <div class="meal-value" data-key="d2_lunch">中華中村製麺所</div>
-                    </div>
-                    <div>
-                        <div class="meal-label">晚餐</div>
-                        <div class="meal-value" data-key="d2_dinner">AEON 薩利亞</div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- DAY 3 -->
-            <section id="day3" class="card p-5 border-t-4 border-[#3b4d43]">
-                <div class="flex justify-between items-center mb-3">
-                    <span class="text-xs font-bold text-[#3b4d43] bg-[#3b4d43]/10 px-2.5 py-1 rounded-full">11/04 WED
-                        D3</span>
-                    <span class="text-xs text-gray-500">文化・散策</span>
-                </div>
-                <h2 class="text-lg font-bold mb-3" data-key="d3_title">古城、神社與夕陽</h2>
-                <div class="space-y-1 text-sm">
-                    <div class="flex justify-between items-center mb-1">
-                        <p class="font-medium text-gray-700">📍 今日路線：</p>
-                        <button onclick="openAddChoice('d3', this)"
-                            class="hidden add-route-btn bg-[#3b4d43] text-white px-2 py-1 rounded-md text-[10px] font-bold hover:bg-[#2c3b33]">＋新增</button>
-                    </div>
-                    <div id="route-list-d3" class="space-y-1"></div>
-                </div>
-                <div class="meal-strip">
-                    <div>
-                        <div class="meal-label">早餐</div>
-                        <div class="meal-value" data-key="d3_breakfast">珈琲館 京店店</div>
-                    </div>
-                    <div>
-                        <div class="meal-label">午餐</div>
-                        <div class="meal-value" data-key="d3_lunch">姬路拉麵松江店／大阪王将</div>
-                    </div>
-                    <div>
-                        <div class="meal-label">晚餐</div>
-                        <div class="meal-value" data-key="d3_dinner">MAURI 超市（自煮）</div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- DAY 4 -->
-            <section id="day4" class="card p-5 border-t-4 border-[#3b4d43]">
-                <div class="flex justify-between items-center mb-3">
-                    <span class="text-xs font-bold text-[#3b4d43] bg-[#3b4d43]/10 px-2.5 py-1 rounded-full">11/05 THU
-                        D4</span>
-                    <span class="text-xs text-gray-500">庭園・海港</span>
-                </div>
-                <h2 class="text-lg font-bold mb-3" data-key="d4_title">庭園紅葉與港町漫遊</h2>
-                <div class="space-y-1 text-sm">
-                    <div class="flex justify-between items-center mb-1">
-                        <p class="font-medium text-gray-700">📍 今日路線：</p>
-                        <button onclick="openAddChoice('d4', this)"
-                            class="hidden add-route-btn bg-[#3b4d43] text-white px-2 py-1 rounded-md text-[10px] font-bold hover:bg-[#2c3b33]">＋新增</button>
-                    </div>
-                    <div id="route-list-d4" class="space-y-1"></div>
-                </div>
-                <div class="meal-strip">
-                    <div>
-                        <div class="meal-label">早餐</div>
-                        <div class="meal-value" data-key="d4_breakfast">Lawson 松江馬潟店</div>
-                    </div>
-                    <div>
-                        <div class="meal-label">午餐</div>
-                        <div class="meal-value" data-key="d4_lunch">漁港回転寿司 境港波止場店／元氣亭丼飯／中浦（螃蟹托羅碗）</div>
-                    </div>
-                    <div>
-                        <div class="meal-label">晚餐</div>
-                        <div class="meal-value" data-key="d4_dinner">燒肉若富</div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- DAY 5 -->
-            <section id="day5" class="card p-5 border-t-4 border-[#3b4d43]">
-                <div class="flex justify-between items-center mb-3">
-                    <span class="text-xs font-bold text-[#3b4d43] bg-[#3b4d43]/10 px-2.5 py-1 rounded-full">11/06 FRI
-                        D5</span>
-                    <span class="text-xs text-gray-500">參拜祈願</span>
-                </div>
-                <h2 class="text-lg font-bold mb-3" data-key="d5_title">出雲巡禮・結緣之路</h2>
-                <div class="space-y-1 text-sm">
-                    <div class="flex justify-between items-center mb-1">
-                        <p class="font-medium text-gray-700">📍 今日路線：</p>
-                        <button onclick="openAddChoice('d5', this)"
-                            class="hidden add-route-btn bg-[#3b4d43] text-white px-2 py-1 rounded-md text-[10px] font-bold hover:bg-[#2c3b33]">＋新增</button>
-                    </div>
-                    <div id="route-list-d5" class="space-y-1"></div>
-                </div>
-                <div class="meal-strip">
-                    <div>
-                        <div class="meal-label">早餐</div>
-                        <div class="meal-value" data-key="d5_breakfast">焙煎珈琲工房 梢庵</div>
-                    </div>
-                    <div>
-                        <div class="meal-label">午餐</div>
-                        <div class="meal-value" data-key="d5_lunch">蕎麦処八雲／同級出雲そば</div>
-                    </div>
-                    <div>
-                        <div class="meal-label">晚餐</div>
-                        <div class="meal-value" data-key="d5_dinner">とんかつ一番</div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- DAY 6 -->
-            <section id="day6" class="card p-5 border-t-4 border-[#3b4d43]">
-                <div class="flex justify-between items-center mb-3">
-                    <span class="text-xs font-bold text-[#3b4d43] bg-[#3b4d43]/10 px-2.5 py-1 rounded-full">11/07 SAT
-                        D6</span>
-                    <span class="text-xs text-gray-500">海岸・自然</span>
-                </div>
-                <h2 class="text-lg font-bold mb-3" data-key="d6_title">白兔海岸・鳥取砂丘</h2>
-                <div class="space-y-1 text-sm">
-                    <div class="flex justify-between items-center mb-1">
-                        <p class="font-medium text-gray-700">📍 今日路線：</p>
-                        <button onclick="openAddChoice('d6', this)"
-                            class="hidden add-route-btn bg-[#3b4d43] text-white px-2 py-1 rounded-md text-[10px] font-bold hover:bg-[#2c3b33]">＋新增</button>
-                    </div>
-                    <div id="route-list-d6" class="space-y-1"></div>
-                </div>
-                <div class="meal-strip">
-                    <div>
-                        <div class="meal-label">早餐</div>
-                        <div class="meal-value" data-key="d6_breakfast">LAWSON 鳥取大栄店</div>
-                    </div>
-                    <div>
-                        <div class="meal-label">午餐</div>
-                        <div class="meal-value" data-key="d6_lunch">賀露港・市場食堂（螃蟹）</div>
-                    </div>
-                    <div>
-                        <div class="meal-label">晚餐</div>
-                        <div class="meal-value" data-key="d6_dinner">待確定</div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- DAY 7 -->
-            <section id="day7" class="card p-5 border-t-4 border-[#3b4d43]">
-                <div class="flex justify-between items-center mb-3">
-                    <span class="text-xs font-bold text-[#3b4d43] bg-[#3b4d43]/10 px-2.5 py-1 rounded-full">11/08 SUN
-                        D7</span>
-                    <span class="text-xs text-gray-500">小鎮・散策</span>
-                </div>
-                <h2 class="text-lg font-bold mb-3" data-key="d7_title">柯南小鎮與白壁街區</h2>
-                <div class="space-y-1 text-sm">
-                    <div class="flex justify-between items-center mb-1">
-                        <p class="font-medium text-gray-700">📍 今日路線：</p>
-                        <button onclick="openAddChoice('d7', this)"
-                            class="hidden add-route-btn bg-[#3b4d43] text-white px-2 py-1 rounded-md text-[10px] font-bold hover:bg-[#2c3b33]">＋新增</button>
-                    </div>
-                    <div id="route-list-d7" class="space-y-1"></div>
-                </div>
-                <div class="meal-strip">
-                    <div>
-                        <div class="meal-label">早餐</div>
-                        <div class="meal-value" data-key="d7_breakfast">道の駅 ほうじょう（休息站）</div>
-                    </div>
-                    <div>
-                        <div class="meal-label">午餐</div>
-                        <div class="meal-value" data-key="d7_lunch">待確定</div>
-                    </div>
-                    <div>
-                        <div class="meal-label">晚餐</div>
-                        <div class="meal-value" data-key="d7_dinner">居酒屋</div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- DAY 8 -->
-            <section id="day8" class="card p-5 border-t-4 border-[#3b4d43]">
-                <div class="flex justify-between items-center mb-3">
-                    <span class="text-xs font-bold text-[#3b4d43] bg-[#3b4d43]/10 px-2.5 py-1 rounded-full">11/09 MON
-                        D8</span>
-                    <span class="text-xs text-gray-500">返程・移動</span>
-                </div>
-                <h2 class="text-lg font-bold mb-3" data-key="d8_title">咖啡、還車與返程</h2>
-                <div class="space-y-1 text-sm">
-                    <div class="flex justify-between items-center mb-1">
-                        <p class="font-medium text-gray-700">📍 今日路線：</p>
-                        <button onclick="openAddChoice('d8', this)"
-                            class="hidden add-route-btn bg-[#3b4d43] text-white px-2 py-1 rounded-md text-[10px] font-bold hover:bg-[#2c3b33]">＋新增</button>
-                    </div>
-                    <div id="route-list-d8" class="space-y-1"></div>
-                </div>
-                <div class="meal-strip">
-                    <div>
-                        <div class="meal-label">早餐</div>
-                        <div class="meal-value" data-key="d8_breakfast">待確定</div>
-                    </div>
-                    <div>
-                        <div class="meal-label">午餐</div>
-                        <div class="meal-value" data-key="d8_lunch">待確定</div>
-                    </div>
-                    <div>
-                        <div class="meal-label">晚餐</div>
-                        <div class="meal-value" data-key="d8_dinner">待確定</div>
-                    </div>
-                </div>
-            </section>
+            <script>(function (s) { s.insertAdjacentHTML('beforebegin', tripRender.days(TRIP)); s.remove(); })(document.currentScript);</script>
         </div>
 
         <!-- 頁面 2：餐食 (Food) -->
@@ -755,142 +498,7 @@
                 <h2 class="text-lg font-bold mb-1">🍽️ 餐食安排總覽</h2>
                 <p class="text-xs text-gray-500 mb-4">與行程頁資料同步，修改任一處皆會同步更新。<br>點選餐廳即可導航。</p>
                 <div class="space-y-3">
-                    <div id="food-day1" class="border border-gray-200 rounded-xl p-3">
-                        <p class="text-xs font-bold text-[#3b4d43] mb-2">11/02 MON D1 玉造溫泉</p>
-                        <div class="meal-strip border-t-0">
-                            <div>
-                                <div class="meal-label">早餐</div>
-                                <div class="meal-value mirror" data-key="d1_breakfast"></div>
-                            </div>
-                            <div>
-                                <div class="meal-label">午餐</div>
-                                <div class="meal-value mirror" data-key="d1_lunch"></div>
-                            </div>
-                            <div>
-                                <div class="meal-label">晚餐</div>
-                                <div class="meal-value mirror" data-key="d1_dinner"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="food-day2" class="border border-gray-200 rounded-xl p-3">
-                        <p class="text-xs font-bold text-[#3b4d43] mb-2">11/03 TUE D2 松江</p>
-                        <div class="meal-strip border-t-0">
-                            <div>
-                                <div class="meal-label">早餐</div>
-                                <div class="meal-value mirror" data-key="d2_breakfast"></div>
-                            </div>
-                            <div>
-                                <div class="meal-label">午餐</div>
-                                <div class="meal-value mirror" data-key="d2_lunch"></div>
-                            </div>
-                            <div>
-                                <div class="meal-label">晚餐</div>
-                                <div class="meal-value mirror" data-key="d2_dinner"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="food-day3" class="border border-gray-200 rounded-xl p-3">
-                        <p class="text-xs font-bold text-[#3b4d43] mb-2">11/04 WED D3 松江</p>
-                        <div class="meal-strip border-t-0">
-                            <div>
-                                <div class="meal-label">早餐</div>
-                                <div class="meal-value mirror" data-key="d3_breakfast"></div>
-                            </div>
-                            <div>
-                                <div class="meal-label">午餐</div>
-                                <div class="meal-value mirror" data-key="d3_lunch"></div>
-                            </div>
-                            <div>
-                                <div class="meal-label">晚餐</div>
-                                <div class="meal-value mirror" data-key="d3_dinner"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="food-day4" class="border border-gray-200 rounded-xl p-3">
-                        <p class="text-xs font-bold text-[#3b4d43] mb-2">11/05 THU D4 境港・米子</p>
-                        <div class="meal-strip border-t-0">
-                            <div>
-                                <div class="meal-label">早餐</div>
-                                <div class="meal-value mirror" data-key="d4_breakfast"></div>
-                            </div>
-                            <div>
-                                <div class="meal-label">午餐</div>
-                                <div class="meal-value mirror" data-key="d4_lunch"></div>
-                            </div>
-                            <div>
-                                <div class="meal-label">晚餐</div>
-                                <div class="meal-value mirror" data-key="d4_dinner"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="food-day5" class="border border-gray-200 rounded-xl p-3">
-                        <p class="text-xs font-bold text-[#3b4d43] mb-2">11/06 FRI D5 出雲</p>
-                        <div class="meal-strip border-t-0">
-                            <div>
-                                <div class="meal-label">早餐</div>
-                                <div class="meal-value mirror" data-key="d5_breakfast"></div>
-                            </div>
-                            <div>
-                                <div class="meal-label">午餐</div>
-                                <div class="meal-value mirror" data-key="d5_lunch"></div>
-                            </div>
-                            <div>
-                                <div class="meal-label">晚餐</div>
-                                <div class="meal-value mirror" data-key="d5_dinner"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="food-day6" class="border border-gray-200 rounded-xl p-3">
-                        <p class="text-xs font-bold text-[#3b4d43] mb-2">11/07 SAT D6 鳥取</p>
-                        <div class="meal-strip border-t-0">
-                            <div>
-                                <div class="meal-label">早餐</div>
-                                <div class="meal-value mirror" data-key="d6_breakfast"></div>
-                            </div>
-                            <div>
-                                <div class="meal-label">午餐</div>
-                                <div class="meal-value mirror" data-key="d6_lunch"></div>
-                            </div>
-                            <div>
-                                <div class="meal-label">晚餐</div>
-                                <div class="meal-value mirror" data-key="d6_dinner"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="food-day7" class="border border-gray-200 rounded-xl p-3">
-                        <p class="text-xs font-bold text-[#3b4d43] mb-2">11/08 SUN D7 柯南小鎮・倉吉</p>
-                        <div class="meal-strip border-t-0">
-                            <div>
-                                <div class="meal-label">早餐</div>
-                                <div class="meal-value mirror" data-key="d7_breakfast"></div>
-                            </div>
-                            <div>
-                                <div class="meal-label">午餐</div>
-                                <div class="meal-value mirror" data-key="d7_lunch"></div>
-                            </div>
-                            <div>
-                                <div class="meal-label">晚餐</div>
-                                <div class="meal-value mirror" data-key="d7_dinner"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="food-day8" class="border border-gray-200 rounded-xl p-3">
-                        <p class="text-xs font-bold text-[#3b4d43] mb-2">11/09 MON D8 米子・桃園</p>
-                        <div class="meal-strip border-t-0">
-                            <div>
-                                <div class="meal-label">早餐</div>
-                                <div class="meal-value mirror" data-key="d8_breakfast"></div>
-                            </div>
-                            <div>
-                                <div class="meal-label">午餐</div>
-                                <div class="meal-value mirror" data-key="d8_lunch"></div>
-                            </div>
-                            <div>
-                                <div class="meal-label">晚餐</div>
-                                <div class="meal-value mirror" data-key="d8_dinner"></div>
-                            </div>
-                        </div>
-                    </div>
+                    <script>(function (s) { s.insertAdjacentHTML('beforebegin', tripRender.food(TRIP)); s.remove(); })(document.currentScript);</script>
                 </div>
             </div>
         </div>
@@ -1511,7 +1119,7 @@
         };
 
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-        const TRIP_ID = 'tottori';
+        const TRIP_ID = TRIP.id;
         const tripDb = (d) => ({ ref: (p) => (!p ? d.ref('trips/' + TRIP_ID) : /^(\.info|secrets)(\/|$)/.test(p) ? d.ref(p) : d.ref('trips/' + TRIP_ID + '/' + p)) });
         const db = tripDb(firebase.database());
         const auth = firebase.auth();
@@ -2636,18 +2244,9 @@
             document.getElementById('add-member-btn').classList.toggle('hidden', !(onMore && adminUser && !isMember));
         }
 
-        // ---------- 頂部日期小卡（八日總覽） ----------
-        const TRIP_YEAR = 2026;
-        const dayMeta = [
-            { n: 1, month: 11, day: 2, week: 'MON', tag: '溫泉・移動', anchor: 'day1' },
-            { n: 2, month: 11, day: 3, week: 'TUE', tag: '自駕・購物', anchor: 'day2' },
-            { n: 3, month: 11, day: 4, week: 'WED', tag: '文化・散策', anchor: 'day3' },
-            { n: 4, month: 11, day: 5, week: 'THU', tag: '庭園・海港', anchor: 'day4' },
-            { n: 5, month: 11, day: 6, week: 'FRI', tag: '參拜・祈願', anchor: 'day5' },
-            { n: 6, month: 11, day: 7, week: 'SAT', tag: '海岸・自然', anchor: 'day6' },
-            { n: 7, month: 11, day: 8, week: 'SUN', tag: '小鎮・散策', anchor: 'day7' },
-            { n: 8, month: 11, day: 9, week: 'MON', tag: '返程・移動', anchor: 'day8' },
-        ];
+        // ---------- 頂部日期小卡（每日總覽） ----------
+        const TRIP_YEAR = TRIP.year;
+        const dayMeta = TRIP.days.map((d, i) => ({ n: i + 1, month: d.month, day: d.day, week: d.week, tag: d.tag, anchor: 'day' + (i + 1) }));
 
         const getToday = () => {
             const m = location.search.match(/[?&]testdate=(\d{4})-(\d{1,2})-(\d{1,2})/);
@@ -3428,7 +3027,7 @@
             const b = L.latLngBounds([]);
             Object.entries(MP.layers).forEach(([d, g]) => { if (MP.day === 'all' || String(MP.day) === d) g.eachLayer(l => { if (l.getLatLng) b.extend(l.getLatLng()); }); });
             if (b.isValid()) { MP.map.fitBounds(b, { padding: [40, 40], maxZoom: 15 }); MP.fitted = true; }
-            else if (!MP.fitted) MP.map.setView([35.45, 133.4], 9);
+            else if (!MP.fitted) MP.map.setView(TRIP.map.center, TRIP.map.zoom);
         }
         function mpRenderPills() {
             const html = `<button type="button" class="mp-pill ${MP.day === 'all' ? 'on' : ''}" onclick="mpDay('all')">全部</button>` +
@@ -3511,7 +3110,7 @@
             MP.defPrefix = MP.map.attributionControl.options.prefix;
             mpSetStyle(MP.style);
             if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(mpFitNav)).observe(el);
-            MP.map.setView([35.45, 133.4], 9);
+            MP.map.setView(TRIP.map.center, TRIP.map.zoom);
             MP.map.on('contextmenu', (ev) => { if (mpLP()) mpLongMap(ev.latlng); });
             MP.map.on('click', (ev) => { if (MP.placing) mpPlace(ev.latlng); });
             mpBindLongPress(el);
@@ -4003,7 +3602,7 @@
             if (/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(r.c)) { alert('短網址無法解析座標，請改貼座標數字或完整的 Google Maps 網址。'); return; }
             const pos = parseCoord(r.c);
             if (!pos) { alert(parseCoord(r.c.split(/[,，、\s]+/).reverse().join(',')) ? '經緯度好像貼反了，緯度（35 左右）要放前面，例：35.4723, 133.0505' : '格式無法辨識，例：35.4723, 133.0505'); return; }
-            if (mpDist(pos, { lat: 35.45, lng: 133.4 }) > 300000 && !confirm(`這個座標離山陰地區超過 300 公里（${pos.lat}, ${pos.lng}），經緯度是否貼反了？\n\n確定仍要儲存嗎？`)) return;
+            if (mpDist(pos, { lat: TRIP.map.center[0], lng: TRIP.map.center[1] }) > TRIP.map.farKm * 1000 && !confirm(`這個座標離${TRIP.map.region}超過 ${TRIP.map.farKm} 公里（${pos.lat}, ${pos.lng}），經緯度是否貼反了？\n\n確定仍要儲存嗎？`)) return;
             if (isOffline()) { offlineAlert(); return; }
             const shared = MP.entries.filter(x => x.g === e.g && x.key !== e.key);
             if (g0 && shared.length && !confirm(`有 ${shared.length} 個地點共用這個座標，會一起移動：\n${shared.map(x => '・' + (x.src === 'route' ? `D${x.day} ` : '') + x.title).join('\n')}\n\n確定要更新嗎？`)) return;
@@ -4292,12 +3891,7 @@
         };
 
         // ---------- 出發前提醒（雲端清單，可新增/刪除） ----------
-        const defaultNotes = {
-            n1: { text: "11/2 玉造溫泉首日以輕裝為主，請攜帶後背包。" },
-            n2: { text: "11/3 原訂 14:00 取車；11/9 還車後搭機返台。" },
-            n3: { text: "11/4 李白酒造營業至 18:00；11/5 鬼塚虎工廠營業 11:00–17:00。" },
-            n4: { text: "11/3 早餐、11/7 晚餐、11/8 午餐等仍為待確認選項。" }
-        };
+        const defaultNotes = Object.fromEntries(TRIP.notes.map((t, i) => ['n' + (i + 1), { text: t }]));
 
         notesRef.on('value', (snapshot) => {
             const notes = snapshot.val() || {};
@@ -4343,75 +3937,8 @@
         };
 
         // ---------- 每日路線（雲端清單，可新增/編輯/刪除） ----------
-        const ROUTE_DAYS = ['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8'];
-        const defaultRouteSteps = {
-            d1: {
-                s1: { text: "08:40-12:00 桃園飛往米子（航班）" },
-                s2: { text: "米子機場搭巴士 ➔ 松江站寄放行李" },
-                s3: { text: "搭電車前往玉造溫泉站" },
-                s4: { text: "A Coopm 超市採買晚餐" },
-                s5: { text: "入住玉井別館溫泉飯店" }
-            },
-            d2: {
-                s1: { text: "10:00 離開玉造溫泉，返回松江站拿行李" },
-                s2: { text: "14:00 松江站取車（自駕開始）" },
-                s3: { text: "午餐：中華中村製麵所" },
-                s4: { text: "民宿放置行李" },
-                s5: { text: "下午/晚餐：AEON 松江購物（薩利亞晚餐）" }
-            },
-            d3: {
-                s1: { text: "早餐：珈琲館 京店店" },
-                s2: { text: "八重垣神社 參拜" },
-                s3: { text: "國寶松江城 散策" },
-                s4: { text: "午餐：姬路拉麵松江店 / 大阪王將" },
-                s5: { text: "島根縣立美術館 欣賞夕陽" },
-                s6: { text: "李白酒造（營業至18:00）" },
-                s7: { text: "晚餐：MAURI 超市（無印良品）採買自煮" }
-            },
-            d4: {
-                s1: { text: "早餐：Lawson 松江馬潟店" },
-                s2: { text: "由志園（賞牡丹/紅葉，約 ¥1,400/人）" },
-                s3: { text: "全家江島大橋店（拍美景）" },
-                s4: { text: "美保神社" },
-                s5: { text: "午餐候選：漁港回転寿司 境港波止場店／元氣亭丼飯／中浦（螃蟹托羅碗）" },
-                s6: { text: "境港車站 + 妖怪神社" },
-                s7: { text: "Onitsuka Tiger 鬼塚虎工廠（11:00-17:00）" },
-                s8: { text: "唐吉訶德米子店 & LOFT 米子店購物" },
-                s9: { text: "晚餐：燒肉若富" }
-            },
-            d5: {
-                s1: { text: "早餐：焙煎珈琲工房 梢庵" },
-                s2: { text: "宇美神社（切斷惡緣）" },
-                s3: { text: "稻佐之濱（取沙）➔ 出雲大社（換沙參拜）" },
-                s4: { text: "星巴克出雲大社店（買琉璃杯）" },
-                s5: { text: "午餐：蕎麦処八雲 / 同級出雲そば" },
-                s6: { text: "youme Town 出雲購物 & Workman Plus" },
-                s7: { text: "PLANT 出雲店（扭蛋、蘋果派）" },
-                s8: { text: "晚餐：とんかつ一番" }
-            },
-            d6: {
-                s1: { text: "早餐：LAWSON 鳥取大栄店" },
-                s2: { text: "白兔神社 + 海岸 + 道の駅（約 90 分車程）" },
-                s3: { text: "鳥取砂丘 + 砂之美術館 + Totto PURIN" },
-                s4: { text: "午餐：賀露港・市場食堂（吃螃蟹）" },
-                s5: { text: "the mills（選品店）" },
-                s6: { text: "Shamine 鳥取（星巴克、扭蛋、LOFT）& AEON 鳥取" },
-                s7: { text: "晚餐：待確定（可點擊修改）" }
-            },
-            d7: {
-                s1: { text: "早餐：道の駅ほうじょう（休息站）" },
-                s2: { text: "柯南小鎮" },
-                s3: { text: "午餐：待確定（可點擊修改）" },
-                s4: { text: "倉吉白壁土藏群 漫步" },
-                s5: { text: "晚餐：在地居酒屋" }
-            },
-            d8: {
-                s1: { text: "羅多倫咖啡・Shamine 松江店" },
-                s2: { text: "前往米子機場還車" },
-                s3: { text: "13:00 - 15:20 米子飛往桃園（航班）" },
-                s4: { text: "平安返回台灣，展開工作日常" }
-            }
-        };
+        const ROUTE_DAYS = dayMeta.map(d => 'd' + d.n);
+        const defaultRouteSteps = Object.fromEntries(TRIP.days.map((d, i) => ['d' + (i + 1), Object.fromEntries(d.steps.map((t, j) => ['s' + (j + 1), { text: t }]))]));
 
         routeStepsRef.on('value', (snapshot) => {
             const data = snapshot.val() || {};
@@ -4998,7 +4525,7 @@
 
         // ---------- 每日卡片動態插入：圖片區塊 ----------
         function ensureDayExtras() {
-            for (let n = 1; n <= 8; n++) {
+            for (let n = 1; n <= dayMeta.length; n++) {
                 const section = document.getElementById('day' + n);
                 if (!section) continue;
                 if (!document.getElementById('wx-d' + n)) section.insertAdjacentHTML('beforebegin', `<div id="wx-d${n}" onclick="openWxHourly(${n})" class="hidden flex card wx-card items-center gap-3"></div>`);
@@ -5301,12 +4828,9 @@
                 </div>
                 <span class="wx-more">點擊看每小時 ›</span>`;
         }
-        const WX_PLACES = {
-            tama: ['玉造', 35.43, 133.01], matsue: ['松江', 35.4681, 133.0484], sakai: ['境港', 35.5409, 133.2275],
-            izumo: ['出雲', 35.367, 132.755], tottori: ['鳥取', 35.5011, 134.2351], kura: ['倉吉', 35.4306, 133.8228], yonago: ['米子', 35.4283, 133.331]
-        };
+        const WX_PLACES = TRIP.weather.places;
         const WX_KEYS = Object.keys(WX_PLACES);
-        const WX_DAY_PLACE = { 1: 'tama', 2: 'matsue', 3: 'matsue', 4: 'sakai', 5: 'izumo', 6: 'tottori', 7: 'kura', 8: 'yonago' };
+        const WX_DAY_PLACE = Object.fromEntries(TRIP.days.map((d, i) => [i + 1, d.wx]));
         const pad2 = (n) => String(n).padStart(2, '0');
         const wxDateOf = (d) => `${TRIP_YEAR}-${pad2(d.month)}-${pad2(d.day)}`;
         const wxToday = () => { const t = new Date(); return `${t.getFullYear()}-${pad2(t.getMonth() + 1)}-${pad2(t.getDate())}`; };
