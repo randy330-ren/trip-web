@@ -1591,9 +1591,9 @@
             watchAdmin(user);
             showGate(!user ? 'login' : (TRIP.placeholder ? 'loading' : ''));
             if (user) {
-                startMemberSession(user);
+                // 先檢查是不是成員，確認後才寫入成員資料（否則本機暫時的寫入會讓檢查誤判）
                 const joinNeeded = () => { if (user.displayName && auth.currentUser === user) showGate('join'); };
-                db.ref('members/' + user.uid).once('value').then((s) => { if (auth.currentUser !== user) return; if (s.exists()) onMemberConfirmed(user); else joinNeeded(); }).catch(joinNeeded);
+                db.ref('members/' + user.uid).once('value').then((s) => { if (auth.currentUser !== user) return; if (s.exists()) { startMemberSession(user); onMemberConfirmed(user); } else joinNeeded(); }).catch(joinNeeded);
             }
             refreshIdentity();
         });
