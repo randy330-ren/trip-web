@@ -1113,7 +1113,7 @@
     <!-- 編輯控制列（管理員登入後顯示） -->
     <div id="identity-bar" class="fixed left-4 z-50 flex items-end gap-2" style="bottom:calc(4.5rem + max(.5rem, env(safe-area-inset-bottom)))">
     <button type="button" id="id-tab" class="hidden" onclick="idOpen()" aria-label="身分選單"><span id="id-tab-admin" class="hidden">✏️</span><span id="id-tab-member" class="hidden">👤<b id="id-tab-name"></b></span></button>
-    <button id="add-admin-btn" onclick="openPasswordModal()" class="hidden order-last">✏️ 管理員登入</button>
+    <button id="add-admin-btn" onclick="openPasswordModal()" class="hidden order-last">✏️ 成為管理員</button>
     <button id="add-member-btn" onclick="openMemberModal()" class="hidden order-last">👤 會員登入</button>
     <div id="edit-controls" class="hidden">
         <div>
@@ -1141,7 +1141,7 @@
                     class="fs-btn hidden bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold text-left"></button>
                 <button onclick="toggleEditMenu();logoutAdmin();"
                     class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold text-left">🔒
-                    登出</button>
+                    退出管理員</button>
             </div>
         </div>
     </div>
@@ -1315,7 +1315,7 @@
     <!-- 密碼輸入 Modal -->
     <div id="password-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl">
-            <h3 class="text-sm font-bold text-[#3b4d43] mb-3">輸入編輯密碼</h3>
+            <h3 class="text-sm font-bold text-[#3b4d43] mb-3">輸入管理員密碼</h3>
             <input id="password-input" type="password" placeholder="密碼"
                 class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-1"
                 onkeydown="if(event.key==='Enter') submitPassword()">
@@ -1370,9 +1370,39 @@
                 <button onclick="openWxModal()"
                     class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg py-2.5 text-xs font-bold text-left px-3">🌤️
                     天氣地點</button>
+                <button onclick="openAccessModal()"
+                    class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg py-2.5 text-xs font-bold text-left px-3">🔑
+                    邀請碼與管理員</button>
             </div>
             <button onclick="closeSettingsModal()"
                 class="w-full bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold mt-3">關閉</button>
+        </div>
+    </div>
+
+    <!-- 成員限定：未登入畫面 -->
+    <div id="login-gate" class="hidden fixed inset-0 z-[58] flex items-center justify-center p-6" style="background:#f6f3ec">
+        <div class="w-full max-w-xs text-center">
+            <h2 class="text-lg font-bold text-[#3b4d43] mb-2">請先登入</h2>
+            <p id="gate-msg" class="text-xs text-gray-500 mb-4"></p>
+            <div id="gate-login">
+                <button onclick="openMemberModal()" class="w-full bg-[#3b4d43] text-white rounded-lg py-2.5 text-sm font-bold">登入／註冊</button>
+            </div>
+            <div id="gate-join" class="hidden">
+                <input id="gate-invite" type="text" placeholder="邀請碼" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2">
+                <p id="gate-error" class="hidden text-xs text-red-500 mb-2">邀請碼錯誤。</p>
+                <button onclick="gateJoin()" class="w-full bg-[#3b4d43] text-white rounded-lg py-2.5 text-sm font-bold mb-2">加入旅程</button>
+                <button onclick="logoutMember()" class="w-full bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold">換個帳號</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 邀請碼與管理員 Modal -->
+    <div id="access-modal" class="hidden fixed inset-0 z-[62] flex items-center justify-center p-4"
+        style="background:rgba(0,0,0,0.45);" onclick="if(event.target===this) closeAccessModal()">
+        <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl max-h-[85vh] overflow-y-auto">
+            <h3 class="text-sm font-bold text-[#3b4d43] mb-3">🔑 邀請碼與管理員</h3>
+            <div id="access-body" class="space-y-3 text-xs text-gray-700"></div>
+            <button onclick="closeAccessModal()" class="w-full bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold mt-3">關閉</button>
         </div>
     </div>
 
@@ -1485,18 +1515,14 @@
         const tripDb = (d) => ({ ref: (p) => (!p ? d.ref('trips/' + TRIP_ID) : /^(\.info|secrets)(\/|$)/.test(p) ? d.ref(p) : d.ref('trips/' + TRIP_ID + '/' + p)) });
         const db = tripDb(firebase.database());
         const auth = firebase.auth();
-        const adminApp = firebase.apps.find(a => a.name === 'admin') || firebase.initializeApp(firebaseConfig, 'admin');
-        const adminAuth = adminApp.auth();
-        const adminDb = tripDb(adminApp.database());
+        const adminDb = db;
         let memberUser = null, adminUser = null;
-        const createDb = () => (memberUser ? db : adminDb);
-        const manageDb = () => ((isEditor || !memberUser) ? adminDb : db);
+        const createDb = () => db;
+        const manageDb = () => db;
         let readMode = false;
         try { readMode = localStorage.getItem('readMode') === '1'; } catch (e) { }
         const lightboxGroups = {};
 
-        // 固定帳號，使用者只需輸入密碼（請在 Firebase Console > Authentication 建立此帳號並自訂密碼）
-        const EDITOR_EMAIL = "sanin-editor-2026@trip.local";
         let imgbbKeyCache = '';
         async function imgbbKey() {
             if (imgbbKeyCache) return imgbbKeyCache;
@@ -1544,6 +1570,49 @@
             document.getElementById('settings-modal').classList.add('hidden');
             unlockScroll();
         };
+        const accRand = (n = 16) => { const a = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'; return Array.from(crypto.getRandomValues(new Uint32Array(n)), x => a[x % a.length]).join(''); };
+        const ACC = { invite: '', pw: '', admins: {} };
+        function renderAccess() {
+            const row = (label, v, k, extra) => `<div><div class="font-bold mb-1">${label}</div><div class="flex items-center gap-1.5"><code class="flex-1 min-w-0 break-all bg-gray-100 rounded px-2 py-1.5">${escapeHtml(v || '（尚未設定）')}</code></div><div class="flex gap-1.5 mt-1.5"><button data-ac="copy" data-k="${k}" class="bg-gray-100 rounded-lg px-2.5 py-1.5 font-bold">📋 複製</button>${extra}<button data-ac="gen" data-k="${k}" class="bg-gray-100 rounded-lg px-2.5 py-1.5 font-bold">🎲 重新產生</button></div></div>`;
+            const ads = Object.keys(ACC.admins).map(u => `<div class="flex items-center justify-between py-1 border-t border-gray-100"><span>${escapeHtml((membersData[u] && membersData[u].name) || u.slice(0, 8))}${u === currentUserUid ? '（你）' : ''}</span>${u === currentUserUid ? '' : `<button data-ac="rm" data-k="${u}" class="text-red-500 font-bold">移除</button>`}</div>`).join('');
+            document.getElementById('access-body').innerHTML = row('邀請碼（新成員註冊用）', ACC.invite, 'invite', '') +
+                row('管理員密碼（成員輸入後成為管理員）', ACC.pw, 'adminPw', '<button data-ac="set" data-k="adminPw" class="bg-gray-100 rounded-lg px-2.5 py-1.5 font-bold">✏️ 自訂</button>') +
+                `<div><div class="font-bold mb-1">目前管理員</div>${ads || '<p class="text-gray-400">沒有資料</p>'}</div><p class="text-[11px] text-gray-400">重新產生邀請碼不會影響既有成員；更改管理員密碼不會讓現有管理員失效，需要時請按「移除」。</p>`;
+        }
+        async function loadAccess() {
+            try {
+                const [sc, ad] = await Promise.all([db.ref('secret').once('value'), db.ref('admins').once('value')]);
+                const v = sc.val() || {};
+                ACC.invite = v.invite || ''; ACC.pw = v.adminPw || ''; ACC.admins = ad.val() || {};
+                renderAccess();
+            } catch (e) { document.getElementById('access-body').textContent = '讀取失敗：' + e.message; }
+        }
+        window.openAccessModal = function () {
+            if (!isEditor) return;
+            lockScroll();
+            document.getElementById('settings-modal').classList.add('hidden');
+            document.getElementById('access-modal').classList.remove('hidden');
+            loadAccess();
+        };
+        window.closeAccessModal = function () {
+            document.getElementById('access-modal').classList.add('hidden');
+            unlockScroll();
+        };
+        document.getElementById('access-body').addEventListener('click', async (e) => {
+            const b = e.target.closest('[data-ac]');
+            if (!b || !isEditor) return;
+            const act = b.dataset.ac, k = b.dataset.k, fail = (m) => alert((m || '操作失敗') + '，請稍後再試。');
+            if (act === 'copy') { drCopy(k === 'invite' ? ACC.invite : ACC.pw, b); return; }
+            if (act === 'rm') { if (!confirm('確定移除此管理員？')) return; await db.ref('admins/' + k).remove().catch(() => fail()); }
+            else if (act === 'gen') { if (!confirm('確定重新產生？舊的將立即失效。')) return; await db.ref('secret/' + k).set(accRand()).catch(() => fail()); }
+            else if (act === 'set') {
+                const v = (prompt('輸入新的管理員密碼（12～64 字元，建議用長且不易猜的）') || '').trim();
+                if (!v) return;
+                if (v.length < 12 || v.length > 64) { alert('長度需為 12～64 字元。'); return; }
+                await db.ref('secret/adminPw').set(v).catch(() => fail());
+            }
+            loadAccess();
+        });
         window.editHighlightLimit = async function () {
             if (!isEditor) return;
             const r = await openInputModal({ title: '照片張數上限（每人每天）', fields: [{ key: 'n', value: String(MAX_HIGHLIGHTS_PER_DAY), placeholder: '輸入 1～50 的數字' }], submitLabel: '儲存' });
@@ -1563,7 +1632,6 @@
             buy: { pub: 'buys', done: 'buy_done', mine: 'buys_personal', word: '必買', empty: '目前沒有必買項目。', emptyMine: '你還沒有個人必買。' }
         };
         const LD = { todo: { pub: {}, done: {}, mine: {} }, buy: { pub: {}, done: {}, mine: {} } };
-        const ADMIN_EMAIL = EDITOR_EMAIL;
         let mealLinkOverrides = cacheLoad('meal_links') || {};
         let lastTripData = null;
 
@@ -1732,14 +1800,14 @@
         // ---------- Auth ----------
         const presenceCtl = {};
         const TS = () => firebase.database.ServerValue.TIMESTAMP;
-        function presenceOn(kind, d, user, name) {
+        function presenceOn(kind, d, user, name, role) {
             if (presenceCtl[kind]) presenceCtl[kind].connRef.off('value', presenceCtl[kind].listener);
             const ref = d.ref('presence/' + user.uid);
             const connRef = d.ref('.info/connected');
             const listener = connRef.on('value', (snap) => {
                 if (snap.val() !== true) return;
                 ref.onDisconnect().update({ state: 'offline', ts: TS() });
-                ref.set({ name, role: kind, state: document.hidden ? 'away' : 'online', ts: TS() }).catch(() => { });
+                ref.set({ name, role: role || kind, state: document.hidden ? 'away' : 'online', ts: TS() }).catch(() => { });
             });
             presenceCtl[kind] = { ref, connRef, listener };
         }
@@ -1758,7 +1826,7 @@
         function startMemberSession(user) {
             if (!user || !user.displayName) return;
             db.ref('members/' + user.uid).set({ name: user.displayName }).catch(() => { });
-            presenceOn('member', db, user, user.displayName);
+            presenceOn('member', db, user, user.displayName, adminUser ? 'admin' : 'member');
         }
 
         let membersData = {}, presenceData = {}, rosterKey = '', rosterRefs = [], rosterTab = 'on';
@@ -1780,15 +1848,14 @@
             const box = document.getElementById('roster-list');
             if (!box) return;
             const rows = [];
-            Object.entries(membersData).forEach(([uid, m]) => rows.push({ uid, name: m.name || '會員', admin: false, p: presenceData[uid] }));
-            Object.entries(presenceData).forEach(([uid, p]) => { if (p.role === 'admin') rows.push({ uid, name: p.name || '管理員', admin: true, p }); });
+            Object.entries(membersData).forEach(([uid, m]) => rows.push({ uid, name: m.name || '會員', admin: !!(presenceData[uid] && presenceData[uid].role === 'admin'), p: presenceData[uid] }));
             const st = (r) => (r.p && r.p.state) || 'offline';
             const rank = { online: 0, away: 1, offline: 2 };
             rows.sort((a, b) => (rank[st(a)] - rank[st(b)]) || a.name.localeCompare(b.name));
             const onlineN = rows.filter(r => st(r) === 'online').length;
             document.getElementById('roster-count').textContent = `（${onlineN} 人使用中）`;
             const dot = { online: 'bg-emerald-500', away: 'bg-amber-400', offline: 'bg-gray-300' };
-            const mine = (uid) => (auth.currentUser && auth.currentUser.uid === uid) || (adminAuth.currentUser && adminAuth.currentUser.uid === uid);
+            const mine = (uid) => auth.currentUser && auth.currentUser.uid === uid;
             if (!rows.length) { box.innerHTML = '<p class="text-xs text-gray-400 py-2">目前沒有成員資料。</p>'; return; }
             const act = rows.filter(r => st(r) !== 'offline'), off = rows.filter(r => st(r) === 'offline');
             const pill = (k, label, n) => `<button onclick="setRosterTab('${k}')" class="flex-1 py-1.5 rounded-full text-sm font-bold transition ${rosterTab === k ? 'bg-[#3b4d43] text-white' : 'text-gray-400'}">${label} ${n}</button>`;
@@ -1802,12 +1869,12 @@
                 </div>`).join('') : `<p class="text-xs text-gray-400 py-2">${rosterTab === 'on' ? '目前沒有人在線上。' : '沒有離線的成員。'}</p>`);
         }
         function bindRoster() {
-            const key = isMember ? 'm' : (adminUser ? 'a' : '');
+            const key = isMember ? 'm' : '';
             if (key === rosterKey) { renderRoster(); return; }
             rosterKey = key;
             rosterRefs.forEach(([r, f]) => r.off('value', f));
             rosterRefs = []; membersData = {}; presenceData = {};
-            const d = key === 'm' ? db : (key === 'a' ? adminDb : null);
+            const d = key === 'm' ? db : null;
             if (d) [['members', (v) => { membersData = v; }], ['presence', (v) => { presenceData = v; }]].forEach(([path, set]) => {
                 const r = d.ref(path);
                 const f = r.on('value', (s) => { set(s.val() || {}); renderRoster(); }, () => { });
@@ -1824,8 +1891,8 @@
         function refreshIdentity() {
             isEditor = !!adminUser && !readMode;
             isMember = !!memberUser;
-            currentUserName = memberUser ? (memberUser.displayName || '會員') : (adminUser ? '管理員' : '');
-            currentUserUid = memberUser ? memberUser.uid : (adminUser ? adminUser.uid : '');
+            currentUserName = memberUser ? (memberUser.displayName || '會員') : '';
+            currentUserUid = memberUser ? memberUser.uid : '';
             updateEditorUI();
             bindRoster();
             if (window.LEDGER) LEDGER.onAuth();
@@ -1834,19 +1901,48 @@
             else if (window.HL) HL.onAuth();
             if (window.tourSync) tourSync();
         }
+        let adminRef = null, adminFn = null;
+        function watchAdmin(user) {
+            if (adminRef) { adminRef.off('value', adminFn); adminRef = adminFn = null; }
+            adminUser = (user && cacheLoad('adm_' + user.uid)) ? user : null;
+            if (!user) return;
+            adminRef = db.ref('admins/' + user.uid);
+            adminFn = adminRef.on('value', (s) => {
+                const on = s.exists();
+                cacheSave('adm_' + user.uid, on ? 1 : 0);
+                if (on === !!adminUser) return;
+                adminUser = on ? user : null;
+                if (user.displayName) presenceOn('member', db, user, user.displayName, on ? 'admin' : 'member');
+                refreshIdentity();
+            }, () => { });
+        }
+        function showGate(mode) {
+            document.getElementById('login-gate').classList.toggle('hidden', !mode);
+            document.getElementById('gate-join').classList.toggle('hidden', mode !== 'join');
+            document.getElementById('gate-login').classList.toggle('hidden', mode === 'join');
+            document.getElementById('gate-msg').textContent = mode === 'join' ? '此帳號尚未加入旅程，請輸入邀請碼。' : '本旅程僅限成員查看，請登入，或用邀請碼註冊。';
+        }
         auth.onAuthStateChanged((user) => {
-            if (user && user.email === ADMIN_EMAIL) { auth.signOut(); return; }
             memberUser = user;
-            if (user) startMemberSession(user);
+            watchAdmin(user);
+            showGate(user ? '' : 'login');
+            if (user) {
+                startMemberSession(user);
+                db.ref('members/' + user.uid).once('value').then((s) => { if (!s.exists() && user.displayName && auth.currentUser === user) showGate('join'); }).catch(() => { if (user.displayName && auth.currentUser === user) showGate('join'); });
+            }
             refreshIdentity();
         });
-        adminAuth.onAuthStateChanged((user) => {
-            adminUser = (user && user.email === ADMIN_EMAIL) ? user : null;
-            if (adminUser) presenceOn('admin', adminDb, adminUser, '管理員');
-            refreshIdentity();
-        });
+        window.gateJoin = function () {
+            const u = auth.currentUser, errEl = document.getElementById('gate-error');
+            const code = document.getElementById('gate-invite').value.trim();
+            errEl.classList.add('hidden');
+            if (!u || !code) return;
+            db.ref('joins/' + u.uid).set(code)
+                .then(() => db.ref('members/' + u.uid).set({ name: u.displayName }))
+                .then(() => location.reload())
+                .catch(() => errEl.classList.remove('hidden'));
+        };
 
-        const MEMBER_INVITE_CODE = 'SANIN2026';
         let memberMode = 'login';
 
         window.openMemberModal = function () {
@@ -1876,18 +1972,21 @@
 
             if (memberMode === 'register') {
                 const code = document.getElementById('member-invite-input').value.trim();
-                if (code !== MEMBER_INVITE_CODE) { errEl.textContent = '邀請碼錯誤。'; errEl.classList.remove('hidden'); return; }
+                if (!code) { errEl.textContent = '請輸入邀請碼。'; errEl.classList.remove('hidden'); return; }
+                let cred;
                 auth.createUserWithEmailAndPassword(email, pw)
-                    .then((cred) => cred.user.updateProfile({ displayName: name }))
-                    .then(() => {
-                        startMemberSession(auth.currentUser);
-                        refreshIdentity();
-                        closeMemberModal();
-                    })
-                    .catch((e) => { errEl.textContent = e.code === 'auth/email-already-in-use' ? '這個名稱已經被註冊了。' : '註冊失敗：' + e.message; errEl.classList.remove('hidden'); });
+                    .then((c) => { cred = c; return c.user.updateProfile({ displayName: name }); })
+                    .then(() => db.ref('joins/' + cred.user.uid).set(code).catch(() => { throw { code: 'x/bad-invite' }; }))
+                    .then(() => db.ref('members/' + cred.user.uid).set({ name }))
+                    .then(() => location.reload())
+                    .catch((e) => {
+                        if (cred) cred.user.delete().catch(() => { });
+                        errEl.textContent = e.code === 'auth/email-already-in-use' ? '這個名稱已經被註冊了。' : e.code === 'x/bad-invite' ? '邀請碼錯誤。' : '註冊失敗：' + (e.message || e.code);
+                        errEl.classList.remove('hidden');
+                    });
             } else {
                 auth.signInWithEmailAndPassword(email, pw)
-                    .then(() => closeMemberModal())
+                    .then(() => location.reload())
                     .catch((e) => {
                         errEl.textContent = (e.code === 'auth/user-not-found') ? '登入失敗，請註冊一個帳號。' : '登入失敗，請確認名稱與密碼。';
                         errEl.classList.remove('hidden');
@@ -2043,6 +2142,7 @@
         };
 
         function openPasswordModal() {
+            if (!memberUser) { openMemberModal(); return; }
             lockScroll();
             document.getElementById('password-modal').classList.remove('hidden');
             document.getElementById('password-error').classList.add('hidden');
@@ -2053,18 +2153,19 @@
             document.getElementById('password-modal').classList.add('hidden');
             unlockScroll();
         } function submitPassword() {
-            const pw = document.getElementById('password-input').value;
-            adminAuth.signInWithEmailAndPassword(EDITOR_EMAIL, pw)
+            const pw = document.getElementById('password-input').value.trim();
+            if (!memberUser || !pw) return;
+            db.ref('admins/' + memberUser.uid).set(pw)
                 .then(() => closePasswordModal())
                 .catch(() => document.getElementById('password-error').classList.remove('hidden'));
         }
-        async function logoutAdmin() {
-            await presenceOff('admin');
+        function logoutAdmin() {
+            if (!memberUser || !confirm('確定退出管理員？之後要再輸入管理員密碼才能回來。')) return;
             readMode = false;
             try { localStorage.removeItem('readMode'); } catch (e) { }
-            adminAuth.signOut();
+            db.ref('admins/' + memberUser.uid).remove().catch(() => alert('退出失敗，請稍後再試。'));
         }
-        async function logoutMember() { await presenceOff('member'); auth.signOut(); }
+        async function logoutMember() { await presenceOff('member'); await auth.signOut(); location.reload(); }
 
         function updateEditorUI() {
             document.getElementById('login-entry-btn').classList.toggle('hidden', adminUser && isMember);

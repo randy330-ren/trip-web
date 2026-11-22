@@ -253,10 +253,10 @@
       ".write": false
     },
     "trips": {
-      "tottori": {
+      "$trip": {
         "trip_content": {
-          ".read": true,
-          ".write": "auth != null && auth.token.email == 'sanin-editor-2026@trip.local'"
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
+          ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())"
         },
         "ledger_personal": {
           "$uid": {
@@ -265,32 +265,32 @@
           }
         },
         "map_spots": {
-          ".read": true,
-          ".write": "auth != null && auth.token.email == 'sanin-editor-2026@trip.local'"
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
+          ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())"
         },
         "trip_notes": {
-          ".read": true,
-          ".write": "auth != null && auth.token.email == 'sanin-editor-2026@trip.local'"
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
+          ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())"
         },
         "meal_links": {
-          ".read": true,
-          ".write": "auth != null && auth.token.email == 'sanin-editor-2026@trip.local'"
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
+          ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())"
         },
         "route_steps": {
-          ".read": true,
-          ".write": "auth != null && auth.token.email == 'sanin-editor-2026@trip.local'"
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
+          ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())"
         },
         "todos": {
-          ".read": true,
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
           "$id": {
-            ".write": "auth != null && (auth.token.email == 'sanin-editor-2026@trip.local' || (!data.exists() && newData.child('uid').val() == auth.uid) || (data.exists() && data.child('uid').val() == auth.uid && (!newData.exists() || newData.child('uid').val() == auth.uid)))",
+            ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && ((auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()) || (!data.exists() && newData.child('uid').val() == auth.uid) || (data.exists() && data.child('uid').val() == auth.uid && (!newData.exists() || newData.child('uid').val() == auth.uid)))",
             ".validate": "newData.hasChildren(['text']) && newData.child('text').isString() && newData.child('text').val().length <= 200 && (!newData.child('author').exists() || (newData.child('author').isString() && newData.child('author').val().length <= 30))"
           }
         },
         "todo_done": {
           "$uid": {
             ".read": "auth != null && auth.uid == $uid",
-            ".write": "auth != null && auth.uid == $uid",
+            ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && auth.uid == $uid",
             "$tid": {
               ".validate": "newData.val() == true"
             }
@@ -299,15 +299,15 @@
         "todos_personal": {
           "$uid": {
             ".read": "auth != null && auth.uid == $uid",
-            ".write": "auth != null && auth.uid == $uid",
+            ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && auth.uid == $uid",
             "$tid": {
               ".validate": "newData.hasChildren(['text']) && newData.child('text').isString() && newData.child('text').val().length <= 200 && (!newData.child('done').exists() || newData.child('done').isBoolean())"
             }
           }
         },
         "settings": {
-          ".read": true,
-          ".write": "auth != null && auth.token.email == 'sanin-editor-2026@trip.local'",
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
+          ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())",
           "maxHighlightsPerDay": {
             ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 50"
           },
@@ -323,33 +323,34 @@
           }
         },
         "members": {
-          ".read": "auth != null",
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
           "$uid": {
-            ".write": "auth != null && (auth.uid == $uid || auth.token.email == 'sanin-editor-2026@trip.local')",
+            ".read": "auth != null && auth.uid == $uid",
+            ".write": "auth != null && ((auth.uid == $uid && (data.exists() || (root.child('trips/' + $trip + '/joins/' + auth.uid).exists() && root.child('trips/' + $trip + '/joins/' + auth.uid).val() == root.child('trips/' + $trip + '/secret/invite').val()))) || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))",
             ".validate": "newData.hasChildren(['name']) && newData.child('name').isString() && newData.child('name').val().length <= 30"
           }
         },
         "presence": {
-          ".read": "auth != null",
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
           "$uid": {
-            ".write": "auth != null && auth.uid == $uid",
-            ".validate": "newData.hasChildren(['name', 'role', 'state', 'ts']) && newData.child('name').isString() && newData.child('name').val().length <= 30 && (newData.child('state').val() == 'online' || newData.child('state').val() == 'away' || newData.child('state').val() == 'offline') && newData.child('ts').isNumber() && ((auth.token.email == 'sanin-editor-2026@trip.local' && newData.child('role').val() == 'admin') || (auth.token.email != 'sanin-editor-2026@trip.local' && newData.child('role').val() == 'member'))"
+            ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && auth.uid == $uid",
+            ".validate": "newData.hasChildren(['name', 'role', 'state', 'ts']) && newData.child('name').isString() && newData.child('name').val().length <= 30 && (newData.child('state').val() == 'online' || newData.child('state').val() == 'away' || newData.child('state').val() == 'offline') && newData.child('ts').isNumber() && ((newData.child('role').val() == 'admin' && (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())) || newData.child('role').val() == 'member')"
           }
         },
         "day_photos": {
-          ".read": true,
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
           "$day": {
             "$id": {
-              ".write": "auth != null && (auth.token.email == 'sanin-editor-2026@trip.local' || (!data.exists() && newData.child('uid').val() == auth.uid) || (data.exists() && data.child('uid').val() == auth.uid && (!newData.exists() || newData.child('uid').val() == auth.uid)))",
+              ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && ((auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()) || (!data.exists() && newData.child('uid').val() == auth.uid) || (data.exists() && data.child('uid').val() == auth.uid && (!newData.exists() || newData.child('uid').val() == auth.uid)))",
               ".validate": "newData.hasChildren(['url', 'uid']) && newData.child('url').isString() && newData.child('url').val().beginsWith('https://i.ibb.co/') && newData.child('url').val().length <= 300 && (!newData.child('thumb').exists() || (newData.child('thumb').isString() && newData.child('thumb').val().beginsWith('https://i.ibb.co/') && newData.child('thumb').val().length <= 300)) && (!newData.child('caption').exists() || (newData.child('caption').isString() && newData.child('caption').val().length <= 100))"
             }
           }
         },
         "highlights": {
-          ".read": true,
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
           "$day": {
             "$id": {
-              ".write": "auth != null && (auth.token.email == 'sanin-editor-2026@trip.local' || (!data.exists() && newData.child('uid').val() == auth.uid) || (data.exists() && data.child('uid').val() == auth.uid && (!newData.exists() || newData.child('uid').val() == auth.uid)))",
+              ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && ((auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()) || (!data.exists() && newData.child('uid').val() == auth.uid) || (data.exists() && data.child('uid').val() == auth.uid && (!newData.exists() || newData.child('uid').val() == auth.uid)))",
               ".validate": "newData.hasChildren(['url', 'uid']) && newData.child('url').isString() && (newData.child('url').val().beginsWith('https://i.ibb.co/') || newData.child('url').val().beginsWith('https://res.cloudinary.com/')) && newData.child('url').val().length <= 300 && (!newData.child('thumb').exists() || (newData.child('thumb').isString() && (newData.child('thumb').val().beginsWith('https://i.ibb.co/') || newData.child('thumb').val().beginsWith('https://res.cloudinary.com/')) && newData.child('thumb').val().length <= 300)) && (!newData.child('caption').exists() || (newData.child('caption').isString() && newData.child('caption').val().length <= 50))",
               "mentions": {
                 "$u": {
@@ -360,16 +361,16 @@
           }
         },
         "buys": {
-          ".read": true,
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
           "$id": {
-            ".write": "auth != null && (auth.token.email == 'sanin-editor-2026@trip.local' || (!data.exists() && newData.child('uid').val() == auth.uid) || (data.exists() && data.child('uid').val() == auth.uid && (!newData.exists() || newData.child('uid').val() == auth.uid)))",
+            ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && ((auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()) || (!data.exists() && newData.child('uid').val() == auth.uid) || (data.exists() && data.child('uid').val() == auth.uid && (!newData.exists() || newData.child('uid').val() == auth.uid)))",
             ".validate": "newData.hasChildren(['text']) && newData.child('text').isString() && newData.child('text').val().length <= 200 && (!newData.child('author').exists() || (newData.child('author').isString() && newData.child('author').val().length <= 30))"
           }
         },
         "buy_done": {
           "$uid": {
             ".read": "auth != null && auth.uid == $uid",
-            ".write": "auth != null && auth.uid == $uid",
+            ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && auth.uid == $uid",
             "$tid": {
               ".validate": "newData.val() == true"
             }
@@ -378,31 +379,31 @@
         "buys_personal": {
           "$uid": {
             ".read": "auth != null && auth.uid == $uid",
-            ".write": "auth != null && auth.uid == $uid",
+            ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && auth.uid == $uid",
             "$tid": {
               ".validate": "newData.hasChildren(['text']) && newData.child('text').isString() && newData.child('text').val().length <= 200 && (!newData.child('done').exists() || newData.child('done').isBoolean())"
             }
           }
         },
         "img_del": {
-          ".read": "auth != null && auth.token.email == 'sanin-editor-2026@trip.local'",
+          ".read": "auth != null && (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())",
           "$id": {
-            ".write": "auth != null && (auth.token.email == 'sanin-editor-2026@trip.local' || (!data.exists() && newData.child('uid').val() == auth.uid) || (data.exists() && data.child('uid').val() == auth.uid && (!newData.exists() || newData.child('uid').val() == auth.uid)))",
+            ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && ((auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()) || (!data.exists() && newData.child('uid').val() == auth.uid) || (data.exists() && data.child('uid').val() == auth.uid && (!newData.exists() || newData.child('uid').val() == auth.uid)))",
             ".validate": "newData.hasChildren(['del', 'uid']) && newData.child('del').isString() && newData.child('del').val().beginsWith('https://ibb.co/') && newData.child('del').val().length <= 300 && (!newData.child('thumb').exists() || (newData.child('thumb').isString() && newData.child('thumb').val().beginsWith('https://i.ibb.co/') && newData.child('thumb').val().length <= 300)) && (!newData.child('author').exists() || (newData.child('author').isString() && newData.child('author').val().length <= 30)) && (!newData.child('deleted').exists() || newData.child('deleted').isBoolean())"
           }
         },
         "draws": {
-          ".read": "auth != null",
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
           "$id": {
-            ".write": "auth != null && (!data.exists() || !newData.exists())"
+            ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && (!data.exists() || !newData.exists())"
           }
         },
         "ledger": {
-          ".read": "auth != null",
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
           "people": {
             "$pid": {
-              ".write": "auth != null && (newData.exists() || !data.child('uid').exists() || data.child('uid').val() == auth.uid || auth.token.email == 'sanin-editor-2026@trip.local')",
-              ".validate": "newData.hasChildren(['name', 'active']) && newData.child('name').isString() && newData.child('name').val().length >= 1 && newData.child('name').val().length <= 20 && newData.child('active').isBoolean() && (newData.child('uid').val() == data.child('uid').val() || (!newData.child('uid').exists() && (data.child('uid').val() == auth.uid || auth.token.email == 'sanin-editor-2026@trip.local')) || (!data.child('uid').exists() && newData.child('uid').val() == auth.uid))",
+              ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && (newData.exists() || !data.child('uid').exists() || data.child('uid').val() == auth.uid || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))",
+              ".validate": "newData.hasChildren(['name', 'active']) && newData.child('name').isString() && newData.child('name').val().length >= 1 && newData.child('name').val().length <= 20 && newData.child('active').isBoolean() && (newData.child('uid').val() == data.child('uid').val() || (!newData.child('uid').exists() && (data.child('uid').val() == auth.uid || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) || (!data.child('uid').exists() && newData.child('uid').val() == auth.uid))",
               "$other": {
                 ".validate": "$other == 'name' || $other == 'active' || $other == 'uid' || $other == 'ts'"
               }
@@ -410,96 +411,123 @@
           },
           "expenses": {
             "$eid": {
-              ".write": "auth != null",
-              ".validate": "newData.hasChildren(['title', 'amount', 'cur', 'dec', 'rate', 'base', 'baseAmt', 'date', 'payer', 'mode', 'shares', 'by', 'ts']) && newData.child('title').isString() && newData.child('title').val().length >= 1 && newData.child('title').val().length <= 50 && newData.child('amount').isNumber() && newData.child('amount').val() > 0 && newData.child('cur').isString() && newData.child('cur').val().length == 3 && newData.child('rate').isString() && newData.child('rate').val().length <= 20 && newData.child('base').val() == 'TWD' && newData.child('baseAmt').isNumber() && newData.child('baseAmt').val() >= 0 && newData.child('date').isString() && newData.child('date').val().length == 10 && root.child('trips/tottori/ledger/people/' + newData.child('payer').val()).exists() && (newData.child('mode').val() == 'equal' || newData.child('mode').val() == 'amount' || newData.child('mode').val() == 'ratio' || newData.child('mode').val() == 'each') && (!newData.child('note').exists() || (newData.child('note').isString() && newData.child('note').val().length <= 3000)) && (!newData.child('cat').exists() || (newData.child('cat').isString() && newData.child('cat').val().length <= 10))"
+              ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
+              ".validate": "newData.hasChildren(['title', 'amount', 'cur', 'dec', 'rate', 'base', 'baseAmt', 'date', 'payer', 'mode', 'shares', 'by', 'ts']) && newData.child('title').isString() && newData.child('title').val().length >= 1 && newData.child('title').val().length <= 50 && newData.child('amount').isNumber() && newData.child('amount').val() > 0 && newData.child('cur').isString() && newData.child('cur').val().length == 3 && newData.child('rate').isString() && newData.child('rate').val().length <= 20 && newData.child('base').val() == 'TWD' && newData.child('baseAmt').isNumber() && newData.child('baseAmt').val() >= 0 && newData.child('date').isString() && newData.child('date').val().length == 10 && root.child('trips/' + $trip + '/ledger/people/' + newData.child('payer').val()).exists() && (newData.child('mode').val() == 'equal' || newData.child('mode').val() == 'amount' || newData.child('mode').val() == 'ratio' || newData.child('mode').val() == 'each') && (!newData.child('note').exists() || (newData.child('note').isString() && newData.child('note').val().length <= 3000)) && (!newData.child('cat').exists() || (newData.child('cat').isString() && newData.child('cat').val().length <= 10))"
             }
           },
           "deleted": {
             "$eid": {
-              ".write": "auth != null",
+              ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
               ".validate": "newData.hasChildren(['title', 'shares', 'delBy', 'delTs']) && newData.child('title').isString() && newData.child('delBy').isString() && newData.child('delTs').isNumber()"
             }
           },
           "plan": {
-            ".write": "auth != null && auth.token.email == 'sanin-editor-2026@trip.local'",
+            ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())",
             ".validate": "!newData.exists() || (newData.hasChildren(['id', 'ts', 'items']) && newData.child('id').isString() && newData.child('ts').isNumber())"
           },
           "migr": {
             "tails1": {
-              ".write": "auth != null && !data.exists()",
+              ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && !data.exists()",
               ".validate": "newData.hasChildren(['n', 'ts']) && newData.child('n').isNumber() && newData.child('ts').isNumber()"
             }
           },
           "transfers": {
             "$tid": {
-              ".write": "auth != null && newData.exists() && (auth.token.email == 'sanin-editor-2026@trip.local' || (!data.exists() && newData.child('status').val() == 'paid' && root.child('trips/tottori/ledger/people/' + newData.child('from').val() + '/uid').val() == auth.uid) || (data.child('status').val() == 'paid' && (((newData.child('status').val() == 'done' || newData.child('status').val() == 'void') && root.child('trips/tottori/ledger/people/' + data.child('to').val() + '/uid').val() == auth.uid) || (newData.child('status').val() == 'void' && root.child('trips/tottori/ledger/people/' + data.child('from').val() + '/uid').val() == auth.uid))))",
+              ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && newData.exists() && ((auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()) || (!data.exists() && newData.child('status').val() == 'paid' && root.child('trips/' + $trip + '/ledger/people/' + newData.child('from').val() + '/uid').val() == auth.uid) || (data.child('status').val() == 'paid' && (((newData.child('status').val() == 'done' || newData.child('status').val() == 'void') && root.child('trips/' + $trip + '/ledger/people/' + data.child('to').val() + '/uid').val() == auth.uid) || (newData.child('status').val() == 'void' && root.child('trips/' + $trip + '/ledger/people/' + data.child('from').val() + '/uid').val() == auth.uid))))",
               ".validate": "newData.hasChildren(['from', 'to', 'amt', 'cur', 'status']) && newData.child('amt').isNumber() && newData.child('amt').val() > 0 && newData.child('cur').val() == 'TWD' && (newData.child('status').val() == 'paid' || newData.child('status').val() == 'done' || newData.child('status').val() == 'void') && (!data.exists() || (newData.child('from').val() == data.child('from').val() && newData.child('to').val() == data.child('to').val() && newData.child('amt').val() == data.child('amt').val()))"
             }
           },
           "cats": {
             "$cid": {
-              ".write": "auth != null",
+              ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
               ".validate": "newData.hasChildren(['name', 'by']) && newData.child('name').isString() && newData.child('name').val().length >= 1 && newData.child('name').val().length <= 10 && ((data.exists() && newData.child('by').val() == data.child('by').val()) || (!data.exists() && newData.child('by').val() == auth.uid))"
             }
           },
           "rates": {
-            ".write": "auth != null && auth.token.email == 'sanin-editor-2026@trip.local'",
+            ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())",
             "$cur": {
               ".validate": "$cur.length == 3 && $cur != 'TWD' && newData.hasChildren(['rate', 'dec', 'ts']) && newData.child('rate').isString() && newData.child('rate').val().length <= 20 && newData.child('dec').isNumber() && newData.child('dec').val() >= 0 && newData.child('dec').val() <= 3"
             }
           }
         },
         "geo": {
-          ".read": true,
-          ".write": "auth != null && auth.token.email == 'sanin-editor-2026@trip.local'",
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
+          ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())",
           "$k": {
             ".validate": "newData.hasChild('ts') && newData.child('ts').isNumber() && ((newData.child('lat').isNumber() && newData.child('lat').val() >= -90 && newData.child('lat').val() <= 90 && newData.child('lng').isNumber() && newData.child('lng').val() >= -180 && newData.child('lng').val() <= 180) || newData.child('fail').val() == true || newData.child('skip').val() == true)"
           }
         },
         "hl_react": {
-          ".read": "auth != null",
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
           "$day": {
             "$pid": {
-              ".write": "auth != null && !newData.exists() && (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/tottori/highlights/' + $day + '/' + $pid + '/uid').val() == auth.uid)",
+              ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && !newData.exists() && ((auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()) || root.child('trips/' + $trip + '/highlights/' + $day + '/' + $pid + '/uid').val() == auth.uid)",
               "$uid": {
-                ".write": "auth != null && (auth.uid == $uid || (auth.token.email == 'sanin-editor-2026@trip.local' && !newData.exists()))",
-                ".validate": "newData.isString() && root.child('trips/tottori/settings/hl_emojis/' + newData.val()).exists() && root.child('trips/tottori/highlights/' + $day + '/' + $pid).exists()"
+                ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && (auth.uid == $uid || ((auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()) && !newData.exists()))",
+                ".validate": "newData.isString() && root.child('trips/' + $trip + '/settings/hl_emojis/' + newData.val()).exists() && root.child('trips/' + $trip + '/highlights/' + $day + '/' + $pid).exists()"
               }
             }
           }
         },
         "hl_comments": {
-          ".read": "auth != null",
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
           "$day": {
             "$pid": {
-              ".write": "auth != null && !newData.exists() && (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/tottori/highlights/' + $day + '/' + $pid + '/uid').val() == auth.uid)",
+              ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && !newData.exists() && ((auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()) || root.child('trips/' + $trip + '/highlights/' + $day + '/' + $pid + '/uid').val() == auth.uid)",
               "$cid": {
-                ".write": "auth != null && (auth.token.email == 'sanin-editor-2026@trip.local' || (!data.exists() && newData.child('uid').val() == auth.uid) || (data.exists() && !newData.exists() && (data.child('uid').val() == auth.uid || root.child('trips/tottori/highlights/' + $day + '/' + $pid + '/uid').val() == auth.uid)))",
-                ".validate": "newData.hasChildren(['uid', 'name', 'text', 'ts']) && newData.child('uid').isString() && newData.child('name').isString() && newData.child('name').val().length <= 30 && newData.child('text').isString() && newData.child('text').val().length >= 1 && newData.child('text').val().length <= 50 && newData.child('ts').isNumber() && root.child('trips/tottori/highlights/' + $day + '/' + $pid).exists()"
+                ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && ((auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()) || (!data.exists() && newData.child('uid').val() == auth.uid) || (data.exists() && !newData.exists() && (data.child('uid').val() == auth.uid || root.child('trips/' + $trip + '/highlights/' + $day + '/' + $pid + '/uid').val() == auth.uid)))",
+                ".validate": "newData.hasChildren(['uid', 'name', 'text', 'ts']) && newData.child('uid').isString() && newData.child('name').isString() && newData.child('name').val().length <= 30 && newData.child('text').isString() && newData.child('text').val().length >= 1 && newData.child('text').val().length <= 50 && newData.child('ts').isNumber() && root.child('trips/' + $trip + '/highlights/' + $day + '/' + $pid).exists()"
               }
             }
           }
         },
         "hl_rts": {
-          ".read": "auth != null",
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
           "$day": {
             "$pid": {
-              ".write": "auth != null && !newData.exists() && (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/tottori/highlights/' + $day + '/' + $pid + '/uid').val() == auth.uid)",
+              ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && !newData.exists() && ((auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()) || root.child('trips/' + $trip + '/highlights/' + $day + '/' + $pid + '/uid').val() == auth.uid)",
               "$uid": {
-                ".write": "auth != null && (auth.uid == $uid || (auth.token.email == 'sanin-editor-2026@trip.local' && !newData.exists()))",
-                ".validate": "newData.isNumber() && root.child('trips/tottori/highlights/' + $day + '/' + $pid).exists()"
+                ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && (auth.uid == $uid || ((auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()) && !newData.exists()))",
+                ".validate": "newData.isNumber() && root.child('trips/' + $trip + '/highlights/' + $day + '/' + $pid).exists()"
               }
             }
           }
         },
         "hl_award": {
-          ".read": "auth != null",
+          ".read": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
           "$day": {
-            ".write": "auth != null && (!data.exists() || auth.token.email == 'sanin-editor-2026@trip.local')",
+            ".write": "(auth != null && (root.child('trips/' + $trip + '/members/' + auth.uid).exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))) && (!data.exists() || (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists()))",
             ".validate": "$day.matches(/^d[0-9]{1,2}$/) && newData.hasChild('ts') && newData.child('ts').isNumber()",
             "$k": {
               ".validate": "$k == 'ts' || (($k == 'early' || $k == 'share' || $k == 'welcome' || $k == 'topic' || $k == 'helper') && newData.isString() && newData.val().length <= 40)"
             }
+          }
+        },
+        "secret": {
+          ".read": "(auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())",
+          ".write": "(auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())",
+          "invite": {
+            ".validate": "newData.isString() && newData.val().length >= 12 && newData.val().length <= 64"
+          },
+          "adminPw": {
+            ".validate": "newData.isString() && newData.val().length >= 12 && newData.val().length <= 64"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "joins": {
+          "$uid": {
+            ".write": "auth != null && auth.uid == $uid && newData.exists() && newData.val() == root.child('trips/' + $trip + '/secret/invite').val()",
+            ".validate": "newData.isString() && newData.val().length <= 64"
+          }
+        },
+        "admins": {
+          ".read": "(auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())",
+          "$uid": {
+            ".read": "auth != null && auth.uid == $uid",
+            ".write": "auth != null && ((auth.uid == $uid && (!newData.exists() || (!data.exists() && root.child('trips/' + $trip + '/members/' + auth.uid).exists() && newData.val() == root.child('trips/' + $trip + '/secret/adminPw').val()))) || (!newData.exists() && (auth.token.email == 'sanin-editor-2026@trip.local' || root.child('trips/' + $trip + '/admins/' + auth.uid).exists())))",
+            ".validate": "newData.isString()"
           }
         }
       }
