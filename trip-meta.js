@@ -86,7 +86,43 @@
         set('site-eyebrow', T.eyebrow); set('site-title', T.title); set('site-subtitle', T.subtitle);
     }
 
+    // ---- 決定這次開哪一趟旅程：網址 ?trip= → 上次開過的 → 鳥取 ----
+    const ID_RE = /^[a-z0-9][a-z0-9-]{2,19}$/;
+    const ls = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+    const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { } };
+    const has = (id) => Object.prototype.hasOwnProperty.call(TRIPS, id);
+    const fromUrl = (location.search.match(/[?&]trip=([^&#]*)/) || [])[1];
+    const id = [fromUrl, ls('lastTrip'), 'tottori'].find((x) => x && ID_RE.test(x));
+
+    // 從資料庫讀回來的資料可能缺空陣列（資料庫不存空陣列），補齊後才使用
+    const normalize = (m, id) => {
+        if (!m || !Array.isArray(m.days) || !m.days.length) return null;
+        const days = m.days.map((d) => d && d.month && d.day && d.week ? Object.assign({ secTag: '', tag: '', title: '', foodLabel: '', wx: 'x', steps: [], meals: ['', '', ''] }, d, { meals: [0, 1, 2].map((i) => (d.meals && d.meals[i]) || '') }) : null);
+        if (days.includes(null)) return null;
+        return Object.assign({ year: new Date().getFullYear(), shortName: '旅程', pageTitle: m.title || '旅程', splash: { from: '', to: '', eyebrow: '', title: m.title || '' }, eyebrow: '', title: '', subtitle: '', notes: [], weather: { places: { x: ['東京', 35.68, 139.76] } }, map: { center: [35.68, 139.76], zoom: 5, farKm: 3000, region: '目的地' } }, m, { id, days });
+    };
+    const placeholder = (id) => {
+        const t = new Date();
+        return { id, placeholder: true, year: t.getFullYear(), shortName: '旅程', pageTitle: '旅程', splash: { from: '', to: '', eyebrow: '', title: '載入中' }, eyebrow: '', title: '載入中', subtitle: '', notes: [],
+            map: { center: [35.68, 139.76], zoom: 5, farKm: 3000, region: '目的地' }, weather: { places: { x: ['東京', 35.68, 139.76] } },
+            days: [{ month: t.getMonth() + 1, day: t.getDate(), week: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][t.getDay()], tag: '', secTag: '', title: '', meals: ['', '', ''], foodLabel: '', wx: 'x', steps: [] }] };
+    };
+    let T = has(id) ? TRIPS[id] : null;
+    if (!T) { try { T = normalize(JSON.parse(ls('meta_' + id)), id); } catch (e) { T = null; } }
+    if (T) lsSet('lastTrip', id); else T = placeholder(id);
+
+    // 非鳥取的旅程：用旅程名稱產生安裝用的 manifest（已安裝的名稱不會變）
+    if (id !== 'tottori' && !T.placeholder) {
+        try {
+            const o = location.origin, el = document.querySelector('link[rel="manifest"]');
+            const m = { name: T.pageTitle, short_name: T.shortName, start_url: o + '/?trip=' + id, scope: o + '/', display: 'standalone', background_color: '#3b4d43', theme_color: '#3b4d43',
+                icons: [{ src: o + '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' }, { src: o + '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }] };
+            if (el) el.href = URL.createObjectURL(new Blob([JSON.stringify(m)], { type: 'application/manifest+json' }));
+        } catch (e) { }
+    }
+
     g.TRIPS = TRIPS;
-    g.TRIP = TRIPS.tottori;
-    g.tripRender = { days: daysHtml, food: foodHtml, header: applyHeader };
+    g.TRIP = T;
+    g.TRIP_NS = id === 'tottori' ? '' : id + ':';
+    g.tripRender = { days: daysHtml, food: foodHtml, header: applyHeader, normalize };
 })(typeof window !== 'undefined' ? window : globalThis);
