@@ -1243,7 +1243,7 @@
         settingsRef.child('routeMigrated').on('value', (snap) => {
             routeMigrated = !!snap.val();
             const b = document.getElementById('migrate-btn');
-            if (b) b.classList.toggle('hidden', readMode || routeMigrated);
+            if (b) b.classList.toggle('hidden', readMode || routeMigrated || !BUNDLED);
         });
         window.openSettingsModal = function () {
             if (!isEditor) return;
@@ -2011,7 +2011,7 @@
             const bh = document.getElementById('blank-hint');
             if (bh) bh.classList.toggle('hidden', !(TRIP.blank && adminUser));
             bindMyTodos();
-            document.getElementById('migrate-btn').classList.toggle('hidden', readMode || routeMigrated);
+            document.getElementById('migrate-btn').classList.toggle('hidden', readMode || routeMigrated || !BUNDLED);
             fixLegacyTypes();
             ensureSortable();
             document.getElementById('add-note-btn').classList.toggle('hidden', !isEditor);
