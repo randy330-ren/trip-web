@@ -38,5 +38,10 @@ t('從資料庫讀回的資料補齊', n.id === 'abc-def' && n.splash.from === '
 t('缺 days 回傳 null', R.normalize({ year: 1 }, 'a') === null);
 t('canon 與欄位順序無關', R.canon({ a: 1, b: { c: 2, d: [1, { y: 1, x: 2 }] } }) === R.canon({ b: { d: [1, { x: 2, y: 1 }], c: 2 }, a: 1 }));
 t('匯入結果重新整理後穩定', R.canon(R.normalize(R.validate(good).meta, 'a-b-c')) === R.canon(R.normalize(JSON.parse(JSON.stringify(R.validate(good).meta)), 'a-b-c')));
+t('空白旅程帶有 blank 標記，匯入後不會保留', b.meta.blank === true && !('blank' in R.validate(R.blank('x', '2027-05-01', 2).meta).meta));
+t('範例 JSON 本身通過檢查', R.validate(R.example).ok);
+const fs = require('fs'), doc = fs.readFileSync(__dirname + '/docs/trip-import-format.md', 'utf8');
+t('說明文件的範例與程式內的範例相同', JSON.stringify(JSON.parse(doc.match(/```json\n([\s\S]*?)\n```/)[1])) === JSON.stringify(R.example));
+t('說明文件的提示詞與程式內的相同', R.prompt.split('\n').every((l) => doc.includes('> ' + l)));
 console.log(bad ? `失敗 ${bad} 項` : `全部通過：${ok} 項`);
 process.exit(bad ? 1 : 0);

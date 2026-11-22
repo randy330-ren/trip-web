@@ -114,6 +114,16 @@
             map: { center: [35.68, 139.76], zoom: 5, farKm: 3000, region: '目的地' }, weather: { places: { x: ['東京', 35.68, 139.76] } },
             days: [{ month: t.getMonth() + 1, day: t.getDate(), week: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][t.getDay()], tag: '', secTag: '', title: '', meals: ['', '', ''], foodLabel: '', wx: 'x', steps: [] }] };
     };
+    // ---- 給 AI 的提示詞與範例（視窗上的複製按鈕、docs/trip-import-format.md 共用同一份）----
+    const EXAMPLE = {"pageTitle": "2027 沖繩自由行", "title": "沖繩・春日紀行", "subtitle": "那霸 ｜ 2027.03.10 - 03.12", "eyebrow": "2027 JAPAN / OKINAWA", "shortName": "沖繩", "year": 2027, "splash": {"from": "TPE", "to": "OKA", "eyebrow": "2027 JAPAN / OKINAWA", "title": "沖繩・春日紀行"}, "map": {"center": [26.2124, 127.6809], "zoom": 10, "farKm": 150, "region": "沖繩地區"}, "weather": {"places": {"naha": ["那霸", 26.2124, 127.6809], "motobu": ["本部", 26.6577, 127.8985]}}, "notes": ["3/10 抵達後先到飯店寄放行李。", "3/12 退房後前往機場。"], "days": [{"month": 3, "day": 10, "tag": "抵達・市區", "title": "抵達那霸・國際通散步", "note": "貼心提醒：第一天請輕裝。", "meals": ["機上", "機場輕食", "國際通居酒屋"], "foodLabel": "那霸", "wx": "naha", "steps": ["08:40 桃園出發", "12:30 抵達那霸機場", "搭單軌電車前往飯店", "國際通散步"]}, {"month": 3, "day": 11, "tag": "海洋・景點", "title": "美麗海水族館", "meals": ["飯店早餐", "備瀨福木並木道午餐", "自由用餐"], "foodLabel": "本部", "wx": "motobu", "steps": ["自駕前往本部", "美麗海水族館", "備瀨福木並木道"]}]};
+    const PROMPT = [
+        "請把我提供的旅遊行程整理成一份 JSON，只輸出 JSON 本身（不要加說明文字或程式碼框）。",
+        "格式與欄位如下：pageTitle、title、subtitle、eyebrow、shortName、year、splash（from、to、eyebrow、title）、map（center 為 [緯度, 經度]、zoom、farKm、region）、weather.places（每個地點為 \"代碼\": [\"名稱\", 緯度, 經度]，代碼用英文小寫）、notes（出發前提醒字串陣列）、days（陣列）。",
+        "days 每一天包含：month、day（數字）、tag（8 字內短標籤）、title（當天主題）、note（可省略）、meals（[早餐, 午餐, 晚餐] 三個字串，未知填「待確認」）、foodLabel（地點名稱）、wx（天氣地點代碼，必須存在於 weather.places）、steps（當天路線，每個項目一個字串，保留時間與重點）。",
+        "規則：日期依先後排列、不可跨年；不要輸出 week；經緯度請給大致正確的數字；沒有資訊的欄位請省略，不要編造；請勿輸出任何個人資料。",
+        "以下是我的行程內容："
+    ].join('\n');
+
     // ---- 匯入／建立旅程：檢查並整理成標準格式（星期自動由日期算出）----
     const WEEK = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
     function validate(raw, id) {
@@ -174,11 +184,13 @@
         const end = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n - 1);
         if (end.getFullYear() !== t.getFullYear()) return { ok: false, errors: ['目前不支援跨年的旅程'] };
         const p2 = (x) => String(x).padStart(2, '0');
-        return validate({
+        const r = validate({
             pageTitle: name, title: name, year: t.getFullYear(), eyebrow: t.getFullYear() + ' TRIP',
             subtitle: t.getFullYear() + '.' + p2(t.getMonth() + 1) + '.' + p2(t.getDate()) + ' - ' + p2(end.getMonth() + 1) + '.' + p2(end.getDate()),
             days: Array.from({ length: n }, (_, i) => { const d = new Date(t.getFullYear(), t.getMonth(), t.getDate() + i); return { month: d.getMonth() + 1, day: d.getDate(), title: '第 ' + (i + 1) + ' 天', meals: ['待確認', '待確認', '待確認'] }; })
         });
+        if (r.meta) r.meta.blank = true; // 空白旅程：管理員會看到「匯入行程」提示卡，匯入後這個標記就消失
+        return r;
     }
     const canon = (v) => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.keys(x).sort().reduce((a, y) => { a[y] = x[y]; return a; }, {}) : x));
 
@@ -199,5 +211,5 @@
     g.TRIPS = TRIPS;
     g.TRIP = T;
     g.TRIP_NS = id === 'tottori' ? '' : id + ':';
-    g.tripRender = { days: daysHtml, food: foodHtml, header: applyHeader, normalize, validate, blank, canon };
+    g.tripRender = { days: daysHtml, food: foodHtml, header: applyHeader, normalize, validate, blank, canon, example: EXAMPLE, prompt: PROMPT };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -487,6 +487,11 @@
 
         <!-- 頁面 1：行程 (Itinerary) -->
         <div id="page-itinerary" class="space-y-3">
+            <div id="blank-hint" class="hidden card p-4 text-xs text-amber-900" style="border-left:4px solid #fbbf24;background:#fffbeb">
+                <p class="font-bold mb-1">🧳 這趟旅程還是空白</p>
+                <p class="mb-2">把行程檔和提示詞一起交給 AI，再把 AI 給的 JSON 貼進來，就能一次填好每天的行程。</p>
+                <div class="flex gap-2"><button type="button" onclick="drCopy(tripRender.prompt, this)" class="flex-1 bg-gray-100 text-gray-700 rounded-lg py-1.5 text-[11px] font-bold" style="background:#fff">📋 複製提示詞</button><button type="button" onclick="openImportModal()" class="flex-1 bg-[#3b4d43] text-white rounded-lg py-1.5 text-[11px] font-bold">📥 匯入行程</button></div>
+            </div>
             <div id="trip-countdown" class="hidden card px-4 py-2.5 flex items-center justify-between" style="border-left:4px solid var(--gold)"></div>
 
             <script>(function (s) { s.insertAdjacentHTML('beforebegin', tripRender.days(TRIP)); s.remove(); })(document.currentScript);</script>
@@ -1024,6 +1029,11 @@
                     <input id="cr-start" type="date" class="min-w-0 flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm">
                     <input id="cr-days" type="number" min="1" max="31" placeholder="天數" class="w-20 border border-gray-300 rounded-lg px-3 py-2 text-sm">
                 </div>
+                <div class="bg-amber-50 border border-amber-200 rounded-lg p-2 text-[11px] text-amber-900">
+                    <p class="font-bold mb-1">想用 AI 整理行程？</p>
+                    <p class="mb-1.5">① 複製提示詞　② 連同你的行程檔交給 AI　③ 把 AI 給的 JSON 貼到下面。也可以先建立空白旅程，進去後再匯入。</p>
+                    <div class="flex gap-1.5"><button type="button" onclick="drCopy(tripRender.prompt, this)" class="flex-1 bg-gray-100 text-gray-700 rounded-lg py-1.5 text-[11px] font-bold">📋 複製提示詞</button><button type="button" onclick="drCopy(JSON.stringify(tripRender.example, null, 2), this)" class="flex-1 bg-gray-100 text-gray-700 rounded-lg py-1.5 text-[11px] font-bold">📋 複製範例</button></div>
+                </div>
                 <textarea id="cr-json" rows="3" placeholder="（選填）貼上 AI 產生的旅程 JSON；有填時以 JSON 為準，上面的名稱、日期、天數可留空" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs"></textarea>
                 <input id="cr-pw" type="password" placeholder="建立密碼" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                 <p id="cr-error" class="hidden text-xs text-red-500"></p>
@@ -1046,6 +1056,7 @@
         <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl max-h-[88vh] overflow-y-auto">
             <h3 class="text-sm font-bold text-[#3b4d43] mb-1">📥 匯入旅程資料</h3>
             <p class="text-[11px] text-gray-500 mb-2">貼上 AI 產生的旅程 JSON，先檢查再匯入。匯入前會自動下載一份備份檔。</p>
+            <div class="flex gap-1.5 mb-2"><button type="button" onclick="drCopy(tripRender.prompt, this)" class="flex-1 bg-gray-100 text-gray-700 rounded-lg py-1.5 text-[11px] font-bold">📋 複製提示詞</button><button type="button" onclick="drCopy(JSON.stringify(tripRender.example, null, 2), this)" class="flex-1 bg-gray-100 text-gray-700 rounded-lg py-1.5 text-[11px] font-bold">📋 複製範例</button></div>
             <textarea id="imp-json" rows="6" placeholder="貼上 JSON" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs"></textarea>
             <div id="imp-result" class="text-xs mt-2"></div>
             <label class="flex items-start gap-2 text-[11px] text-gray-600 mt-2"><input id="imp-reset" type="checkbox" class="mt-0.5">同時清除目前已編輯的路線、標題、餐食與提醒內容（改用匯入的內容）</label>
@@ -1997,6 +2008,8 @@
             const nm = Array.from(isMember ? currentUserName : '');
             document.getElementById('id-tab-name').textContent = nm.length > 5 ? nm.slice(0, 5).join('') + '…' : nm.join('');
             if (!adminUser && !isMember) idCollapse();
+            const bh = document.getElementById('blank-hint');
+            if (bh) bh.classList.toggle('hidden', !(TRIP.blank && adminUser));
             bindMyTodos();
             document.getElementById('migrate-btn').classList.toggle('hidden', readMode || routeMigrated);
             fixLegacyTypes();

@@ -21,19 +21,78 @@
   "eyebrow": "2027 JAPAN / OKINAWA",
   "shortName": "沖繩",
   "year": 2027,
-  "splash": { "from": "TPE", "to": "OKA", "eyebrow": "2027 JAPAN / OKINAWA", "title": "沖繩・春日紀行" },
-  "map": { "center": [26.2124, 127.6809], "zoom": 10, "farKm": 150, "region": "沖繩地區" },
-  "weather": { "places": { "naha": ["那霸", 26.2124, 127.6809], "motobu": ["本部", 26.6577, 127.8985] } },
-  "notes": ["3/10 抵達後先到飯店寄放行李。", "3/12 退房後前往機場。"],
+  "splash": {
+    "from": "TPE",
+    "to": "OKA",
+    "eyebrow": "2027 JAPAN / OKINAWA",
+    "title": "沖繩・春日紀行"
+  },
+  "map": {
+    "center": [
+      26.2124,
+      127.6809
+    ],
+    "zoom": 10,
+    "farKm": 150,
+    "region": "沖繩地區"
+  },
+  "weather": {
+    "places": {
+      "naha": [
+        "那霸",
+        26.2124,
+        127.6809
+      ],
+      "motobu": [
+        "本部",
+        26.6577,
+        127.8985
+      ]
+    }
+  },
+  "notes": [
+    "3/10 抵達後先到飯店寄放行李。",
+    "3/12 退房後前往機場。"
+  ],
   "days": [
     {
-      "month": 3, "day": 10, "tag": "抵達・市區", "title": "抵達那霸・國際通散步",
+      "month": 3,
+      "day": 10,
+      "tag": "抵達・市區",
+      "title": "抵達那霸・國際通散步",
       "note": "貼心提醒：第一天請輕裝。",
-      "meals": ["機上", "機場輕食", "國際通居酒屋"],
-      "foodLabel": "那霸", "wx": "naha",
-      "steps": ["08:40 桃園出發", "12:30 抵達那霸機場", "搭單軌電車前往飯店", "國際通散步"]
+      "meals": [
+        "機上",
+        "機場輕食",
+        "國際通居酒屋"
+      ],
+      "foodLabel": "那霸",
+      "wx": "naha",
+      "steps": [
+        "08:40 桃園出發",
+        "12:30 抵達那霸機場",
+        "搭單軌電車前往飯店",
+        "國際通散步"
+      ]
     },
-    { "month": 3, "day": 11, "tag": "海洋・景點", "title": "美麗海水族館", "meals": ["飯店早餐", "備瀨福木並木道午餐", "自由用餐"], "foodLabel": "本部", "wx": "motobu", "steps": ["自駕前往本部", "美麗海水族館", "備瀨福木並木道"] }
+    {
+      "month": 3,
+      "day": 11,
+      "tag": "海洋・景點",
+      "title": "美麗海水族館",
+      "meals": [
+        "飯店早餐",
+        "備瀨福木並木道午餐",
+        "自由用餐"
+      ],
+      "foodLabel": "本部",
+      "wx": "motobu",
+      "steps": [
+        "自駕前往本部",
+        "美麗海水族館",
+        "備瀨福木並木道"
+      ]
+    }
   ]
 }
 ```
@@ -60,8 +119,10 @@
 
 ## 給 AI 的提示詞（整段複製）
 
+> App 內「建立新旅程」與「匯入旅程資料」視窗也有「📋 複製提示詞」按鈕，內容和下面相同。
+
 > 請把我提供的旅遊行程整理成一份 JSON，只輸出 JSON 本身（不要加說明文字或程式碼框）。
-> 格式與欄位如下：`pageTitle`、`title`、`subtitle`、`eyebrow`、`shortName`、`year`、`splash`（`from`、`to`、`eyebrow`、`title`）、`map`（`center` 為 [緯度, 經度]、`zoom`、`farKm`、`region`）、`weather.places`（每個地點為 `"代碼": ["名稱", 緯度, 經度]`，代碼用英文小寫）、`notes`（出發前提醒字串陣列）、`days`（陣列）。
-> `days` 每一天包含：`month`、`day`（數字）、`tag`（8 字內短標籤）、`title`（當天主題）、`note`（可省略）、`meals`（[早餐, 午餐, 晚餐] 三個字串，未知填「待確認」）、`foodLabel`（地點名稱）、`wx`（天氣地點代碼，必須存在於 `weather.places`）、`steps`（當天路線，每個項目一個字串，保留時間與重點）。
-> 規則：日期依先後排列、不可跨年；不要輸出 `week`；經緯度請給大致正確的數字；沒有資訊的欄位請省略，不要編造；請勿輸出任何個人資料。
+> 格式與欄位如下：pageTitle、title、subtitle、eyebrow、shortName、year、splash（from、to、eyebrow、title）、map（center 為 [緯度, 經度]、zoom、farKm、region）、weather.places（每個地點為 "代碼": ["名稱", 緯度, 經度]，代碼用英文小寫）、notes（出發前提醒字串陣列）、days（陣列）。
+> days 每一天包含：month、day（數字）、tag（8 字內短標籤）、title（當天主題）、note（可省略）、meals（[早餐, 午餐, 晚餐] 三個字串，未知填「待確認」）、foodLabel（地點名稱）、wx（天氣地點代碼，必須存在於 weather.places）、steps（當天路線，每個項目一個字串，保留時間與重點）。
+> 規則：日期依先後排列、不可跨年；不要輸出 week；經緯度請給大致正確的數字；沒有資訊的欄位請省略，不要編造；請勿輸出任何個人資料。
 > 以下是我的行程內容：
