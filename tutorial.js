@@ -277,7 +277,7 @@
         dates: {
             draw(h) {
                 const d = D.dates.d;
-                h.innerHTML = `${head}<div class="chips ds">${[...Array(8)].map((_, i) => chip(i === d, 'day', `data-i="${i}"`, `D${i + 1}`)).join('')}</div><p class="dl3">11/0${2 + d} 的行程會顯示在日期列下方；開啟時自動停在今天。</p>`;
+                h.innerHTML = `${head}<div class="chips ds">${[...Array(dayMeta.length)].map((_, i) => chip(i === d, 'day', `data-i="${i}"`, `D${i + 1}`)).join('')}</div><p class="dl3">11/0${2 + d} 的行程會顯示在日期列下方；開啟時自動停在今天。</p>`;
             },
             act(h, b) { D.dates.d = +b.dataset.i; this.draw(h); }
         },

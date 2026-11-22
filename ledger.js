@@ -1059,7 +1059,7 @@
         const csv = '\ufeff' + [head, ...rows].map((r) => r.map(cell).join(',')).join('\r\n');
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-        a.download = `山陰記帳明細_${today()}.csv`;
+        a.download = `${(window.TRIP && TRIP.shortName) || '旅程'}記帳明細_${today()}.csv`;
         document.body.appendChild(a);
         a.click();
         setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
