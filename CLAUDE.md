@@ -107,19 +107,21 @@
 **階段進度**
 - ✅ 第 1 階段（PR #45，已合併）：所有讀寫加上旅程前綴，鳥取固定為 `trips/tottori`；規則檔入 repo（保留舊規則並新增 `trips/tottori` 對應規則）；資料用 Firebase 後台「匯入 JSON」搬到新位置。登入帳號與圖床金鑰（`secrets`）留在根目錄。
 - ✅ 第 2 階段（PR #47，已合併）：規則改為 `trips/$trip` 通用寫法；成員限定讀取（未登入只看到登入畫面）；成員名單 `members`、管理員名單 `admins`、邀請碼 `secret/invite`＋`joins`、管理員密碼 `secret/adminPw`，全由規則驗證；前端移除第二個 Firebase 連線與固定管理員登入，改為「成員輸入管理員密碼升級、可退出」，設定頁可複製／重新產生邀請碼與管理員密碼、移除管理員。**舊管理員信箱 `sanin-editor-2026@trip.local` 已在「安全清理」移除。**
-  - 上線順序：①Firebase 後台手動貼 `trips/tottori/secret/invite` 與 `secret/adminPw`（各 12～64 字元）→ ②到 Firebase 後台貼上規則並發布（已完成）→ ③立刻合併 PR → ④確認正式站正常、用管理員密碼升級自己 → ⑤另開任務移除舊信箱規則並刪除舊管理員帳號。
-  - 已知限制：最後一位管理員退出後只能從 Firebase 後台手動補 `admins/{uid}`；根目錄 `secrets` 目前任何登入者可讀。
+  - 上線順序：①Firebase 後台手動貼 `trips/tottori/secret/invite` 與 `secret/adminPw`（各 12～64 字元）→ ②到 Firebase 後台貼上規則並發布（已完成）→ ③立刻合併 PR → ④確認正式站正常、用管理員密碼升級自己 → ⑤移除舊信箱規則並刪除舊管理員帳號（已改列入下方「安全清理」）。
+  - 已知限制：最後一位管理員退出後只能從 Firebase 後台手動補 `admins/{uid}`；根目錄 `secrets`（圖床金鑰）原本任何登入者可讀，「安全清理」後改為加入過旅程的人才可讀。
 - 🟡 第 3 階段（拆三個 PR）：已定案——第二趟旅程與鳥取並存；切換用「網址帶旅程代碼＋選擇畫面」；建立旅程需「建立密碼」；第二趟先用日幣／台幣，其他旅程可自選幣別。
   - ✅ 3a（PR #48，已合併）：新增 `trip-meta.js`（旅程資料＋版型），鳥取的日期、每日標題、餐食、提醒、預設路線、天氣地點、地圖中心、標題文字改由資料產生；`dayMeta`、`ROUTE_DAYS` 等由資料推導，天數不再寫死 8 天。
   - ✅ 3b（PR #49，已合併）：網址 `?trip=代碼`（小寫英數與連字號、3～20 字元）→ 上次開過的（`lastTrip`）→ 鳥取。鳥取用內建資料；其他旅程第一次開啟時由資料庫 `trips/{id}/meta` 讀取、存進 `localStorage.meta_{id}` 後重新整理一次，之後同步載入，並在每次載入時比對、有變就更新。快取與本機提醒進度鍵名加旅程前綴（鳥取維持原樣）。每人名單 `user_trips/{uid}/{旅程}`（規則驗證是該旅程成員）＋會員選單「🧳 切換旅程」。非鳥取旅程用動態 manifest 與頁面標題；**已安裝 PWA 的名稱不會變**。規則新增 `meta`、`user_trips`，需貼到後台發布。加入新旅程＝分享連結＋邀請碼（沿用登入閘門）。
-  - 🟡 3c（PR 開啟中）：切換視窗新增「＋建立新旅程」（代碼＋名稱＋起始日＋天數，或貼 AI 產生的 JSON；需「建立密碼」）。建立流程：寫入 `creators/{uid}`（規則比對根目錄 `config/createPw`）→ 寫入 `trips/{id}/admins/{uid}`（規則限「旅程尚不存在」）→ 一次寫入成員、邀請碼、管理員密碼與 `meta` → 登記 `user_trips`。中途失敗可用同一代碼再試。管理員可在「管理設定 → 匯入旅程資料」貼 JSON（先檢查預覽、覆蓋前下載備份、可選擇清除已編輯內容）；內建的鳥取不支援匯入。驗證與整理邏輯在 `trip-meta.js` 的 `validate`／`blank`（測試：`node trip-meta.test.js`）。格式說明與 AI 提示詞在 `docs/trip-import-format.md`。範圍：只匯入文字行程、餐食、提醒、天氣地點；不支援跨年；地圖釘子與住宿手動新增。地圖日期顏色超過 8 天改為循環使用。建立／匯入視窗有「複製提示詞／範例」按鈕（內容在 `trip-meta.js` 的 `PROMPT`／`EXAMPLE`，與 docs 同步並有測試）；空白旅程（`meta.blank`）的管理員在行程頁頂端看到提示卡，匯入後消失。
-    - **上線前要在 Firebase 後台手動設定 `config/createPw`**（文字、至少 12 字元，只告訴要開旅程的人）；規則更新後貼到後台發布。
+  - ✅ 3c（PR #50，已合併；後續 PR #51 已合併）：切換視窗新增「＋建立新旅程」（代碼＋名稱＋起始日＋天數，或貼 AI 產生的 JSON；需「建立密碼」）。建立流程：寫入 `creators/{uid}`（規則比對根目錄 `config/createPw`）→ 寫入 `trips/{id}/admins/{uid}`（規則限「旅程尚不存在」）→ 一次寫入成員、邀請碼、管理員密碼與 `meta` → 登記 `user_trips`。中途失敗可用同一代碼再試。管理員可在「管理設定 → 匯入旅程資料」貼 JSON（先檢查預覽、覆蓋前下載備份、可選擇清除已編輯內容）；內建的鳥取不支援匯入；新旅程不顯示「轉換路線格式」按鈕（PR #51）。驗證與整理邏輯在 `trip-meta.js` 的 `validate`／`blank`（測試：`node trip-meta.test.js`）。格式說明與 AI 提示詞在 `docs/trip-import-format.md`。範圍：只匯入文字行程、餐食、提醒、天氣地點；不支援跨年；地圖釘子與住宿手動新增。地圖日期顏色超過 8 天改為循環使用。建立／匯入視窗有「複製提示詞／範例」按鈕（內容在 `trip-meta.js` 的 `PROMPT`／`EXAMPLE`，與 docs 同步並有測試）；空白旅程（`meta.blank`）的管理員在行程頁頂端看到提示卡，匯入後消失。
+    - `config/createPw`（文字、至少 12 字元、含英文字母，只告訴要開旅程的人）需在 Firebase 後台手動設定，規則需貼到後台發布。
   - ⬜ 3d：**基準／結算幣別參數化**（`ledger.js`／`ledger-core.js` 的 `TWD`、`JPY`、匯率 API、規則中的 `TWD`）；目前新旅程固定台幣基準、日圓結算。
-- ⬜ 第 4 階段：旅程列表與切換、封存旅程、匯出／匯入 JSON 備份；`sw.js` 與 `manifest.json` 標題跟著旅程走。
+- ⬜ 第 4 階段：封存旅程、完整備份匯出與還原（含路線、記帳等，不只行程設定）、整趟旅程刪除。（旅程列表與切換、標題與 manifest 隨旅程，已在 3b 完成。）
 
-- 🟡 安全清理（PR 開啟中）：規則移除舊管理員信箱（管理員只認 `admins` 名單）、移除根目錄 25 個舊節點的規則（資料仍在但無法讀寫）、`secrets` 改為只有「加入過至少一趟旅程」（`user_trips/{uid}` 存在）的人可讀。**未改任何網站程式碼**。
+- 🟡 安全清理（PR #52 開啟中，合併後改 ✅）：規則移除舊管理員信箱（管理員只認 `admins` 名單）、移除根目錄 25 個舊節點的規則（資料仍在但無法讀寫）、`secrets` 改為只有「加入過至少一趟旅程」（`user_trips/{uid}` 存在）的人可讀。**未改任何網站程式碼**。
   - **使用者要手動做**：①先匯出完整備份 → ②貼上新規則並發布、測試鳥取（登入、編輯、傳照片、記帳）→ ③Authentication 刪除舊帳號 `sanin-editor-2026@trip.local` → ④後台刪除根目錄舊資料（`trip_content`、`ledger`、`ledger_personal`、`map_spots`、`trip_notes`、`meal_links`、`route_steps`、`todos`、`todo_done`、`todos_personal`、`settings`、`members`、`presence`、`day_photos`、`highlights`、`buys`、`buy_done`、`buys_personal`、`img_del`、`draws`、`geo`、`hl_react`、`hl_comments`、`hl_rts`、`hl_award`；**保留 `secrets`、`trips`、`user_trips`、`creators`、`config`**）→ ⑤選擇性刪除 `trips/tottori/itinerary`、`route_steps_backup`。
   - 已知限制：任何成員的瀏覽器都能取得圖床金鑰（純前端上傳的限制）；某趟旅程的管理員名單變空時，只能從後台手動補 `admins/{uid}`。
 
 **待清理**
 - 備份檔 `jp-tottori-default-rtdb-export.json` 請另存雲端硬碟或電腦，勿只留手機。
+
+**下一步建議順序**：實測新旅程建立與匯入 → 完成安全清理（PR #52 與手動清理）→ 第 4 階段備份與封存 → 3d 幣別參數化（有旅程需要其他幣別時再做）。
