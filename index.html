@@ -424,6 +424,12 @@
         #upd-log-hist ul { padding-left: 1.1em; list-style: disc; font-size: 12px; line-height: 1.7; color: #555; margin-top: 4px; }
         #upd-bar .upd-x { padding: 11px 12px; opacity: .7; }
         body.ov #main-nav { display: none; }
+        html[data-lg-style="hand"].on-ledger { --cream: #fdf6e3; }
+        html[data-lg-style="hand"].on-ledger body { background-color: #fdf6e3; }
+        html[data-lg-style="hand"].on-ledger body::before { background: none; }
+        html[data-lg-style="hand"].on-ledger #site-header { background: #a9d4ee; color: #3a3535; border-bottom: 3px solid #3a3535; box-shadow: none; }
+        html[data-lg-style="hand"].on-ledger #site-header * { color: #3a3535; }
+        html[data-lg-style="hand"].on-ledger #main-nav { background: #fdf6e3 !important; border-top: 3px solid #3a3535; box-shadow: none !important; }
         #mp-body.pinned #mp-wrap { position: fixed; top: calc(var(--stick-h, 0px) + 5px); left: var(--mp-l, 0px); width: var(--mp-w, 100%); margin: 0; z-index: 30; }
         #mp-card { border-top-width: 0; padding-top: 0; }
         #mp-card.pin-host { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(255, 255, 255, .92); }
@@ -773,9 +779,9 @@
                 <button onclick="toggleMemberMenu();openTripPicker();"
                     class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold text-left">🧳
                     切換旅程</button>
-                <button id="lg-style-btn" onclick="toggleMemberMenu();toggleLgStyle();"
+                <button onclick="toggleMemberMenu();openStylePicker();"
                     class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold text-left">🎨
-                    記帳風格：和風</button>
+                    風格</button>
                 <button onclick="toggleMemberMenu();changeMemberName();"
                     class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold text-left">🪪
                     修改名稱</button>
@@ -1068,6 +1074,17 @@
                 <button onclick="checkImport()" class="flex-1 bg-gray-600 text-white rounded-lg py-2 text-xs font-bold">檢查</button>
                 <button onclick="runImport()" class="flex-1 bg-[#3b4d43] text-white rounded-lg py-2 text-xs font-bold">匯入</button>
             </div>
+        </div>
+    </div>
+
+    <!-- 風格 Modal -->
+    <div id="style-modal" class="hidden fixed inset-0 z-[63] flex items-center justify-center p-4"
+        style="background:rgba(0,0,0,0.45);" onclick="if(event.target===this) closeStylePicker()">
+        <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl">
+            <h3 class="text-sm font-bold text-[#3b4d43] mb-1">🎨 風格</h3>
+            <p class="text-[11px] text-gray-500 mb-3">目前只套用在「記帳」頁，選擇只存在這支手機。</p>
+            <div id="style-list" class="space-y-2"></div>
+            <button onclick="closeStylePicker()" class="w-full bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold mt-3">關閉</button>
         </div>
     </div>
 
@@ -1468,18 +1485,24 @@
             closeInputModal(values);
         });
 
-        const LG_STYLES = { jp: '和風', hand: '手繪' };
+        const LG_STYLES = { jp: ['和風', '深綠與金色，沉穩簡潔'], hand: ['手繪', '奶油底、粗黑框、粉彩色塊'] };
         function applyLgStyle(k) {
             if (!LG_STYLES[k]) k = 'jp';
             if (k === 'hand') document.documentElement.setAttribute('data-lg-style', 'hand');
             else document.documentElement.removeAttribute('data-lg-style');
-            const b = document.getElementById('lg-style-btn');
-            if (b) b.textContent = '🎨 記帳風格：' + LG_STYLES[k];
             return k;
         }
-        window.toggleLgStyle = () => {
-            const k = applyLgStyle(document.documentElement.hasAttribute('data-lg-style') ? 'jp' : 'hand');
+        function renderStylePicker() {
+            const cur = document.documentElement.hasAttribute('data-lg-style') ? 'hand' : 'jp';
+            document.getElementById('style-list').innerHTML = Object.entries(LG_STYLES).map(([k, [n, d]]) =>
+                `<button onclick="pickLgStyle('${k}')" class="w-full text-left rounded-xl border-2 px-3 py-2 ${k === cur ? 'border-[#3b4d43] bg-[#3b4d43]/10' : 'border-gray-200'}"><div class="text-sm font-bold text-gray-800">${k === cur ? '✓ ' : ''}${n}</div><div class="text-[11px] text-gray-500">${d}</div></button>`).join('');
+        }
+        window.openStylePicker = () => { renderStylePicker(); document.getElementById('style-modal').classList.remove('hidden'); };
+        window.closeStylePicker = () => document.getElementById('style-modal').classList.add('hidden');
+        window.pickLgStyle = (k) => {
+            k = applyLgStyle(k);
             try { localStorage.setItem('lgStyle', k); } catch (e) { }
+            renderStylePicker();
         };
         { let k = 'jp'; try { k = localStorage.getItem('lgStyle') || 'jp'; } catch (e) { } applyLgStyle(k); }
         const MENU_IDS = ['login-menu', 'edit-menu', 'member-menu'];
@@ -2331,6 +2354,7 @@
         function switchTab(pageName, opts = {}) {
             const want = tabDay[pageName] || null;
             currentTab = pageName;
+            document.documentElement.classList.toggle('on-ledger', pageName === 'ledger');
             mpOnTab(pageName);
             try { history.replaceState(OVERLAYS.includes(pageName) ? history.state : null, '', '#' + pageName); } catch (e) { }
             const pages = ['itinerary', 'food', 'stays', 'map', 'ledger', 'more', 'highlights'];
@@ -2365,7 +2389,7 @@
             if (!opts.skipScrollTop) window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        const LEDGER_V = '65';
+        const LEDGER_V = '66';
         let ledgerLoading = null;
         const loadScript = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
         function openLedger() {
