@@ -201,3 +201,6 @@ html[data-lg-style="hand"].on-hand .hl-rp.on b { color: #3a3535; }
 html[data-lg-style="hand"].on-hand .hl-cm { border-top: 2px dashed #3a3535; }
 html[data-lg-style="hand"].on-hand .hl-guest { background: #fdf0d5; border: 2px solid #3a3535; }
 html[data-lg-style="hand"].on-hand .hl-at-list { border: 2px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-dbar, html[data-lg-style="hand"].on-hand .hl-dbar span, html[data-lg-style="hand"].on-hand .hl-dbar button { color: #3a3535; opacity: 1; }
+html[data-lg-style="hand"].on-hand .hl-dbar { border-bottom: 2.5px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-nav { background: #fff; color: #3a3535; border: 2px solid #3a3535; }
