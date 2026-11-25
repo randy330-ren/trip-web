@@ -468,6 +468,36 @@
         html[data-lg-style="hand"].on-hand .cat-sub { background: #fdf0d5; border: 2px dashed #3a3535; }
         html[data-lg-style="hand"].on-hand .cat-sub button { background: #fff; color: #3a3535; border: 2px solid #3a3535; }
         html[data-lg-style="hand"].on-hand .cat-sub button.on { background: #f5a8a0; color: #3a3535; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand #page-map .card { background: #fff; border: 2.5px solid #3a3535; border-radius: 22px; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+        html[data-lg-style="hand"].on-hand #mp-card.pin-host { background: #fff; }
+        html[data-lg-style="hand"].on-hand #mp-band { background: #fdf6e3; box-shadow: none; }
+        html[data-lg-style="hand"].on-hand #mp-map { border: 2.5px solid #3a3535; border-radius: 16px; }
+        html[data-lg-style="hand"].on-hand #mp-wrap.fs #mp-map { border: none; border-radius: 0; }
+        html[data-lg-style="hand"].on-hand .mp-tools button, html[data-lg-style="hand"].on-hand .mp-hbtn, html[data-lg-style="hand"].on-hand .mp-pinbtn { background: #fff; color: #3a3535; border: 2px solid #3a3535; border-radius: 12px; box-shadow: 2px 2px 0 #3a3535; }
+        html[data-lg-style="hand"].on-hand .mp-tools.open .menu, html[data-lg-style="hand"].on-hand .mp-tools .act, html[data-lg-style="hand"].on-hand .mp-hbtn.armed, html[data-lg-style="hand"].on-hand .mp-pinbtn.on { background: #f3cf6b; color: #3a3535; border-color: #3a3535; }
+        html[data-lg-style="hand"].on-hand .mp-tag { background: #fff; color: #3a3535; border: 2px solid #3a3535; box-shadow: none; }
+        html[data-lg-style="hand"].on-hand .mp-bar { background: #fff; border: 2px solid #3a3535; border-radius: 14px; box-shadow: 2px 2px 0 #3a3535; }
+        html[data-lg-style="hand"].on-hand .mp-bar span { color: #3a3535; }
+        html[data-lg-style="hand"].on-hand .mp-bar button { background: #fff; color: #3a3535; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand .mp-bar button.ok { background: #f5a8a0; color: #3a3535; }
+        html[data-lg-style="hand"].on-hand .mp-pill { background: #fff; color: #3a3535; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand .mp-pill.on { background: #f3cf6b; color: #3a3535; border-color: #3a3535; }
+        html[data-lg-style="hand"].on-hand .mp-nav { background: #fff; border: 2px solid #3a3535; box-shadow: 2px 2px 0 #3a3535; }
+        html[data-lg-style="hand"].on-hand .mp-nav button { background: #f5a8a0; color: #3a3535; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand .hint-tip { background: #fdf0d5; color: #3a3535; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand .hint-tip button { color: #3a3535; opacity: 1; }
+        html[data-lg-style="hand"].on-hand .mp-admin-tip { background: #fdf0d5; color: #3a3535; border: 2px dashed #3a3535; }
+        html[data-lg-style="hand"].on-hand .mpl-h { color: #3a3535; }
+        html[data-lg-style="hand"].on-hand .mpl-row.on { background: #fdf0d5; box-shadow: inset 3px 0 0 #3a3535; }
+        html[data-lg-style="hand"].on-hand .mpl-row + .mpl-row { border-top: 2px dashed #3a3535; }
+        html[data-lg-style="hand"].on-hand .mpl-a, html[data-lg-style="hand"].on-hand .mp-pop-a { background: #f5a8a0; color: #3a3535 !important; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand .mpl-tag.cand { background: #fdf0d5; color: #3a3535; }
+        html[data-lg-style="hand"].on-hand .stay-card { background: #fdf0d5; border: 2.5px solid #3a3535; border-radius: 18px; }
+        html[data-lg-style="hand"].on-hand .stay-tag, html[data-lg-style="hand"].on-hand .stay-jump { background: #f3cf6b; color: #3a3535; border: 1.5px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand .stay-b { background: #fff; color: #3a3535; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand .stay-b.ok { background: #f5a8a0; color: #3a3535; }
+        html[data-lg-style="hand"].on-hand .stay-detail { border-top: 2px dashed #3a3535; color: #3a3535; }
+        html[data-lg-style="hand"].on-hand .mp-pin { border: 2.5px solid #3a3535; }
         html[data-lg-style="hand"].on-hand .date-card { border: 2px solid #3a3535; background: #fff; }
         html[data-lg-style="hand"].on-hand .date-card .dd, html[data-lg-style="hand"].on-hand .date-card .dn { color: #3a3535; }
         html[data-lg-style="hand"].on-hand .date-card.active { background: #f3cf6b; border-color: #3a3535; box-shadow: 2px 3px 0 #3a3535; }
@@ -1123,7 +1153,7 @@
         style="background:rgba(0,0,0,0.45);" onclick="if(event.target===this) closeStylePicker()">
         <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl">
             <h3 class="text-sm font-bold text-[#3b4d43] mb-1">🎨 風格</h3>
-            <p class="text-[11px] text-gray-500 mb-3">目前套用在「行程」「記帳」頁，選擇只存在這支手機。</p>
+            <p class="text-[11px] text-gray-500 mb-3">目前套用在「行程」「地圖」「記帳」頁，選擇只存在這支手機。</p>
             <div id="style-list" class="space-y-2"></div>
             <button onclick="closeStylePicker()" class="w-full bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold mt-3">關閉</button>
         </div>
@@ -2392,7 +2422,7 @@
         const OVERLAYS = ['food', 'stays'];
         let currentTab = 'itinerary', ovPrev = 'itinerary', stOv = [];
         const tabDay = { itinerary: null, food: null, map: null };
-        const HAND_PAGES = ['itinerary', 'ledger'];
+        const HAND_PAGES = ['itinerary', 'map', 'ledger'];
         function switchTab(pageName, opts = {}) {
             const want = tabDay[pageName] || null;
             currentTab = pageName;
