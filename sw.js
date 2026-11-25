@@ -1,4 +1,4 @@
-const V = 'sanin-v114';
+const V = 'sanin-v115';
 const CORE = ['index.html', 'trip-meta.js', 'output.css', 'bg-day.svg', 'manifest.json', 'icon-192.png', 'icon-512.png'];
 const CDN = [
     'https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js',
