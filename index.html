@@ -424,12 +424,53 @@
         #upd-log-hist ul { padding-left: 1.1em; list-style: disc; font-size: 12px; line-height: 1.7; color: #555; margin-top: 4px; }
         #upd-bar .upd-x { padding: 11px 12px; opacity: .7; }
         body.ov #main-nav { display: none; }
-        html[data-lg-style="hand"].on-ledger { --cream: #fdf6e3; }
-        html[data-lg-style="hand"].on-ledger body { background-color: #fdf6e3; }
-        html[data-lg-style="hand"].on-ledger body::before { background: none; }
-        html[data-lg-style="hand"].on-ledger #site-header { background: #a9d4ee; color: #3a3535; border-bottom: 3px solid #3a3535; box-shadow: none; }
-        html[data-lg-style="hand"].on-ledger #site-header * { color: #3a3535; }
-        html[data-lg-style="hand"].on-ledger #main-nav { background: #fdf6e3 !important; border-top: 3px solid #3a3535; box-shadow: none !important; }
+        html[data-lg-style="hand"].on-hand { --cream: #fdf6e3; }
+        html[data-lg-style="hand"].on-hand body { background-color: #fdf6e3; }
+        html[data-lg-style="hand"].on-hand body::before { background: none; }
+        html[data-lg-style="hand"].on-hand #site-header { background: #a9d4ee; color: #3a3535; border-bottom: 3px solid #3a3535; box-shadow: none; }
+        html[data-lg-style="hand"].on-hand #site-header * { color: #3a3535; }
+        html[data-lg-style="hand"].on-hand #main-nav { background: #fdf6e3 !important; border-top: 3px solid #3a3535; box-shadow: none !important; }
+        html[data-lg-style="hand"].on-hand #page-itinerary .card { background: #fff; border: 2.5px solid #3a3535; border-radius: 22px; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+        html[data-lg-style="hand"].on-hand #page-itinerary section[id^="day"] > .flex > span:first-child { background: #f3cf6b; color: #3a3535; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand #page-itinerary .tl-card { border: 2px solid #3a3535; border-radius: 18px; box-shadow: none; }
+        html[data-lg-style="hand"].on-hand #page-itinerary .tl-card.cand { background: #fdf0d5; border-color: #3a3535; }
+        html[data-lg-style="hand"].on-hand #page-itinerary .tl-card.cand .tl-title { color: #3a3535; }
+        html[data-lg-style="hand"].on-hand #page-itinerary .tl-tag { border: 1.5px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand #page-itinerary .tl-note { border-color: #3a3535; }
+        html[data-lg-style="hand"].on-hand #page-itinerary .tl-dot { background: #f5a8a0; border: 2px solid #3a3535; box-shadow: 0 0 0 3px #fdf6e3; }
+        html[data-lg-style="hand"].on-hand #page-itinerary .tl-dot.empty { background: #fff; }
+        html[data-lg-style="hand"].on-hand #page-itinerary .tl-time { color: #3a3535; }
+        html[data-lg-style="hand"].on-hand #page-itinerary .step-num { background: #f5a8a0; color: #3a3535; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand #page-itinerary .add-route-btn { background: #f5a8a0; color: #3a3535; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand #page-itinerary .wx-stat, html[data-lg-style="hand"].on-hand #page-itinerary .wxh-cell { background: #fdf0d5; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand #page-itinerary .wxh-cell.now { background: #a9d4ee; }
+        html[data-lg-style="hand"].on-hand #page-itinerary .wxh-cell.now small, html[data-lg-style="hand"].on-hand #page-itinerary .wxh-cell.now b, html[data-lg-style="hand"].on-hand #page-itinerary .wxh-cell.now em { color: #3a3535; }
+        html[data-lg-style="hand"].on-hand #date-strip { background-color: #fdf6e3 !important; border-bottom: 3px solid #3a3535; -webkit-backdrop-filter: none; backdrop-filter: none; }
+        html[data-lg-style="hand"].on-hand .fixed.inset-0 > div.bg-white { background: #fff; border: 2.5px solid #3a3535; border-radius: 22px; box-shadow: none; }
+        html[data-lg-style="hand"].on-hand .fixed.inset-0 > div.bg-white h3 { color: #3a3535; }
+        html[data-lg-style="hand"].on-hand .fixed.inset-0 > div.bg-white input, html[data-lg-style="hand"].on-hand .fixed.inset-0 > div.bg-white select, html[data-lg-style="hand"].on-hand .fixed.inset-0 > div.bg-white textarea { border: 2px solid #3a3535; border-radius: 14px; background: #fffdf7; }
+        html[data-lg-style="hand"].on-hand .fixed.inset-0 > div.bg-white button.bg-gray-100 { background: #fff; color: #3a3535; border: 2px solid #3a3535; border-radius: 12px; }
+        html[data-lg-style="hand"].on-hand .fixed.inset-0 > div.bg-white button[class*="bg-[#3b4d43]"] { background: #f5a8a0; color: #3a3535; border: 2px solid #3a3535; border-radius: 12px; box-shadow: 2px 3px 0 #3a3535; }
+        html[data-lg-style="hand"].on-hand .fixed.inset-0 > div.bg-white .tm-btn { background: #a9d4ee; color: #3a3535; border: 2px solid #3a3535; border-radius: 12px; }
+        html[data-lg-style="hand"].on-hand .fixed.inset-0 > div.bg-white .bg-gray-50 { background: #fdf0d5; border: 2px dashed #3a3535; }
+        html[data-lg-style="hand"].on-hand #add-choice { background: #fff; border: 2.5px solid #3a3535; border-radius: 16px; box-shadow: 2px 3px 0 #3a3535; }
+        html[data-lg-style="hand"].on-hand #add-choice button { color: #3a3535; }
+        html[data-lg-style="hand"].on-hand button[class*="bg-[#3b4d43]"], html[data-lg-style="hand"].on-hand span[class*="bg-[#3b4d43]"], html[data-lg-style="hand"].on-hand .dr-lock, html[data-lg-style="hand"].on-hand .dr-done, html[data-lg-style="hand"].on-hand #ov-bar button { background: #f5a8a0; color: #3a3535; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand [class*="text-[#3b4d43]"], html[data-lg-style="hand"].on-hand .cd-val, html[data-lg-style="hand"].on-hand .wx-stat b, html[data-lg-style="hand"].on-hand .wxh-cell b { color: #3a3535; }
+        html[data-lg-style="hand"].on-hand .id-menu, html[data-lg-style="hand"].on-hand #login-menu { background: #fff; border: 2.5px solid #3a3535; border-radius: 16px; box-shadow: 2px 3px 0 #3a3535; }
+        html[data-lg-style="hand"].on-hand .id-menu button, html[data-lg-style="hand"].on-hand #login-menu button { background: #fff; color: #3a3535; border: 2px solid #3a3535; border-radius: 10px; }
+        html[data-lg-style="hand"].on-hand #member-controls > div > button, html[data-lg-style="hand"].on-hand #edit-controls > div > button { border: 2.5px solid #3a3535; box-shadow: 2px 3px 0 #3a3535; }
+        html[data-lg-style="hand"].on-hand .tl-map { background: #a9d4ee; color: #3a3535; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand .fab { color: #3a3535; border: 2.5px solid #3a3535; box-shadow: 2px 3px 0 #3a3535; }
+        html[data-lg-style="hand"].on-hand .meal-strip, html[data-lg-style="hand"].on-hand .meal-strip > div { border-color: #3a3535; }
+        html[data-lg-style="hand"].on-hand .cat-grid button { background: #fff; color: #3a3535; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand .cat-grid button.on { background: #f3cf6b; color: #3a3535; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand .cat-sub { background: #fdf0d5; border: 2px dashed #3a3535; }
+        html[data-lg-style="hand"].on-hand .cat-sub button { background: #fff; color: #3a3535; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand .cat-sub button.on { background: #f5a8a0; color: #3a3535; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand .date-card { border: 2px solid #3a3535; background: #fff; }
+        html[data-lg-style="hand"].on-hand .date-card .dd, html[data-lg-style="hand"].on-hand .date-card .dn { color: #3a3535; }
+        html[data-lg-style="hand"].on-hand .date-card.active { background: #f3cf6b; border-color: #3a3535; box-shadow: 2px 3px 0 #3a3535; }
         #mp-body.pinned #mp-wrap { position: fixed; top: calc(var(--stick-h, 0px) + 5px); left: var(--mp-l, 0px); width: var(--mp-w, 100%); margin: 0; z-index: 30; }
         #mp-card { border-top-width: 0; padding-top: 0; }
         #mp-card.pin-host { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(255, 255, 255, .92); }
@@ -1082,7 +1123,7 @@
         style="background:rgba(0,0,0,0.45);" onclick="if(event.target===this) closeStylePicker()">
         <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl">
             <h3 class="text-sm font-bold text-[#3b4d43] mb-1">🎨 風格</h3>
-            <p class="text-[11px] text-gray-500 mb-3">目前只套用在「記帳」頁，選擇只存在這支手機。</p>
+            <p class="text-[11px] text-gray-500 mb-3">目前套用在「行程」「記帳」頁，選擇只存在這支手機。</p>
             <div id="style-list" class="space-y-2"></div>
             <button onclick="closeStylePicker()" class="w-full bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold mt-3">關閉</button>
         </div>
@@ -2351,10 +2392,11 @@
         const OVERLAYS = ['food', 'stays'];
         let currentTab = 'itinerary', ovPrev = 'itinerary', stOv = [];
         const tabDay = { itinerary: null, food: null, map: null };
+        const HAND_PAGES = ['itinerary', 'ledger'];
         function switchTab(pageName, opts = {}) {
             const want = tabDay[pageName] || null;
             currentTab = pageName;
-            document.documentElement.classList.toggle('on-ledger', pageName === 'ledger');
+            document.documentElement.classList.toggle('on-hand', HAND_PAGES.includes(pageName));
             mpOnTab(pageName);
             try { history.replaceState(OVERLAYS.includes(pageName) ? history.state : null, '', '#' + pageName); } catch (e) { }
             const pages = ['itinerary', 'food', 'stays', 'map', 'ledger', 'more', 'highlights'];
