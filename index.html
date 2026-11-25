@@ -773,6 +773,9 @@
                 <button onclick="toggleMemberMenu();openTripPicker();"
                     class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold text-left">🧳
                     切換旅程</button>
+                <button id="lg-style-btn" onclick="toggleMemberMenu();toggleLgStyle();"
+                    class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold text-left">🎨
+                    記帳風格：和風</button>
                 <button onclick="toggleMemberMenu();changeMemberName();"
                     class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold text-left">🪪
                     修改名稱</button>
@@ -1465,6 +1468,20 @@
             closeInputModal(values);
         });
 
+        const LG_STYLES = { jp: '和風', hand: '手繪' };
+        function applyLgStyle(k) {
+            if (!LG_STYLES[k]) k = 'jp';
+            if (k === 'hand') document.documentElement.setAttribute('data-lg-style', 'hand');
+            else document.documentElement.removeAttribute('data-lg-style');
+            const b = document.getElementById('lg-style-btn');
+            if (b) b.textContent = '🎨 記帳風格：' + LG_STYLES[k];
+            return k;
+        }
+        window.toggleLgStyle = () => {
+            const k = applyLgStyle(document.documentElement.hasAttribute('data-lg-style') ? 'jp' : 'hand');
+            try { localStorage.setItem('lgStyle', k); } catch (e) { }
+        };
+        { let k = 'jp'; try { k = localStorage.getItem('lgStyle') || 'jp'; } catch (e) { } applyLgStyle(k); }
         const MENU_IDS = ['login-menu', 'edit-menu', 'member-menu'];
         function closeMenus(except) {
             MENU_IDS.forEach(id => { if (id !== except) document.getElementById(id).classList.add('hidden'); });
@@ -2348,7 +2365,7 @@
             if (!opts.skipScrollTop) window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        const LEDGER_V = '64';
+        const LEDGER_V = '65';
         let ledgerLoading = null;
         const loadScript = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
         function openLedger() {
