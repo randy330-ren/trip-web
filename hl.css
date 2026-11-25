@@ -164,3 +164,43 @@
 .hl-conf i { position: absolute; top: -12px; width: 8px; height: 14px; border-radius: 2px; animation: hlFall 2s ease-in forwards; }
 @keyframes hlFall { to { top: 105%; opacity: .2; } }
 @keyframes hlPop { from { transform: scale(.85); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* 手繪風格 */
+html[data-lg-style="hand"].on-hand #hl-root .card { background: #fff; border: 2.5px solid #3a3535; border-radius: 22px; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+html[data-lg-style="hand"].on-hand .hl-ht h2, html[data-lg-style="hand"].on-hand .hl-sec span, html[data-lg-style="hand"].on-hand .hl-dt, html[data-lg-style="hand"].on-hand .hl-sbar, html[data-lg-style="hand"].on-hand .hl-stats b, html[data-lg-style="hand"].on-hand .hl-sec button, html[data-lg-style="hand"].on-hand .hl-link, html[data-lg-style="hand"].on-hand .hl-btn.soft, html[data-lg-style="hand"].on-hand .hl-btn.line { color: #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-pill { background: #fff; color: #3a3535; border: 2px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-pill.sm { background: #fdf0d5; color: #3a3535; border: 1.5px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-stats > div { background: #fdf0d5; border: 2px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-md { background: #fdf0d5; color: #3a3535; border: 1.5px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-md.dark { background: #a9d4ee; color: #3a3535; border-color: #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-btn.pri { background: #f5a8a0; color: #3a3535; border: 2.5px solid #3a3535; box-shadow: 2px 3px 0 #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-btn.soft { background: #f3cf6b; border: 2.5px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-btn.line { background: #fff; border: 2px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-btn.dash { background: transparent; color: #3a3535; border: 2px dashed #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-feat { border: 2.5px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-tile { background: #fff; border: 2px solid #3a3535; border-radius: 16px; }
+html[data-lg-style="hand"].on-hand .hl-ti { border-bottom: 2px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-tip { background: #fdf0d5; color: #3a3535; border: 2px dashed #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-pend { background: #fde6e3; color: #3a3535; border: 2px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-bdg { background: #f5a8a0; color: #3a3535; border: 1.5px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-row { background: #fff; border: 2px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-rb input, html[data-lg-style="hand"].on-hand .hl-dinput input { border: 2px solid #3a3535; background: #fffdf7; }
+html[data-lg-style="hand"].on-hand .hl-dp { background: #fff; color: #3a3535; border: 2px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-dp.on { background: #f3cf6b; color: #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-bar { background: #fdf0d5; border: 1.5px solid #3a3535; height: 8px; }
+html[data-lg-style="hand"].on-hand .hl-bar i { background: #f5a8a0; }
+html[data-lg-style="hand"].on-hand .hl-pan { background: #fdf6e3; }
+html[data-lg-style="hand"].on-hand .hl-dinfo, html[data-lg-style="hand"].on-hand .hl-dinput { background: #fdf6e3; }
+html[data-lg-style="hand"].on-hand .hl-dinput { border-top: 2.5px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-dinput button { background: #f5a8a0; color: #3a3535; border: 2px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-sbar { border-bottom: 2.5px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-sfoot { border-top: 2.5px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-rp { background: #fff; border: 2px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-rp.on { background: #f3cf6b; }
+html[data-lg-style="hand"].on-hand .hl-rp.on b { color: #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-cm { border-top: 2px dashed #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-guest { background: #fdf0d5; border: 2px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-at-list { border: 2px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-dbar, html[data-lg-style="hand"].on-hand .hl-dbar span, html[data-lg-style="hand"].on-hand .hl-dbar button { color: #3a3535; opacity: 1; }
+html[data-lg-style="hand"].on-hand .hl-dbar { border-bottom: 2.5px solid #3a3535; }
+html[data-lg-style="hand"].on-hand .hl-nav { background: #fff; color: #3a3535; border: 2px solid #3a3535; }
