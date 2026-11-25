@@ -507,6 +507,17 @@
         html[data-lg-style="hand"].on-hand .meal-value { color: #3a3535; }
         html[data-lg-style="hand"].on-hand .meal-chip { background: #fff; border: 1.5px solid #3a3535; color: #3a3535; }
         html[data-lg-style="hand"].on-hand #page-food h2, html[data-lg-style="hand"].on-hand #page-stays h2 { color: #3a3535; }
+        html[data-lg-style="hand"].on-hand #page-more .card, html[data-lg-style="hand"].on-hand #more-footer-bar .card { background: #fff; border: 2.5px solid #3a3535; border-radius: 22px; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+        html[data-lg-style="hand"].on-hand #page-more .card[style*="background:#3b4d43"] { background: #a9d4ee !important; color: #3a3535 !important; }
+        html[data-lg-style="hand"].on-hand #page-more [style*="background:#3b4d43"] { background: #f5a8a0 !important; color: #3a3535 !important; border: 2px solid #3a3535 !important; }
+        html[data-lg-style="hand"].on-hand #page-more [style*="background:#e7e4db"] { background: #fff !important; color: #3a3535 !important; border: 2px solid #3a3535 !important; }
+        html[data-lg-style="hand"].on-hand #page-more [style*="color:#3b4d43"], html[data-lg-style="hand"].on-hand #page-more .drawer-hint, html[data-lg-style="hand"].on-hand #page-more h2 { color: #3a3535; }
+        html[data-lg-style="hand"].on-hand #page-more [data-id] { background: #fdf0d5; border: 2px solid #3a3535; border-radius: 14px; }
+        html[data-lg-style="hand"].on-hand #page-more .rounded-full.p-1 { background: #fff; border: 2.5px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand #page-more .border-gray-200 { border-color: #3a3535; }
+        html[data-lg-style="hand"].on-hand #page-more .border-gray-100, html[data-lg-style="hand"].on-hand #page-more .border-t { border-color: #3a3535; }
+        html[data-lg-style="hand"].on-hand #page-more .step-num { background: #f5a8a0; color: #3a3535; border: 2px solid #3a3535; }
+        html[data-lg-style="hand"].on-hand #more-footer-bar button[class*="bg-gray"] { background: #fff; color: #3a3535; border: 2px solid #3a3535; }
         html[data-lg-style="hand"].on-hand .date-card { border: 2px solid #3a3535; background: #fff; }
         html[data-lg-style="hand"].on-hand .date-card .dd, html[data-lg-style="hand"].on-hand .date-card .dn { color: #3a3535; }
         html[data-lg-style="hand"].on-hand .date-card.active { background: #f3cf6b; border-color: #3a3535; box-shadow: 2px 3px 0 #3a3535; }
@@ -1162,7 +1173,7 @@
         style="background:rgba(0,0,0,0.45);" onclick="if(event.target===this) closeStylePicker()">
         <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl">
             <h3 class="text-sm font-bold text-[#3b4d43] mb-1">🎨 風格</h3>
-            <p class="text-[11px] text-gray-500 mb-3">目前套用在「行程」「餐食」「住宿」「地圖」「記帳」「花絮」頁，選擇只存在這支手機。</p>
+            <p class="text-[11px] text-gray-500 mb-3">目前套用在所有頁面，選擇只存在這支手機。</p>
             <div id="style-list" class="space-y-2"></div>
             <button onclick="closeStylePicker()" class="w-full bg-gray-100 text-gray-600 rounded-lg py-2 text-xs font-bold mt-3">關閉</button>
         </div>
@@ -2436,7 +2447,7 @@
         const OVERLAYS = ['food', 'stays'];
         let currentTab = 'itinerary', ovPrev = 'itinerary', stOv = [];
         const tabDay = { itinerary: null, food: null, map: null };
-        const HAND_PAGES = ['itinerary', 'food', 'stays', 'map', 'ledger', 'highlights'];
+        const HAND_PAGES = ['itinerary', 'food', 'stays', 'map', 'ledger', 'more', 'highlights'];
         function switchTab(pageName, opts = {}) {
             const want = tabDay[pageName] || null;
             currentTab = pageName;
