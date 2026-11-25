@@ -1,5 +1,5 @@
-const V = 'sanin-v116';
-const CORE = ['index.html', 'trip-meta.js', 'output.css', 'bg-day.svg', 'manifest.json', 'icon-192.png', 'icon-512.png'];
+const V = 'sanin-v117';
+const CORE = ['index.html', 'trip-meta.js', 'output.css', 'bg-day.svg', 'manifest.json', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 const CDN = [
     'https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js',
     'https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js',

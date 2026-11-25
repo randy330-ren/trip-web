@@ -202,7 +202,7 @@
     if (id !== 'tottori' && !T.placeholder) {
         try {
             const o = location.origin, el = document.querySelector('link[rel="manifest"]');
-            const m = { name: T.pageTitle, short_name: T.shortName, start_url: o + '/?trip=' + id, scope: o + '/', display: 'standalone', background_color: '#3b4d43', theme_color: '#3b4d43',
+            const m = { name: T.pageTitle, short_name: T.shortName, start_url: o + '/?trip=' + id, scope: o + '/', display: 'standalone', background_color: '#fdf6e3', theme_color: '#3b4d43',
                 icons: [{ src: o + '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' }, { src: o + '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }] };
             if (el) el.href = URL.createObjectURL(new Blob([JSON.stringify(m)], { type: 'application/manifest+json' }));
         } catch (e) { }
