@@ -9,7 +9,7 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#3b4d43">
     <link rel="apple-touch-icon" href="icon-180.png">
-    <script>try { if (localStorage.getItem('lgStyle') === 'hand') document.documentElement.setAttribute('data-lg-style', 'hand'); } catch (e) { }</script>
+    <script>try { if (localStorage.getItem('lgStyle') === 'hand') { document.documentElement.setAttribute('data-lg-style', 'hand'); document.documentElement.classList.add('on-hand'); document.querySelector('meta[name="theme-color"]').setAttribute('content', '#a9d4ee'); } } catch (e) { }</script>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <style>
@@ -2838,6 +2838,8 @@
         const initialHash = window.location.hash.replace('#', '');
         if (OVERLAYS.includes(initialHash)) { switchTab('itinerary', { skipScrollTop: true }); openOverlay(initialHash); }
         else if (VALID_TABS.includes(initialHash)) switchTab(initialHash, { skipScrollTop: true });
+        document.documentElement.classList.toggle('on-hand', HAND_PAGES.includes(currentTab));
+        syncThemeColor();
         renderDateStrip();
         if (currentTab === 'itinerary') selectItineraryDay(tabDay.itinerary || selectedDay || 1);
 
