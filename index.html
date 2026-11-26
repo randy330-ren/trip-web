@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>2026 山陰鳥取秋日紀行</title>
+    <title>途gether</title>
     <link rel="stylesheet" href="output.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#3b4d43">
@@ -140,27 +140,26 @@
         .wxh-cell.now { background: var(--green); }
         .wxh-cell.now small, .wxh-cell.now b, .wxh-cell.now em { color: #fff; }
         #page-itinerary.swiping > section, #page-itinerary.swiping > .wx-card { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(255, 255, 255, .92); will-change: transform; }
-        #splash { position: fixed; inset: 0; z-index: 100; background: var(--green); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity .35s; }
+        #splash { position: fixed; inset: 0; z-index: 100; background: #fdf6e3; color: #3a3535; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; transition: opacity .35s; }
         #splash.out { opacity: 0; pointer-events: none; }
-        .sp-route { position: relative; width: 240px; height: 96px; margin-bottom: 8px; }
-        .sp-route svg.sp-map { position: absolute; left: 0; top: 0; overflow: visible; }
-        .sp-curve { fill: none; stroke: rgba(176,135,88,.75); stroke-width: 2; stroke-dasharray: 5 6; stroke-linecap: round; }
-        .sp-pin { fill: var(--gold); stroke: none; }
-        .sp-pin-dot { fill: var(--green); }
-        .sp-route small { position: absolute; top: 74px; font-size: 11px; color: #e8dfd0; transform: translateX(-50%); }
-        .sp-plane { position: absolute; left: 0; top: 0; width: 28px; height: 28px; margin: -14px 0 0 -14px; offset-path: path('M30 70 Q120 -14 210 70'); offset-rotate: auto; animation: spFly 2.6s ease-in-out infinite; }
-        .sp-plane svg { display: block; fill: #fff; stroke: none; }
-        .sp-dots span { display: inline-block; width: 6px; height: 6px; margin: 0 3px; border-radius: 9999px; background: var(--gold); animation: spPulse 1.2s infinite; }
+        .sp-route { position: relative; width: 260px; height: 112px; margin-bottom: 8px; }
+        .sp-curve { position: absolute; left: 0; top: 0; overflow: visible; }
+        .sp-curve path { fill: none; stroke: #3a3535; stroke-width: 2.5; stroke-dasharray: 6 7; stroke-linecap: round; }
+        .sp-pin { position: absolute; top: 44px; width: 32px; height: 40px; }
+        .sp-route small { position: absolute; top: 90px; font-size: 11px; color: #3a3535; transform: translateX(-50%); }
+        .sp-plane { position: absolute; left: 0; top: 0; width: 44px; height: 32px; margin: -16px 0 0 -22px; offset-path: path('M36 84 Q130 -10 224 84'); offset-rotate: auto; animation: spFly 2.6s ease-in-out infinite; }
+        .sp-plane img { display: block; width: 100%; height: 100%; }
+        .sp-dots span { display: inline-block; width: 6px; height: 6px; margin: 0 3px; border-radius: 9999px; background: #f5a8a0; border: 1.5px solid #3a3535; animation: spPulse 1.2s infinite; }
         .sp-dots span:nth-child(2) { animation-delay: .2s; } .sp-dots span:nth-child(3) { animation-delay: .4s; }
+        .sp-deco { position: absolute; pointer-events: none; }
+        .sp-cloud { width: 96px; animation: spDrift 7s ease-in-out infinite alternate; }
+        .sp-cloud.b { width: 76px; animation-duration: 9s; animation-direction: alternate-reverse; }
+        .sp-star { width: 24px; animation: spTwinkle 2.2s ease-in-out infinite; }
+        .sp-star.b { width: 18px; animation-delay: 1s; }
         @keyframes spFly { 0% { offset-distance: 0%; } 100% { offset-distance: 100%; } }
-        html[data-lg-style="hand"] #splash { background: #fdf6e3; color: #3a3535; }
-        html[data-lg-style="hand"] .sp-curve { stroke: #3a3535; stroke-width: 2.5; }
-        html[data-lg-style="hand"] .sp-pin { fill: #f5a8a0; stroke: #3a3535; stroke-width: 2.5; stroke-linejoin: round; }
-        html[data-lg-style="hand"] .sp-pin-dot { fill: #fdf6e3; stroke: #3a3535; stroke-width: 2; }
-        html[data-lg-style="hand"] .sp-plane svg { fill: #fff; stroke: #3a3535; stroke-width: 1.8; stroke-linejoin: round; }
-        html[data-lg-style="hand"] .sp-route small { color: #3a3535; }
-        html[data-lg-style="hand"] .sp-dots span { background: #f5a8a0; border: 1.5px solid #3a3535; }
         @keyframes spPulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+        @keyframes spDrift { from { transform: translateX(-10px); } to { transform: translateX(14px); } }
+        @keyframes spTwinkle { 0%, 100% { opacity: .35; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.1); } }
         .drag-handle { cursor: grab; color: #b5ad9f; padding: 0 4px; touch-action: none; user-select: none; }
         .sortable-ghost { opacity: .4; }
         .sortable-chosen .tl-card { box-shadow: 0 8px 20px rgba(0,0,0,.15); transform: scale(1.02); transition: transform .15s, box-shadow .15s; }
@@ -562,7 +561,8 @@
         <button id="add-choice-stay" class="text-amber-800 hover:bg-amber-50">🏨 新增住宿</button>
     </div>
     <div id="splash">
-        <div class="sp-route"><svg class="sp-map" width="240" height="96" viewBox="0 0 240 96" aria-hidden="true"><path class="sp-curve" d="M30 70 Q120 -14 210 70"/><g transform="translate(30 70)"><path class="sp-pin" d="M0 0 C-7 -9 -11 -13 -11 -19 A11 11 0 1 1 11 -19 C11 -13 7 -9 0 0Z"/><circle class="sp-pin-dot" cx="0" cy="-19" r="4"/></g><g transform="translate(210 70)"><path class="sp-pin" d="M0 0 C-7 -9 -11 -13 -11 -19 A11 11 0 1 1 11 -19 C11 -13 7 -9 0 0Z"/><circle class="sp-pin-dot" cx="0" cy="-19" r="4"/></g></svg><small id="splash-from" style="left:30px"></small><small id="splash-to" style="left:210px"></small><span class="sp-plane"><svg viewBox="0 0 24 24" width="28" height="28"><path d="M2 12 L22 3 L16 21 L11 14Z"/></svg></span></div>
+        <img class="sp-deco sp-cloud" src="sp-cloud.png" alt="" style="left:8%;top:22%"><img class="sp-deco sp-cloud b" src="sp-cloud.png" alt="" style="right:6%;bottom:22%"><img class="sp-deco sp-star" src="sp-star.png" alt="" style="right:24%;top:28%"><img class="sp-deco sp-star b" src="sp-star.png" alt="" style="left:26%;bottom:30%">
+        <div class="sp-route"><svg class="sp-curve" width="260" height="112" viewBox="0 0 260 112" aria-hidden="true"><path d="M36 84 Q130 -10 224 84"/></svg><img class="sp-pin" src="sp-pin.png" alt="" style="left:20px"><img class="sp-pin" src="sp-pin.png" alt="" style="left:208px"><small id="splash-from" style="left:36px"></small><small id="splash-to" style="left:224px"></small><span class="sp-plane"><img src="sp-plane.png" alt=""></span></div>
         <span id="splash-eyebrow" class="text-[10px] tracking-widest opacity-70"></span>
         <span id="splash-title" class="text-lg font-bold mt-1"></span>
         <script>tripRender.header(TRIP);</script>
